@@ -5,6 +5,7 @@
 #include "music_cache.hpp"
 #include "shared.hpp"
 #include "ssx/importer.hpp"
+#include "ssx_gba/importer.hpp"
 #include "strings.hpp"
 #include <array>
 #include <fstream>
@@ -16,7 +17,7 @@ using namespace import_detail;
 
 const GameImporter& importer(const DiscInput& disc, const ImportCancel& cancel) {
     // Register another game family here; filesystem/container readers remain independent.
-    constexpr std::array importers{&ssx_importer, &avalanche_importer, &madtrix_importer};
+    constexpr std::array importers{&ssx_gba_importer, &ssx_importer, &avalanche_importer, &madtrix_importer};
     for (const auto* candidate : importers) {
         check_cancel(cancel);
         if (candidate->accepts(disc))

@@ -6,6 +6,7 @@ import sys
 import tempfile
 from import_test import big, both, course_members, iso, record
 from ssx_import_test import members as ssx_members, raw_disc
+from ssx_gba_import_test import rom as gba_rom
 
 
 def multi_iso(names):
@@ -29,7 +30,7 @@ def main():
     executable = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix="openslope-library-") as temporary:
         root = Path(temporary)
-        for scenario in ("import", "cancel", "invalid", "unsupported", "existing", "queue", "ssx"):
+        for scenario in ("import", "cancel", "invalid", "unsupported", "existing", "queue", "ssx", "gba"):
             folder = root / (scenario + " app with spaces")
             folder.mkdir()
             members = course_members()
@@ -38,10 +39,12 @@ def main():
             if scenario == "unsupported":
                 members["fixture.pbd"] = bytes(4) + members["fixture.pbd"][4:]
             data = b"invalid image" if scenario == "invalid" else iso(big(members))
+            if scenario == "gba":
+                data = gba_rom()
             if scenario == "queue":
                 data = multi_iso(["FIXTURE", "THIRD", "FOURTH"])
                 (folder / 'broken.img').write_bytes(b'bad image')
-            (folder / ("First.BIN" if scenario == "ssx" else "First.ISO")).write_bytes(raw_disc(data) if scenario == "ssx" else data)
+            (folder / ("First.GBA" if scenario == "gba" else "First.BIN" if scenario == "ssx" else "First.ISO")).write_bytes(raw_disc(data) if scenario == "ssx" else data)
             (folder / "ignore.cue").write_text('Choose the BIN file')
             (folder / "second.iso").write_bytes(multi_iso(["SECOND"]) if scenario == "queue" else data)
             (folder / "ignore.iso").mkdir()
@@ -61,7 +64,7 @@ def main():
             assert result.returncode == 0, result.stdout + result.stderr
             assert all(hashlib.sha256((folder / name).read_bytes()).digest() == digest for name, digest in hashes.items())
         assert not (root / "Maps").exists(), "Import used the process working directory instead of its application folder"
-    print("PASS: seven desktop ISO/BIN library scenarios, serial import queue, retry/cancellation, publication and source protection")
+    print("PASS: eight desktop ISO/BIN/GBA library scenarios, serial import queue, retry/cancellation, publication and source protection")
 
 
 if __name__ == "__main__":

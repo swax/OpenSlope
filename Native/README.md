@@ -10,8 +10,13 @@ filters courses by game. Changing a selector never plays or imports a map. Quest
 is under **Ride settings**, keeping the map selectors and Play action visible in the initial panel.
 
 Current disc pickers display source course names on PC and Quest. PC **Choose disc** opens ISO/BIN/GCM/RVZ
-files from any folder; Quest uses its document picker. SSX 3 defaults to named runs, with an advanced
+files from any folder, plus supported GBA ROMs; Quest uses its document picker. SSX 3 defaults to named runs, with an advanced
 map-type toggle for stations, connectors and peak bundles. See [disc selection](docs/desktop-iso-0.78.md).
+
+SSX Tricky GBA AXYE revision 0 adds eight courses through the shared importer,
+including textured terrain, scenery, collision, grind paths, recovered horizons,
+riding audio and music. Select a `.gba` in the browser or native image picker;
+the game has its own **SSX Tricky (GBA)** group. See [GBA support and limits](docs/ssx-gba-import.md).
 
 Build 0.89 adds preliminary Jonny Moseley Mad Trix USA PS2 import, with eleven
 courses, source baked colored lighting, supported animated signs and waterfalls,

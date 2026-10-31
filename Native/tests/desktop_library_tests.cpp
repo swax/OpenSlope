@@ -30,24 +30,29 @@ int main(int argc, char** argv) {
         const DesktopLibrary library(argv[2]);
         const auto images = library.images();
         const bool ssx = scenario == "ssx";
-        const std::string course = ssx ? "SSX_FIXTURE" : "TRICKY_FIXTURE";
-        check(images.size() == 2 && images[0].filename() == (ssx ? "First.BIN" : "First.ISO") &&
+        const bool gba = scenario == "gba";
+        const std::string course = gba ? "SSXGBA_GARIBALDI" : ssx ? "SSX_FIXTURE" : "TRICKY_FIXTURE";
+        check(images.size() == 2 &&
+                  images[0].filename() == (gba   ? "First.GBA"
+                                           : ssx ? "First.BIN"
+                                                 : "First.ISO") &&
                   images[1].filename() == "second.iso",
-              "Sources must be sorted, nonrecursive, case-insensitive ISO/BIN files beside the application");
+              "Sources must be sorted, nonrecursive, case-insensitive game images beside the application");
         check(library.maps_root() == std::filesystem::absolute(argv[2]) / "Maps",
               "Maps root must follow executable folder, not working directory");
-        if (scenario == "import" || ssx) {
+        if (scenario == "import" || ssx || gba) {
             const auto courses = library.courses(images[0]);
-            check(courses.size() == 1 && courses[0].name == course,
+            check(courses.size() == (gba ? 8u : 1u) && courses[0].name == course,
                   "Real format discovery must supply the selectable course");
             const auto chosen = library.folder().parent_path() / "chosen disc outside app.iso";
             std::filesystem::copy_file(images[0], chosen, std::filesystem::copy_options::overwrite_existing);
             const DesktopLibrary picked(library.folder() / "chosen destination");
+            const auto patch_count = gba ? 3u : 1u;
             check(picked.courses(chosen).front().name == course &&
-                      Terrain::load(picked.install(chosen, course)).patches().size() == 1,
+                      Terrain::load(picked.install(chosen, course)).patches().size() == patch_count,
                   "A chosen disc outside the executable folder must scan and import without copying the image");
             const auto map = library.install(images[0], courses[0].name);
-            check(map == library.maps_root() / course && Terrain::load(map).patches().size() == 1,
+            check(map == library.maps_root() / course && Terrain::load(map).patches().size() == patch_count,
                   "Published import must load as a standard map");
             check(library.maps().size() == 1, "Completed import must appear in the installed library");
             std::ofstream(map / "keep-local.txt") << "local edits";

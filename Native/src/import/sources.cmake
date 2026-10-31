@@ -9,6 +9,14 @@ target_sources(openslope_core PRIVATE
   src/import/maps.cpp
   src/import/png.cpp
 
+  # SSX Tricky GBA, shared by ROM pickers on every client.
+  src/import/ssx_gba/importer.cpp
+  src/import/ssx_gba/assets.cpp
+  src/import/ssx_gba/course.cpp
+  src/import/ssx_gba/rails.cpp
+  src/import/ssx_gba/sky.cpp
+  src/import/ssx_gba/audio.cpp
+
   # Game-independent disc and archive readers.
   src/import/containers/disc.cpp
   src/import/containers/iso9660.cpp

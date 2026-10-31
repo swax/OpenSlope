@@ -38,7 +38,8 @@ std::optional<std::filesystem::path> choose_disc(HWND owner) {
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = owner;
-    dialog.lpstrFilter = L"Game disc images (*.iso;*.bin;*.gcm;*.rvz)\0*.iso;*.bin;*.gcm;*.rvz\0All files\0*.*\0";
+    dialog.lpstrFilter =
+        L"Game images (*.iso;*.bin;*.gcm;*.rvz;*.gba)\0*.iso;*.bin;*.gcm;*.rvz;*.gba\0All files\0*.*\0";
     dialog.lpstrFile = path.data();
     dialog.nMaxFile = DWORD(path.size());
     dialog.lpstrTitle = L"Choose a game disc image";

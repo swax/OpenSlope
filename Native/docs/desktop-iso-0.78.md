@@ -1,7 +1,7 @@
 # Desktop ISO setup, build 0.78
 
 Use **ISO Sources → Choose disc** to open an image anywhere on the PC. The chooser accepts `.iso`, `.bin`,
-`.gcm` and `.rvz`; selected external images remain in the source list for the current session. Images beside
+`.gcm`, `.rvz` and `.gba`; selected external images remain in the source list for the current session. Images beside
 the EXE are also discovered automatically. With no explicit `--map`,
 the library opens first. It shows installed/custom maps, or ISO sources when
 there are no installed maps. Installed maps are grouped by **Game → Map**; **Games** returns to the
@@ -15,7 +15,7 @@ is a separate click; extraction never starts a course. The existing independent
 native importer writes the shared `Maps/<name>` format beside the EXE. No command line, PowerShell
 script, external converter process or duplicate ISO copy is required.
 
-Automatic source discovery is nonrecursive, accepts case-insensitive `.iso`, `.bin`, `.gcm` and `.rvz` extensions and
+Automatic source discovery is nonrecursive, accepts case-insensitive `.iso`, `.bin`, `.gcm`, `.rvz` and `.gba` extensions and
 uses the running executable's directory. It does not infer support from the
 filename. PS2 import support is full for SSX Tricky, partial for SSX, and
 preliminary for SSX 3 and SSX On Tour. Keep images for multiple games together
@@ -23,6 +23,8 @@ and switch between them under **ISO Sources** to queue courses from each disc.
 The shared reader accepts SSX (including raw BIN images) and SSX 3 events/peaks. See
 [SSX import](ssx-import.md) and [SSX 3 import and limits](ssx3-import.md).
 On Tour PS2 day/night tracks also use this flow; see [On Tour import](ontour-import.md).
+SSX Tricky GBA ROMs expose eight courses under **SSX Tricky (GBA)** in the same
+desktop and Quest flow; see [GBA import and limits](ssx-gba-import.md).
 
 Course rows use titles recovered from the disc. Installed maps prefer `Import.json.DisplayName`, with
 legacy fallback labels where that metadata is absent. IDs and source paths remain unchanged.

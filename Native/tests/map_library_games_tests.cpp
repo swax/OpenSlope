@@ -33,6 +33,9 @@ int main() {
               "Legacy identities recognize every game family");
         check(map_game_from_metadata("MY_MAP", "", "") == "unknown",
               "Unidentified maps are never guessed as a retail game");
+        check(course_game("SSXGBA_GARIBALDI") == "ssx-tricky-gba" &&
+                  game_display_name("ssx-tricky-gba") == "SSX Tricky (GBA)",
+              "GBA maps have their own game group");
         RideUi ui;
         ui.visible = ui.library = true;
         std::vector<std::filesystem::path> paths;
