@@ -1,6 +1,5 @@
-import { serverMapName } from '../../core/reference/map-source';
 import { mapsRoot } from '../workspace-config';
-import * as fs from '../fs-async';
+import { referenceMapData, resolveServerMapName } from '../reference-map-paths';
 import { readLevelGroups as mineLevelGroups } from '../../shared/map-groups';
 import type { GroupDef, GroupsPayload } from '../../core/reference/groups';
 import { safeDataName } from './safe-name';
@@ -18,15 +17,16 @@ import { safeDataName } from './safe-name';
  *  same level at once share one pass over Instances.json instead of each running their own. */
 const cache = new Map<string, Promise<GroupsPayload>>();
 
-export function readLevelGroups(level: string): Promise<GroupsPayload> {
-  const lvl = safeDataName(serverMapName(level));
-  let pending = cache.get(lvl);
+export async function readLevelGroups(level: string): Promise<GroupsPayload> {
+  const lvl = safeDataName(await resolveServerMapName(level));
+  const key = `${mapsRoot()}/${lvl}`;
+  let pending = cache.get(key);
   if (!pending) {
-    pending = mineLevelGroups({ root: mapsRoot(), ...fs }, lvl);
-    cache.set(lvl, pending);
+    pending = mineLevelGroups(referenceMapData(), lvl);
+    cache.set(key, pending);
     // A failed read must not be cached as the permanent answer for this level.
     void pending.catch(() => {
-      if (cache.get(lvl) === pending) cache.delete(lvl);
+      if (cache.get(key) === pending) cache.delete(key);
     });
   }
   return level === lvl

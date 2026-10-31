@@ -33,6 +33,8 @@ import { installLocalAssetApi } from './local-asset-api';
 import { parseAssetVersion } from '../../core/reference/asset-version';
 import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
+import { findMapChoice, mapSourceId, splitMapSource } from '../../core/reference/map-source';
+import { discContainsCourse } from '../../core/reference/disc-courses';
 
 const yieldFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 async function json<T>(url: string): Promise<T> {
@@ -76,26 +78,27 @@ export async function preparePublicPlayer(
   const availableCourses =
     bundle || course.private || course.kind === 'project'
       ? cached
-      : course.isoCourses.filter(slot => cached.includes(slot));
+      : cached.filter(slot => discContainsCourse(course.isoCourses, slot));
   const localLevels = [
     ...availableCourses,
-    ...Object.keys(aliases).filter(level => availableCourses.includes(aliases[level])),
+    ...Object.keys(aliases).filter(level => discContainsCourse(availableCourses, aliases[level])),
   ];
   // Private maps can use the same authenticated server library as their editor.
   // Public maps continue to obtain retail art exclusively from this device's ISO cache.
-  const localLevelNames = new Set(localLevels.map(level => level.toLowerCase()));
   const serverLevels = (privateLevels?.maps ?? []).map(map => map.name);
-  const serverOnlyLevels = new Set(
-    serverLevels.map(level => level.toLowerCase()).filter(level => !localLevelNames.has(level)),
-  );
-  const availableLevels = [...localLevels, ...serverLevels];
+  const copies = [
+    ...localLevels.map(name => ({ name: mapSourceId('local', name), source: 'local' as const })),
+    ...serverLevels.map(name => ({ name: mapSourceId('server', name), source: 'server' as const })),
+  ];
+  const serverOnlyLevel = (level: string) => findMapChoice(copies, level)?.source === 'server';
+  const availableLevels = copies.map(map => map.name);
   const local = await localMapData(availableCourses, aliases, cached);
   installLocalAssetApi(local, availableCourses, !!course.private);
   setAssetUrlResolver(path => {
     const resolved = custom?.resolve(path) ?? path;
     if (resolved !== path) return resolved;
     const level = new URL(path, location.origin).searchParams.get('level');
-    if (level && serverOnlyLevels.has(level.toLowerCase())) return path;
+    if (level && serverOnlyLevel(level)) return path;
     return local.resolveAsset(path);
   });
   setClientProjectId(course.kind === 'project' && !bundle ? course.id : null);
@@ -224,17 +227,16 @@ export async function preparePublicPlayer(
         .filter(
           level =>
             !!parseAssetVersion(level) ||
-            (!level.startsWith('@') &&
-              availableLevels.some(available => available.toLowerCase() === level.toLowerCase())),
+            (!level.startsWith('@') && !!findMapChoice(copies, level)),
         ),
     );
     const installed = new Set<string>();
     const installDonor = async (level: string) => {
       if (installed.has(level)) return;
       const payload =
-        parseAssetVersion(level) || serverOnlyLevels.has(level.toLowerCase())
+        parseAssetVersion(level) || serverOnlyLevel(level)
           ? await fetchJson<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`)
-          : await buildLevelPropsUncached(local.source, level);
+          : await buildLevelPropsUncached(local.source, splitMapSource(level).name);
       payload.level = level;
       viewport.registerPropModels(decodeProps(payload));
       installed.add(level);
@@ -275,14 +277,14 @@ export async function preparePublicPlayer(
     viewport.setScreens(document.screens ?? [], document.props, null);
     if (document.skybox?.source.kind === 'level') {
       const level = document.skybox.source.level;
-      if (serverOnlyLevels.has(level.toLowerCase())) {
+      if (serverOnlyLevel(level)) {
         viewport.setSky({
           panorama: referenceSkyUrl(level, 'panorama'),
           ground: referenceSkyUrl(level, 'ground'),
           topColor: document.skybox.topColor,
         });
       } else {
-        localSky = await installLocalSky(viewport, local.source, level, local.fileUrl);
+        localSky = await installLocalSky(viewport, local.source, splitMapSource(level).name, local.fileUrl);
       }
     } else if (document.skybox?.source.kind === 'custom') {
       const name = document.skybox.source.name;

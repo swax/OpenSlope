@@ -11,9 +11,10 @@ import {
   readBytesOrNull,
   readJsonOr,
   READ_CONCURRENCY,
-} from '../fs-async';
+} from '../reference-map-paths';
 import { safeDataName } from './safe-name';
 import { readEnvironmentAudio } from './audio';
+import { resolveServerMapName } from '../reference-map-paths';
 
 function safeSegment(value: string, what: string): string {
   const safe = safeDataName(value);
@@ -22,7 +23,7 @@ function safeSegment(value: string, what: string): string {
 }
 
 async function musicRoot(level: string): Promise<{ level: string; root: string }> {
-  const safeLevel = safeSegment(level, 'reference level');
+  const safeLevel = safeSegment(await resolveServerMapName(level), 'reference level');
   const root = join(mapsRoot(), safeLevel, 'Audio', 'Music');
   if (!(await isDirectory(root))) throw new Error(`no extracted race music for ${safeLevel}`);
   return { level: safeLevel, root };
@@ -74,7 +75,7 @@ async function introMusic(root: string): Promise<ReferenceIntroMusic | null> {
 }
 
 async function introRoot(level: string): Promise<string | null> {
-  const audio = join(mapsRoot(), safeSegment(level, 'reference level'), 'Audio');
+  const audio = join(mapsRoot(), safeSegment(await resolveServerMapName(level), 'reference level'), 'Audio');
   for (const folder of ['Intro', 'Music']) {
     const root = join(audio, folder);
     if ((await isDirectory(root)) && (await introMusic(root))) return root;
@@ -139,7 +140,7 @@ export async function readReferenceIntroMusicBytes(level: string, stem: string):
 }
 
 export async function readReferenceMusicIndex(level: string): Promise<ReferenceMusicIndex> {
-  const safeLevel = safeSegment(level, 'reference level');
+  const safeLevel = safeSegment(await resolveServerMapName(level), 'reference level');
   const root = join(mapsRoot(), safeLevel, 'Audio', 'Music');
   const hasMusic = await isDirectory(root);
   const intro = await introRoot(safeLevel);

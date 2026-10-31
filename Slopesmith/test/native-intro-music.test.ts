@@ -40,6 +40,11 @@ try {
   mkdirSync(legacy, { recursive: true });
   writeFileSync(join(legacy, 'song-B1.wav'), wave);
   assert.deepEqual((await readReferenceMusicIndex('LEGACY')).intro, { tier: 'B', stems: ['song-B1.wav'] });
+  const prefixed = join(work, 'TRICKY_GARI', 'Audio', 'Intro');
+  mkdirSync(prefixed, { recursive: true });
+  writeFileSync(join(prefixed, 'song-C1.wav'), wave);
+  assert.deepEqual((await readReferenceMusicIndex('GARI')).intro, { tier: 'C', stems: ['song-C1.wav'] });
+  assert.deepEqual(await readReferenceIntroMusicBytes('server:GARI', 'song-C1.wav'), wave);
   console.log('Native Intro folder, tier selection, closed sample routes and legacy Music layout PASS');
 } finally {
   rmSync(work, { recursive: true, force: true });

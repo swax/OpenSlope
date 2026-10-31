@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { serverAssetVersionLocations } from '../core/reference/asset-version';
+import { legacyTrickyMapName } from '../core/reference/map-source';
 import { safeDataName as assetTableKey } from '../core/export/names';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../core/effects/document';
 import { readMapEffectsDocument as readEffectsDocument } from './map-effects';
@@ -534,6 +535,14 @@ export async function readMaterialTables(io: MapDataSource): Promise<ReadonlyMap
   const levels = [...new Set([...(await levelsWithProps(io)), CUSTOM_TEX_LEVEL].map(safeDataName))];
   const tables = await mapLimit(levels, READ_CONCURRENCY, level => readLevelMaterials(io, level));
   const result = new Map(levels.map((level, index) => [level, tables[index]]));
+  // Existing banks without prop tables still shadow a similarly named prefixed bank.
+  const existing = new Set((await io.listEntries(io.root)).filter(entry => entry.isDirectory).map(entry => entry.name));
+  const folded = new Set([...existing].map(name => name.toLowerCase()));
+  for (const name of existing) {
+    const fallback = legacyTrickyMapName(name);
+    if (fallback && folded.has(fallback.toLowerCase()) && !result.has(safeDataName(name)))
+      result.set(safeDataName(name), []);
+  }
   for (const [id, name] of serverAssetVersionLocations()) {
     const table = result.get(name);
     if (table) result.set(assetTableKey(id), table);

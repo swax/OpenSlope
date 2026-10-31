@@ -11,7 +11,7 @@ import {
   readBytesOrNull,
   readJsonOr,
   READ_CONCURRENCY,
-} from '../fs-async';
+} from '../reference-map-paths';
 import { CUSTOM_TEX_LEVEL, makeTexRef, type LevelTextures, type TexTile } from '../../core/paint/textures';
 import type { Rgba } from '../../core/paint/ground-textures';
 import type { FalGenerationProvenance } from '../../core/paint/fal-models';

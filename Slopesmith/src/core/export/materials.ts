@@ -1,5 +1,5 @@
 import { safeDataName } from './names';
-import { splitMapSource } from '../reference/map-source';
+import { legacyTrickyMapName, mapSourceId, splitMapSource } from '../reference/map-source';
 import type { PropAlphaMode } from '../reference/props';
 import { resolvePropAlphaMode, type TextureAlphaAnalysis } from '../props/texture-alpha';
 
@@ -84,7 +84,14 @@ export function buildMaterialCombiner(
   // a lazy read produced.
   const materialsOf = (level: string): readonly SourceMaterial[] => {
     const { source, name } = splitMapSource(level);
-    return tables.get(safeDataName(level)) ?? (source === 'server' ? tables.get(safeDataName(name)) : undefined) ?? [];
+    const table = (name: string) =>
+      tables.get(safeDataName(source ? mapSourceId(source, name) : name)) ??
+      (source === 'server' ? tables.get(safeDataName(name)) : undefined);
+    const own = table(name);
+    if (own) return own;
+    const fallback = legacyTrickyMapName(name);
+    if (!fallback) return [];
+    return table(fallback) ?? [];
   };
 
   return {

@@ -14,6 +14,10 @@ import { defaultMountain } from '../src/core/doc/mountain';
 import { exportLevel } from '../src/server/routes/export';
 import { projectIsoCourses } from '../src/server/public-courses';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readTextureBytes } from '../src/server/routes/textures';
+import { readModelGeometries } from '../src/server/routes/props';
+import { referenceMapData, resolveServerMapName } from '../src/server/reference-map-paths';
+import { readSkyRing, readSkyPageBytes, resolveSkyRingLevel } from '../src/server/routes/skybox';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-version-server-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
@@ -30,8 +34,11 @@ for (const [file, value] of Object.entries({
       { ModelName: 'Tree', ModelObjects: [{ ParentID: -1, MeshData: [{ MeshPath: 'tree.obj', MaterialID: 0 }] }] },
     ],
   },
-  'Instances.json': { Instances: [] },
+  'Instances.json': {
+    Instances: [{ ModelID: 0, InstanceName: 'Tree', Location: [0, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] }],
+  },
   'Materials.json': { Materials: [{ TexturePath: 'tile.png' }] },
+  'Physics.json': { Bodies: [], Note: 'legacy collision source' },
 }))
   writeFileSync(join(bank, file), JSON.stringify(value));
 const png = (r: number) => encodePng({ w: 1, h: 1, data: new Uint8Array([r, 0, 0, 255]) });
@@ -45,6 +52,66 @@ try {
     return (await response.json()) as AssetVersion;
   };
   const first = await descriptor();
+  assert.equal(await resolveServerMapName('GARI'), 'TRICKY_GARI');
+  assert.equal(await resolveServerMapName('server:GARI'), 'TRICKY_GARI');
+  await assert.rejects(resolveServerMapName('local:GARI'), /on this device/);
+  assert.equal((await (await get('/api/map-asset-version?level=GARI')).json()).id, first.id);
+  assert.deepEqual(Buffer.from(await (await get('/api/texture?level=GARI&name=tile.png')).arrayBuffer()), png(255));
+  const legacyProps = await get('/api/props?level=GARI');
+  assert.equal(legacyProps.status, 200);
+  assert.equal((await legacyProps.json()).models[0].name, 'Tree');
+  assert(
+    (await readModelGeometries('server:GARI', new Set([0]))).has(0),
+    'legacy model IDs resolve for server exports',
+  );
+  assert.deepEqual(await referenceMapData().readJsonOr(join(root, 'Maps/GARI/Physics.json'), null), {
+    Bodies: [],
+    Note: 'legacy collision source',
+  });
+  const legacyDoc = defaultMountain();
+  legacyDoc.name = 'LEGACY_EXPORT';
+  legacyDoc.quadTex = { 0: 'GARI/tile.png' };
+  legacyDoc.props = [{ id: 'tree', level: 'GARI', model: 0, name: 'Tree', pos: [0, 0, 0], yaw: 0, scale: 1 }];
+  const legacyOut = join(root, 'legacy-export');
+  await exportLevel(legacyDoc, { outDir: legacyOut, lighting: false });
+  assert.equal(legacyDoc.props[0].level, 'GARI', 'export resolves aliases without rewriting the saved document');
+  assert(JSON.parse(readFileSync(join(legacyOut, 'Models.json'), 'utf8')).Models.length > 0);
+  assert(
+    readdirSync(join(legacyOut, 'Textures')).some(file =>
+      readFileSync(join(legacyOut, 'Textures', file)).equals(png(255)),
+    ),
+  );
+  const unknown = join(root, 'Maps/TRICKY_NEW_SLOT/Textures');
+  mkdirSync(unknown, { recursive: true });
+  writeFileSync(join(unknown, 'tile.png'), png(42));
+  assert.deepEqual(
+    await readTextureBytes('NEW_SLOT', 'tile.png'),
+    png(42),
+    'fallback does not require a known course name',
+  );
+  mkdirSync(join(bank, 'Skybox/Meshes'), { recursive: true });
+  mkdirSync(join(bank, 'Skybox/Textures'), { recursive: true });
+  writeFileSync(
+    join(bank, 'Skybox/Ring.json'),
+    JSON.stringify({
+      Schema: 'openslope-sky-ring/v1',
+      Radius: 10,
+      TopZ: 1,
+      MidZ: 0,
+      BottomZ: -1,
+      GroundIndex: 2,
+      GroundUvRadius: 1,
+      Panels: [
+        { Index: 0, Band: 'upper', AzFrom: -180, AzTo: 180 },
+        { Index: 1, Band: 'lower', AzFrom: -180, AzTo: 180 },
+      ],
+      Tiles: Array.from({ length: 3 }, () => ({ Width: 1, Height: 1 })),
+    }),
+  );
+  writeFileSync(join(bank, 'Skybox/Textures/0000.png'), png(255));
+  assert.equal((await readSkyRing('server:GARI')).radius, 10);
+  assert.equal(await resolveSkyRingLevel('GARI'), 'TRICKY_GARI', 'a saved sky-ring name follows its prefixed bank');
+  assert.deepEqual(await readSkyPageBytes('GARI', 0), png(255));
   const texture = (id: string) => `/api/texture?level=${encodeURIComponent(id)}&name=tile.png`;
   assert.equal((await get('/api/texture?level=TRICKY_GARI&name=tile.png')).status, 200);
   assert.deepEqual(Buffer.from(await (await get(texture(first.id))).arrayBuffer()), png(255));
@@ -105,6 +172,19 @@ try {
     'unverified query parameters cannot poison versioned caches',
   );
   assert.equal((await get('/api/map-asset-version?level=..%2F..')).status, 404);
+  const legacyBank = join(root, 'Maps/GARI');
+  mkdirSync(join(legacyBank, 'Textures'), { recursive: true });
+  writeFileSync(join(legacyBank, 'Textures/tile.png'), png(64));
+  writeFileSync(join(bank, 'Textures/prefixed-only.png'), png(32));
+  responseCache.clear();
+  assert.equal(await resolveServerMapName('GARI'), 'GARI', 'an exact bank takes precedence when both exist');
+  assert.deepEqual(await readTextureBytes('GARI', 'tile.png'), png(64));
+  await assert.rejects(readTextureBytes('GARI', 'prefixed-only.png'), /no texture/);
+  assert.equal(
+    await referenceMapData().readJsonOr(join(legacyBank, 'Physics.json'), null),
+    null,
+    'a partial exact bank never borrows collision from the prefixed bank',
+  );
   console.log(
     'Server asset versions: current content, immutable image validation, JSON cache isolation, exports and path safety PASS',
   );

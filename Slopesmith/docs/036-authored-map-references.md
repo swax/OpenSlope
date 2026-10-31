@@ -58,6 +58,11 @@ mountain's own assets appear under **Custom / Authored**, even when they borrow 
 The catalogue APIs retain their `levels` lists and also return `maps` with each map's `game`.
 Reference maps keep source-qualified identities. Props and textures use the content versions below.
 Existing unqualified references retain their local-first resolution until their original assets can be pinned.
+Legacy unprefixed bank names also try `TRICKY_<name>` when the requested bank is absent. This applies to
+browser-local reads, server assets and exports, including props, textures, collision and sky rings. Exact
+bank names take precedence; a missing file inside an existing bank never borrows from the prefixed bank.
+Explicit Local/Server choices remain scoped to that source, and fingerprinted references still require an
+identical bank version. Saved documents and checkpoints do not need a name-only rewrite.
 Map labels prefer `Import.json.DisplayName`, recovered from the user's disc by the importer; `NameSource`
 records which source table supplied it. This works independently of folder names. Browser scans retain
 these titles with their saved ISO source, and cached imports retain them for offline menus. Legacy folders

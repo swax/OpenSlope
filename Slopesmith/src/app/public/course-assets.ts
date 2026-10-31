@@ -1,14 +1,18 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { PropsPayload } from '../../core/reference/props';
 import { parseAssetVersion } from '../../core/reference/asset-version';
+import { findMapChoice } from '../../core/reference/map-source';
 
 function availableAssets(availableLevels: readonly string[]) {
-  const available = new Set(availableLevels.map(level => level.toLowerCase()));
-  const hasLevel = (level: string) =>
-    !!parseAssetVersion(level) ||
-    level.startsWith('@') ||
-    level.toLowerCase() === 'custom' ||
-    available.has(level.toLowerCase());
+  const available = availableLevels.map(name => ({ name }));
+  const hasLevel = (level: string) => {
+    return (
+      !!parseAssetVersion(level) ||
+      level.startsWith('@') ||
+      level.toLowerCase() === 'custom' ||
+      !!findMapChoice(available, level)
+    );
+  };
   const hasTexture = (ref: string) => hasLevel(ref.split('/')[0]);
   return { hasLevel, hasTexture };
 }

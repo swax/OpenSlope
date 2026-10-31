@@ -3,14 +3,23 @@ import { readCachedAudio, readCachedCourse } from './iso-cache';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import type { ReferenceMusicGraph, ReferenceMusicIndex, ReferenceMusicSummary } from '../../core/reference/music';
 import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
+import { legacyTrickyMapName } from '../../core/reference/map-source';
+import { mapSourceRequest } from '../net/map-source';
 
 /** Read the same portable map files as the server, with browser-local Blobs replacing filesystem reads. */
 export async function localMapData(courses: string[], aliases: Record<string, string> = {}, audioDonors: string[] = []) {
   const all = new Map<string, Map<string, Blob>>();
   for (const course of courses) all.set(course.toLowerCase(), await readCachedCourse(course));
+  const mapName = (name: string): string => {
+    const key = name.toLowerCase();
+    if (all.has(key)) return key;
+    const fallback = legacyTrickyMapName(name)?.toLowerCase();
+    return fallback && all.has(fallback) ? fallback : key;
+  };
+  const hasLevel = (name: string) => all.has(mapName(name));
   for (const [alias, course] of Object.entries(aliases)) {
-    const files = all.get(course.toLowerCase());
-    if (files) all.set(alias.toLowerCase(), files);
+    const files = all.get(mapName(course));
+    if (files && !all.has(alias.toLowerCase())) all.set(alias.toLowerCase(), files);
   }
   const fallbackRequested = await Promise.all([...all.values()].map(async files => {
     const file = files.get('audio/soundindex.json');
@@ -90,13 +99,13 @@ export async function localMapData(courses: string[], aliases: Record<string, st
   const parts = (path: string) => path.replace(/\\/g, '/').toLowerCase().split('/').filter(Boolean);
   const blob = (path: string): Blob | undefined => {
     const [level, ...rest] = parts(path);
-    return all.get(level)?.get(rest.join('/'));
+    return all.get(mapName(level))?.get(rest.join('/'));
   };
   const list = (path: string) => {
     const [level, ...rest] = parts(path);
     if (!level) return [...all.keys()];
     const prefix = rest.length ? `${rest.join('/')}/` : '';
-    return [...new Set([...(all.get(level)?.keys() ?? [])].filter(key => key.startsWith(prefix))
+    return [...new Set([...(all.get(mapName(level))?.keys() ?? [])].filter(key => key.startsWith(prefix))
       .map(key => key.slice(prefix.length).split('/')[0]))];
   };
   const source: MapDataSource = {
@@ -119,8 +128,9 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     return url;
   }
   function resolveAsset(path: string): string {
-    const url = new URL(path, location.origin), q = url.searchParams;
-    const level = q.get('level') || courses[0] || '';
+    const { url, source: selectedSource } = mapSourceRequest(path), q = url.searchParams;
+    if (selectedSource === 'server') return path;
+    const level = mapName(q.get('level') || courses[0] || '');
     const data = (value: unknown) => `data:application/json,${encodeURIComponent(JSON.stringify(value))}`;
     const ridingSources = () => {
       if (!q.has('level')) return courses;
@@ -199,5 +209,5 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     if (url.pathname === '/api/announcer-sound') return 'data:audio/wav;base64,';
     return path;
   }
-  return { source, fileUrl, resolveAsset, dispose() { for (const url of urls.values()) URL.revokeObjectURL(url); } };
+  return { source, fileUrl, resolveAsset, hasLevel, dispose() { for (const url of urls.values()) URL.revokeObjectURL(url); } };
 }

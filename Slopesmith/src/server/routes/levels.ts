@@ -1,7 +1,5 @@
-import * as fs from '../fs-async';
-import { mapsRoot } from '../workspace-config';
+import { referenceMapData as dataSource } from '../reference-map-paths';
 import * as reader from '../../shared/map-levels';
-const dataSource = (): import('../../shared/map-data').MapDataSource => ({ root: mapsRoot(), ...fs });
 export const listLevels = (...args: Tail<Parameters<typeof reader.listLevels>>) =>
   reader.listLevels(dataSource(), ...args);
 export const readLevelOrigin = (...args: Tail<Parameters<typeof reader.readLevelOrigin>>) =>

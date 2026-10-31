@@ -1,11 +1,19 @@
 import { serverMapName } from '../../core/reference/map-source';
 import { join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
-import { isDirectory, listDir, listEntries, listSubdirectories, readBytesOrNull, readJsonOr } from '../fs-async';
+import {
+  isDirectory,
+  listDir,
+  listEntries,
+  listSubdirectories,
+  readBytesOrNull,
+  readJsonOr,
+} from '../reference-map-paths';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import type { BoardSoundIndex } from '../../core/audio/board-sound';
 import { validEnvironmentDocument, type EnvironmentAudioDocument } from '../../core/audio/environment';
 import { safeDataName } from './safe-name';
+import { resolveServerMapName } from '../reference-map-paths';
 
 /** Read the user-generated map sidecar Snowknife wrote from this map's source disc. */
 export async function readSoundIndex(level: string): Promise<CollisionSoundIndex | null> {
@@ -32,6 +40,7 @@ export async function readEnvironmentAudio(level: string): Promise<EnvironmentAu
 /** Read the disc-global board surface routes generated beside the shared zboard bank. */
 export async function readBoardSoundIndex(level?: string): Promise<BoardSoundIndex | null> {
   if (level) {
+    level = await resolveServerMapName(level);
     const safe = safeDataName(serverMapName(level));
     if (!safe || safe !== level) return null;
     const local = await readJsonOr<BoardSoundIndex | null>(
@@ -179,6 +188,7 @@ async function boardSoundSources(
 ): Promise<{ level: string; dir: string; bank: string }[]> {
   const wanted = bank.trim().toLowerCase();
   if (!BOARD_BANKS.has(wanted)) return [];
+  if (level) level = await resolveServerMapName(level);
   if (level && (!safeDataName(serverMapName(level)) || safeDataName(serverMapName(level)) !== serverMapName(level)))
     return [];
   const fallback = level && (await readSoundIndex(level))?.RidingFallback === 'ssx-tricky';

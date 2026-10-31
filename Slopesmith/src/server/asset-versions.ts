@@ -1,6 +1,5 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import * as fs from './fs-async';
 import { mapsRoot } from './workspace-config';
 import { listLevelOrigins } from './routes/levels';
 import { assetBankFiles, readAssetVersion, sha256 } from '../shared/map-asset-version';
@@ -13,15 +12,15 @@ import {
   type AssetVersion,
 } from '../core/reference/asset-version';
 import { mapGame } from '../core/reference/map-game';
-import { serverMapName } from '../core/reference/map-source';
 import { safeDataName } from '../core/export/names';
+import { referenceMapData, resolveServerMapName } from './reference-map-paths';
 
 const cache = new Map<string, { signature: string; value: Promise<AssetVersion> }>();
 const pending = new Map<string, Promise<AssetVersion>>();
 const textureHashes = new Map<string, ReadonlyMap<string, string>>();
 
-export function serverMapAssetVersion(name: string): Promise<AssetVersion> {
-  const level = serverMapName(name);
+export async function serverMapAssetVersion(name: string): Promise<AssetVersion> {
+  const level = await resolveServerMapName(name);
   if (!level || safeDataName(level) !== level) return Promise.reject(new Error('Invalid asset map name.'));
   const key = join(mapsRoot(), level);
   let value = pending.get(key);
@@ -38,7 +37,7 @@ export function serverMapAssetVersion(name: string): Promise<AssetVersion> {
 }
 
 async function readServerVersion(level: string, key: string): Promise<AssetVersion> {
-  const io = { root: mapsRoot(), ...fs };
+  const io = referenceMapData();
   const files = await assetBankFiles(io, level);
   const signature = JSON.stringify(
     await Promise.all(
@@ -75,7 +74,7 @@ export class AssetVersionUnavailable extends Error {
 
 export async function resolveServerAssetVersion(id: string): Promise<string> {
   const expected = parseAssetVersion(id);
-  if (!expected) return serverMapName(id);
+  if (!expected) return resolveServerMapName(id);
   const known = serverAssetVersionName(id);
   if (known) {
     try {

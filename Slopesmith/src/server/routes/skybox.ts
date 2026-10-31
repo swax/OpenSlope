@@ -11,7 +11,8 @@ import {
   readJsonOr,
   readTextOrNull,
   READ_CONCURRENCY,
-} from '../fs-async';
+} from '../reference-map-paths';
+import { resolveServerMapName } from '../reference-map-paths';
 import { decodePng, encodePng } from './png';
 import type { Rgba } from '../../core/paint/ground-textures';
 import type { ExportFile } from '../../core/export/files';
@@ -82,7 +83,7 @@ export async function listCustomSkies(): Promise<string[]> {
 
 /** Read the metadata Snowknife measured from this level's extracted OBJ/PNG files. */
 export async function readSkyRing(level: string): Promise<SkyRing> {
-  const safe = safeDataName(level);
+  const safe = safeDataName(await resolveServerMapName(level));
   const raw = await readJsonOr<unknown>(join(mapsRoot(), safe, 'Skybox', 'Ring.json'), null);
   const ring = skyRingFromDocument(raw);
   if (!ring) throw new Error(`${safe}/Skybox/Ring.json is missing or invalid — rerun \`snowknife skybox\``);
@@ -91,7 +92,13 @@ export async function readSkyRing(level: string): Promise<SkyRing> {
 
 /** One of a level's measured sky pages, decoded. */
 export async function readSkyTile(level: string, index: number): Promise<Rgba> {
-  const file = join(mapsRoot(), safeDataName(level), 'Skybox', 'Textures', String(index).padStart(4, '0') + '.png');
+  const file = join(
+    mapsRoot(),
+    safeDataName(await resolveServerMapName(level)),
+    'Skybox',
+    'Textures',
+    String(index).padStart(4, '0') + '.png',
+  );
   const bytes = await readBytesOrNull(file);
   if (!bytes) throw new Error(`no sky tile ${level}/${index}`);
   return decodePng(bytes);
@@ -108,8 +115,8 @@ export function invalidateReferenceSkyCache(level?: string): void {
   else panoCache.clear();
 }
 
-export function readLevelPanorama(level: string): Promise<Buffer> {
-  const safe = safeDataName(level);
+export async function readLevelPanorama(level: string): Promise<Buffer> {
+  const safe = safeDataName(await resolveServerMapName(level));
   let pending = panoCache.get(safe);
   if (!pending) {
     pending = stitchLevelPanorama(safe);
@@ -121,8 +128,8 @@ export function readLevelPanorama(level: string): Promise<Buffer> {
   return pending;
 }
 
-export function readLevelPanoramaRevision(level: string): Promise<string> {
-  const safe = safeDataName(level);
+export async function readLevelPanoramaRevision(level: string): Promise<string> {
+  const safe = safeDataName(await resolveServerMapName(level));
   return referenceAssetRevision(`skypano:${safe.toLowerCase()}`, async () => {
     const ring = await readSkyRing(safe);
     const ringBytes = await readBytesOrNull(join(mapsRoot(), safe, 'Skybox', 'Ring.json'));
@@ -167,7 +174,7 @@ async function stitchLevelPanorama(safe: string): Promise<Buffer> {
  *  panorama because it is a different projection (radial, looking straight down) and can't be stitched into
  *  the band. */
 export async function readLevelGroundPng(level: string): Promise<Buffer> {
-  const safe = safeDataName(level);
+  const safe = safeDataName(await resolveServerMapName(level));
   const ring = await readSkyRing(safe);
   const file = join(mapsRoot(), safe, 'Skybox', 'Textures', String(ring.groundIndex).padStart(4, '0') + '.png');
   const bytes = await readBytesOrNull(file);
@@ -175,8 +182,8 @@ export async function readLevelGroundPng(level: string): Promise<Buffer> {
   return bytes;
 }
 
-export function readLevelGroundRevision(level: string): Promise<string> {
-  const safe = safeDataName(level);
+export async function readLevelGroundRevision(level: string): Promise<string> {
+  const safe = safeDataName(await resolveServerMapName(level));
   return referenceAssetRevision(`skyground:${safe.toLowerCase()}`, () => readLevelGroundPng(safe));
 }
 
@@ -262,7 +269,7 @@ export async function readCustomSkyPng(name: string): Promise<Buffer> {
  */
 export async function resolveSkyRingLevel(preferred: string): Promise<string> {
   const shipped = await levelsWithSkybox();
-  const wanted = preferred ? safeDataName(preferred) : '';
+  const wanted = preferred ? safeDataName(await resolveServerMapName(preferred)) : '';
   const ringLevel = wanted && shipped.includes(wanted) ? wanted : shipped[0];
   if (!ringLevel || !shipped.includes(ringLevel))
     throw new Error(
@@ -281,7 +288,7 @@ async function optionalSkyRing(preferred = ''): Promise<SkyRing | null> {
 
 /** A ring level's `Skybox/` shell — Models.json, Materials.json and every mesh — addressed for an export. */
 export async function readSkyRingFiles(ringLevel: string): Promise<ExportFile[]> {
-  const srcDir = join(mapsRoot(), ringLevel, 'Skybox');
+  const srcDir = join(mapsRoot(), await resolveServerMapName(ringLevel), 'Skybox');
   const read = async (...parts: string[]): Promise<Buffer> => {
     const file = join(srcDir, ...parts);
     const bytes = await readBytesOrNull(file);
@@ -300,23 +307,30 @@ export async function readSkyRingFiles(ringLevel: string): Promise<ExportFile[]>
 
 /** One of a level's measured sky pages as it ships, for an export that lifts the bank verbatim. */
 export async function readSkyPageBytes(level: string, index: number): Promise<Buffer> {
-  const file = join(mapsRoot(), safeDataName(level), 'Skybox', 'Textures', String(index).padStart(4, '0') + '.png');
+  const file = join(
+    mapsRoot(),
+    safeDataName(await resolveServerMapName(level)),
+    'Skybox',
+    'Textures',
+    String(index).padStart(4, '0') + '.png',
+  );
   const bytes = await readBytesOrNull(file);
   if (!bytes) throw new Error(`skybox source missing: ${file}`);
   return bytes;
 }
 
-export function readSkyPageRevision(level: string, index: number): Promise<string> {
-  const safe = safeDataName(level);
+export async function readSkyPageRevision(level: string, index: number): Promise<string> {
+  const safe = safeDataName(await resolveServerMapName(level));
   return referenceAssetRevision(`sky-page:${safe.toLowerCase()}:${index}`, () => readSkyPageBytes(safe, index));
 }
 
 /** The authored sky as an extracted level's `Skybox/` (docs/025), read off the map library. What the folder
  *  contains is `composeSkybox`; this finds the ring and the bytes it cuts. */
 export async function skyboxFiles(sky: SkyboxDoc): Promise<{ files: ExportFile[]; log: string[] }> {
+  const sourceLevel = sky.source.kind === 'level' ? await resolveServerMapName(sky.source.level) : '';
   if (
     sky.source.kind === 'level' &&
-    !(await pathExists(join(mapsRoot(), safeDataName(sky.source.level), 'Skybox', 'Ring.json')))
+    !(await pathExists(join(mapsRoot(), safeDataName(sourceLevel), 'Skybox', 'Ring.json')))
   ) {
     const files = await readNativeLevelSkyFiles(sky.source.level);
     files.push({

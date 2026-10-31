@@ -77,6 +77,8 @@ configureAssetTransport(async input => {
     : Response.json({ level: url.searchParams.get('level'), source });
 });
 assert.equal(await pinAssetMap('local:TRICKY_GARI'), first.id);
+assert.equal(await pinAssetMap('local:GARI'), first.id, 'legacy local names select the new prefixed bank');
+assert.equal(await pinAssetMap('server:GARI'), first.id, 'legacy server names select the new prefixed bank');
 assert.equal(await pinAssetMap('server:TRICKY_GARI'), first.id);
 assert.equal(assetPreference(first.id), 'server');
 let response = await fetchVersionedAsset(`/api/props?level=${encodeURIComponent(first.id)}`);

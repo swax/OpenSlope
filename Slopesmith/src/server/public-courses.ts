@@ -11,7 +11,7 @@ import { behaviourRecords } from '../core/props/defaults';
 import { isDiscCourse } from '../core/reference/disc-courses';
 import { mapDisplayName } from '../core/reference/map-game';
 import { parseAssetVersion } from '../core/reference/asset-version';
-import { splitMapSource } from '../core/reference/map-source';
+import { findMapChoice, splitMapSource } from '../core/reference/map-source';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
 import { withProjectAssets } from './project-assets';
 import { listImportedProps } from './routes/imported-props';
@@ -107,7 +107,7 @@ export async function publicCourses(): Promise<PublicCourse[]> {
       : [];
     const isoAliases: Record<string, string> = Object.fromEntries(
       projectIsoCourses(snapshot.document, assetTextures).map(name => {
-        const origin = maps.find(map => map.name.toUpperCase() === name);
+        const origin = findMapChoice(maps, name);
         return [name, origin?.course ?? name] as const;
       }),
     );

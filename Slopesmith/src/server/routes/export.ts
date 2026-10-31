@@ -27,6 +27,7 @@ import { groupDefIndex } from './groups';
 import { skyboxFiles } from './skybox';
 import { stageRaceMusic } from './music';
 import { mapsRoot } from '../workspace-config';
+import { resolveServerMapName } from '../reference-map-paths';
 
 /** Manifest and command lines take POSIX separators, which Windows accepts too. */
 const slash = (path: string) => path.split(sep).join('/');
@@ -85,7 +86,7 @@ function nodeExportProvider(dir: string): ExportProvider {
     stageRaceMusic: (selection, arrangement) => stageRaceMusic(selection, dir, arrangement),
 
     async discRecipePaths() {
-      const levelData = join(mapsRoot(), DISC_SLOT);
+      const levelData = join(mapsRoot(), await resolveServerMapName(DISC_SLOT));
       return {
         exportDir: slash(dir),
         levelData: slash(levelData),

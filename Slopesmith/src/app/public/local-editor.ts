@@ -163,11 +163,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
   window.addEventListener('pagehide', event => {
     if (!event.persisted) custom.dispose();
   });
-  const knownLevel = (level: string) =>
-    cached.some(name => name.toLowerCase() === level.toLowerCase()) ||
-    Object.entries(aliases).some(
-      ([alias, slot]) => alias.toLowerCase() === level.toLowerCase() && cached.includes(slot),
-    );
+  const knownLevel = (level: string) => local.hasLevel(level);
   const resolve = (path: string): string => {
     const { url, source } = mapSourceRequest(path);
     if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return path;
@@ -352,6 +348,9 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
       return json({
         tables: {
           ...server.tables,
+          ...Object.fromEntries(
+            [...localTables.keys()].map(name => [safeDataName(mapSourceId('server', name)), []]),
+          ),
           ...Object.fromEntries(
             Object.entries(server.tables).map(([name, table]) => [safeDataName(mapSourceId('server', name)), table]),
           ),
