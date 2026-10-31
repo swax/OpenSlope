@@ -250,9 +250,26 @@ try {
   const legacyDir = join(root, 'Custom', 'Textures');
   mkdirSync(legacyDir, { recursive: true });
   const legacyDoc = { ...defaultMountain(), name: 'Legacy Assets', quadTex: { 0: 'Custom/later.png' } };
+  const legacySoundDir = join(root, 'Custom', 'Sounds');
+  mkdirSync(legacySoundDir, { recursive: true });
+  const cueBytes = Buffer.from('synthetic course-owned WAV dependency');
+  writeFileSync(join(legacySoundDir, 'jump.wav'), cueBytes);
+  legacyDoc.boardSound = {
+    enabled: true,
+    volume: 1,
+    glide: 1,
+    carve: 1,
+    transients: 1,
+    cues: 1,
+    clips: { ollie: 'jump.wav' },
+  };
   const legacy = await createProject(legacyDoc);
   await saveProject(legacy.project.id, legacy.project.revision, { ...legacy.document, quadTex: {} });
   await migrateLegacyProjectAssets(await openProject(legacy.project.id));
+  check(
+    readFileSync(join(legacy.project.folder, 'assets', 'sounds', 'jump.wav')).equals(cueBytes),
+    'a course riding-sound assignment carries its WAV into mountain-owned storage',
+  );
   check(
     !existsSync(join(legacy.project.folder, 'assets', 'textures', 'later.png')),
     'a missing legacy dependency is recorded without manufacturing a file',

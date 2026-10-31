@@ -290,6 +290,10 @@ export class TestRide {
   /** One fixed-tick scorer shared by desktop, the WebXR wrist, and the finish result. */
   private readonly scorer = createRideScorer();
   private lastScoreResolution = 0;
+  private wasScoringTrick = false;
+  private previousSoundMeter = 0;
+  private previousSoundBoostHeld = false;
+  private lastSoundCountdown: string | null = null;
   private lastTrickResolvedAt = -Infinity;
   private finishCrossing: FinishCrossing | null = null;
   /** Time added by crossed type-11 checkpoints during this showoff run. */
@@ -404,6 +408,7 @@ export class TestRide {
         this.syncScoreState();
         this.cam.resetAim(this.model.st.pos);
         this.o.onAnnouncerEvent?.('knockdown');
+        if (this.runVisible) this.boardAudio?.event('crash');
       },
       onTelemetryTick: tick => {
         if (!this.onFootFlag && !this.countingDown) this.aiRecording.ingest(tick);
@@ -656,6 +661,12 @@ export class TestRide {
       // chain. Advance the gameplay gate on that same clock or a hitch would release the board before its light.
       this.countdownElapsed += Math.min(dt, 0.1);
       this.hud.setCountdown(this.countdownCue());
+      const cue = this.countdownCue();
+      if (cue !== this.lastSoundCountdown) {
+        if (cue === 'READY') this.boardAudio?.event('ready');
+        else if (cue && /^[123]$/.test(cue)) this.boardAudio?.event('countdown');
+        this.lastSoundCountdown = cue;
+      }
       if (before < countdown.holdSeconds) {
         rideDt = Math.max(0, this.countdownElapsed - countdown.holdSeconds);
         if (rideDt <= 0) return;
@@ -667,6 +678,7 @@ export class TestRide {
     if (this.announceGoPending) {
       this.announceGoPending = false;
       this.o.onAnnouncerEvent?.('go');
+      this.boardAudio?.event('go');
     }
     if (this.runActive) this.scorer.stepBoost(rideDt, this.input.keys.boost);
     this.syncScoreState();
@@ -721,9 +733,11 @@ export class TestRide {
   /** Query the forward course-progress interval crossed by this physics tick and apply its type-11 payload.
    *  Race/free ride still cross the same authored stations, but retail's handler only adds time in showoff. */
   private tickCheckpoints() {
-    if (!this.runActive || this.raceMode !== 'showoff' || this.timeUp || !this.checkpointTracker) return;
+    if (!this.runActive || this.timeUp || !this.checkpointTracker) return;
     const awards = this.checkpointTracker.step(this.model.st.pos);
     if (!awards.length) return;
+    this.boardAudio?.event('checkpoint');
+    if (this.raceMode !== 'showoff') return;
     const bonus = awards.reduce((sum, award) => sum + award.bonusSeconds, 0);
     this.checkpointBonusSeconds += bonus;
     const minutes = Math.floor(bonus / 60),
@@ -768,6 +782,7 @@ export class TestRide {
   }
 
   private finishRun(result: 'finished' | 'time-up') {
+    if (result === 'finished') this.boardAudio?.event('finish');
     this.runScore = this.scorer.finish();
     this.syncScoreState();
     this.runActive = false;
@@ -834,7 +849,11 @@ export class TestRide {
     perf.cameraMs = smoothRideMs(perf.cameraMs, performance.now() - started);
     // The board bed reads the TICK state, not the render view: it is performed by the physics, and the
     // interpolated pose would smear the touchdown/launch edges its transients are found on.
-    this.boardAudio?.update(st, dt, this.model.boostThrustActive());
+    this.boardAudio?.update(st, dt, this.model.boostThrustActive(), this.input.keys.brake);
+    if (this.input.keys.boost && !this.previousSoundBoostHeld && this.runActive && !this.scorer.hasBoost) {
+      this.boardAudio?.event('denied');
+    }
+    this.previousSoundBoostHeld = this.input.keys.boost;
     // The camera performs its own terrain/prop clearance casts, so sample the shared accumulator only after it.
     perf.castMs = smoothRideMs(perf.castMs, perf.castAccum);
     started = performance.now();
@@ -1491,10 +1510,17 @@ export class TestRide {
     this.runScore = score.score;
     this.effects.scoreMultiplier = score.multiplier;
     this.effects.boostMeter = this.scorer.active ? score.boostMeter : null;
+    if (score.boostMeter >= 1 && this.previousSoundMeter < 1) this.boardAudio?.event('meterFull');
+    this.previousSoundMeter = score.boostMeter;
     if (score.resolution !== this.lastScoreResolution) {
       this.lastScoreResolution = score.resolution;
       this.lastTrickResolvedAt = this.runSeconds;
+      if (score.lastBailed) this.boardAudio?.event('crash');
+      else if (score.lastTrickPoints > 0) this.boardAudio?.event('score');
     }
+    const trick = score.trickActive && (score.rotations > 0 || score.grabbing || score.grinding);
+    if (trick && !this.wasScoringTrick) this.boardAudio?.event('trick');
+    this.wasScoringTrick = trick;
   }
 
   /** Unity's itemized trick block: special grind/grab timers, otherwise the four-factor rotation equation. */
@@ -1519,6 +1545,10 @@ export class TestRide {
     this.runVisible = visible;
     this.runActive = visible;
     this.announceGoPending = visible;
+    this.wasScoringTrick = false;
+    this.previousSoundMeter = 0;
+    this.previousSoundBoostHeld = false;
+    this.lastSoundCountdown = null;
     if (visible) this.scorer.start();
     else this.scorer.abandon();
     this.lastScoreResolution = this.scorer.snapshot().resolution;
@@ -1666,6 +1696,7 @@ export class TestRide {
 
   setPaused(paused: boolean) {
     if (!this.started || this.pausedFlag === paused) return;
+    this.boardAudio?.event('pause');
     this.pausedFlag = paused;
     this.hud.setCountdown(paused ? 'PAUSED' : this.countdownCue());
   }

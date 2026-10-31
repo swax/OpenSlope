@@ -24,6 +24,23 @@ import { defaultMountain } from '../src/core/doc/mountain';
 import { createAuthoredModel } from '../src/core/doc/models';
 import { projectIsoCourses } from '../src/server/public-courses';
 import { classifyExportProvenance } from '../src/core/export/manifest';
+import { isoGameForCourse } from '../src/app/public/iso-discs';
+import { mapGame, mapGameLabel } from '../src/core/reference/map-game';
+
+for (const [id, title] of [
+  ['SSXGBA_GARIBALDI', 'Garibaldi'],
+  ['SSXGBA_MERQURY_CITY', 'Merqury City'],
+  ['SSXGBA_TOKYO_MEGAPLEX', 'Tokyo Megaplex'],
+  ['SSXGBA_ALOHA_ICE_JAM', 'Aloha Ice Jam'],
+] as const) {
+  assert(isDiscCourse(id));
+  assert.equal(canonicalDiscCourse(id), id);
+  assert.equal(discCourseName(id), title);
+  assert.equal(isoGameForCourse(id), 'tricky-gba');
+  assert.equal(mapGame({ name: id }), 'ssx-tricky-gba');
+}
+assert(!isDiscCourse('SSXGBA_UNKNOWN'));
+assert.equal(mapGameLabel('ssx-tricky-gba'), 'SSX Tricky (GBA)');
 
 const reference: PublicCourse = {
   id: 'RENAMED_GARI',

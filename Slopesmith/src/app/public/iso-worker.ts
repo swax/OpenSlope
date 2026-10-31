@@ -5,6 +5,7 @@ import {
   supportsCollisionSoundUpdate,
   unloadIsoCourse,
   updateCachedCollisionSounds,
+  refreshCachedCourseMetadata,
   type DiscCollisionSounds,
 } from './iso-cache';
 import { normalizeCourseLayout, type CourseLayout } from '../../core/reference/course-layout';
@@ -76,7 +77,7 @@ async function handle({ data }: MessageEvent<{ file: File; courses: string[]; op
   try {
     const { file, courses, operation } = data;
     if (!module) {
-      const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=32`, self.location.origin).href;
+      const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=35`, self.location.origin).href;
       const runtime = (await import(/* @vite-ignore */ assetUrl('openslope_browser_import.js'))) as {
         default(options: { locateFile: (name: string) => string }): Promise<Importer>;
       };
@@ -104,6 +105,8 @@ async function handle({ data }: MessageEvent<{ file: File; courses: string[]; op
           sounds,
         );
       }
+      db ??= await openIsoCache();
+      await refreshCachedCourseMetadata(db, available.names, available.layouts);
       self.postMessage({
         type: 'done',
         ...available,

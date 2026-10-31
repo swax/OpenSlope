@@ -387,5 +387,62 @@ check(
 );
 selectedRun.dispose();
 
+// Course-owned assignments must never borrow another game's same-numbered slots.
+const beforeCustomFetch = new Set(fetchCounts.keys());
+const custom = createBoardAudio({
+  ...DEFAULT_BOARD_SOUND,
+  clips: {
+    glide: 'snow.wav',
+    grind: 'rail.wav',
+    ollie: 'jump.wav',
+    brake: 'brake.wav',
+    boost: 'boost.wav',
+    go: 'go.wav',
+    finish: 'finish.wav',
+  },
+})!;
+await settle();
+const beforeCustomStart = started.length;
+custom.update(cruising, FRAME, false, true);
+custom.update(cruising, FRAME, false, true);
+custom.event('go');
+custom.event('go');
+await settle();
+const customPlaying = (file: string) => started.slice(beforeCustomStart).filter(s => s.url.includes(`name=${file}`));
+check(
+  customPlaying('snow.wav').some(s => s.loop),
+  'a course glide uses its assigned looping WAV',
+);
+check(customPlaying('brake.wav').length === 1, 'holding the brake produces one onset, not a one-shot each frame');
+check(customPlaying('go.wav').length === 1, 'a repeated lifecycle cue in one frame is deduplicated');
+custom.update(rideState({ grounded: false, vel: new THREE.Vector3(0, 4, 8), popTime: 0.1, popDrive: 1 }), FRAME, false);
+await settle();
+check(customPlaying('jump.wav').length === 1, 'the actual ollie edge uses the course jump sound');
+custom.update(rideState({ railIdx: 0, vel: new THREE.Vector3(0, 0, 12) }), FRAME, true);
+await settle();
+check(
+  customPlaying('rail.wav').some(s => s.loop),
+  'a real rail state opens the assigned grind loop',
+);
+check(
+  customPlaying('boost.wav').some(s => s.loop),
+  'held boost uses the assigned course loop',
+);
+check(
+  [...fetchCounts.keys()].filter(url => !beforeCustomFetch.has(url)).every(url => url.startsWith('/api/custom-sound?')),
+  'an explicitly assigned course never fetches a fallback native bank for missing roles',
+);
+custom.event('finish');
+custom.dispose();
+await settle();
+check(customPlaying('finish.wav').length === 0, 'a delayed event buffer cannot start after leaving the ride');
+check(
+  started
+    .slice(beforeCustomStart)
+    .filter(s => s.loop)
+    .every(s => s.node.stopped),
+  'leaving stops course-owned loops',
+);
+
 console.log(failures ? `\n${failures} check(s) failed` : '\nall board-audio checks passed');
 process.exit(failures ? 1 : 0);

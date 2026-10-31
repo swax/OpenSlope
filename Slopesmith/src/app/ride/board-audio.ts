@@ -15,10 +15,11 @@ import {
   boardAudioGroup,
   boardBedFrame,
   boardCarveSlot,
+  boardClipEvent,
   boardGlideSlot,
   gemChimeSlot,
 } from '../../core/audio/board-sound';
-import type { BoardSoundMix } from '../../core/doc/types';
+import type { BoardSoundEvent, BoardSoundMix } from '../../core/doc/types';
 import {
   gameAudioDestination,
   preloadAudio,
@@ -27,7 +28,7 @@ import {
   sharedAudioContext,
 } from '../audio/runtime';
 import type { RideState } from './physics';
-import { resolveAssetUrl } from '../net/asset-paths';
+import { customSoundUrl, resolveAssetUrl } from '../net/asset-paths';
 import { conditionRidingPcm, adaptedRidingRole, adaptedRidingPitch } from '../../core/audio/riding-conditioning';
 
 interface RidingBanks {
@@ -232,6 +233,8 @@ export class BoardAudio {
   private wasGrounded = true;
   private wasPopping = true; // suppress the spawn frame's pose from firing an ollie
   private airVelocity: [number, number, number] = [0, 0, 0];
+  private wasBraking = false;
+  private readonly eventTimes = new Map<BoardSoundEvent, number>();
 
   constructor(
     private readonly mix: BoardSoundMix,
@@ -259,32 +262,49 @@ export class BoardAudio {
     this.boostGain.gain.value = 0;
     this.boostGain.connect(this.cueGain);
     resumeSharedAudio();
-    this.bankInfo = clientFetch(
-      resolveAssetUrl(`/api/board-audio${sourceLevel ? `?level=${encodeURIComponent(sourceLevel)}` : ''}`),
-    )
-      .then(response =>
-        response.ok ? (response.json() as Promise<RidingBanks>) : Promise.reject(new Error(`HTTP ${response.status}`)),
-      )
-      .then(body => {
-        this.adaptedBoard = body.boardBank?.toLowerCase() === 'openslope_board';
-        if (!surfaceGroups) this.surfaceGroups = Array.isArray(body.surfaceGroups) ? body.surfaceGroups : null;
-        return body;
-      })
-      .catch(() => {
-        return {};
+    this.bankInfo = mix.clips
+      ? Promise.resolve({})
+      : clientFetch(
+          resolveAssetUrl(`/api/board-audio${sourceLevel ? `?level=${encodeURIComponent(sourceLevel)}` : ''}`),
+        )
+          .then(response =>
+            response.ok
+              ? (response.json() as Promise<RidingBanks>)
+              : Promise.reject(new Error(`HTTP ${response.status}`)),
+          )
+          .then(body => {
+            this.adaptedBoard = body.boardBank?.toLowerCase() === 'openslope_board';
+            if (!surfaceGroups) this.surfaceGroups = Array.isArray(body.surfaceGroups) ? body.surfaceGroups : null;
+            return body;
+          })
+          .catch(() => {
+            return {};
+          });
+    if (mix.clips)
+      preloadAudio(
+        Object.values(mix.clips)
+          .filter((file): file is string => !!file)
+          .map(customSoundUrl),
+      );
+    else
+      preloadBoardAudio(sourceLevel, (bank, slot, loop) => {
+        void this.buffer(bank, slot, loop);
       });
-    preloadBoardAudio(sourceLevel, (bank, slot, loop) => {
-      void this.buffer(bank, slot, loop);
-    });
   }
 
   /** Perform one frame of the bed from the live ride state. `boosting` is the board's own held-boost thrust. */
-  update(st: RideState, dt: number, boosting: boolean): void {
+  update(st: RideState, dt: number, boosting: boolean, braking = false): void {
     if (this.disposed || dt <= 0) return;
     const speed = st.vel.length();
     const speed01 = clamp01((speed - GLIDE_MIN_SPEED) / Math.max(0.1, GLIDE_FULL_SPEED - GLIDE_MIN_SPEED));
     const grinding = st.railIdx >= 0;
     const onSnow = st.grounded && !grinding;
+    const brakingNow = braking && onSnow && speed > GLIDE_MIN_SPEED;
+    if (brakingNow && !this.wasBraking) this.event('brake');
+    this.wasBraking = brakingNow;
+    if (!st.grounded && this.airVelocity[1] > 0 && st.vel.y <= 0 && st.predictedAirTime >= 1.5) {
+      this.event('airApex');
+    }
 
     // Ride bed: the family under the board picks the row; retail silences both layers off the ground, which
     // is what makes a jump go quiet with no explicit stop event.
@@ -352,6 +372,10 @@ export class BoardAudio {
    * [Trailmap: 390-pickups-and-race]. Gated to the local human there; here there is only the one rider.
    */
   gemChime(multiplier: number): void {
+    if (this.mix.clips) {
+      this.event('pickup');
+      return;
+    }
     this.cue(gemChimeSlot(multiplier));
   }
 
@@ -359,6 +383,10 @@ export class BoardAudio {
    *  code path as the chime. Slopesmith's directional-boost property is deliberately silent — no sound is
    *  traced on it [Trailmap: 390-pickups-and-race]. */
   padCue(kind: 'speed' | 'trick'): void {
+    if (this.mix.clips) {
+      this.event('pickup');
+      return;
+    }
     this.cue(kind === 'speed' ? SPEED_PAD_SLOT : TRICK_PAD_SLOT);
   }
 
@@ -396,6 +424,11 @@ export class BoardAudio {
   /** Decoded bank slot, fetched once and shared. Null (never a throw) when the bank isn't extracted, so a
    *  missing zboard folder means a silent ride rather than a broken one. */
   async buffer(bank: string, slot: number, loop: boolean): Promise<AudioBuffer | null> {
+    if (this.mix.clips) {
+      const event = boardClipEvent(bank, slot);
+      const file = event ? this.mix.clips[event] : undefined;
+      return file ? sharedAudioBuffer(customSoundUrl(file)) : null;
+    }
     const [raw, info] = await Promise.all([
       sharedAudioBuffer(boardSoundUrl(bank, slot, loop, this.sourceLevel)),
       this.bankInfo,
@@ -490,6 +523,30 @@ export class BoardAudio {
   /** A game-event cue from the MAIN bank, on the cue bus. */
   private cue(slot: number): void {
     this.play(BOOST_BANK, slot, CUE_LEVEL, this.cueGain);
+  }
+
+  /** An explicitly assigned mountain event. Missing assignments never substitute an unrelated bank clip. */
+  event(event: BoardSoundEvent, volume = 1): void {
+    const file = this.mix.clips?.[event];
+    if (!file || this.disposed) return;
+    const now = this.context.currentTime;
+    if (now - (this.eventTimes.get(event) ?? -Infinity) < 0.25) return;
+    this.eventTimes.set(event, now);
+    this.resume();
+    void sharedAudioBuffer(customSoundUrl(file)).then(buffer => {
+      if (!buffer || this.disposed) return;
+      const source = this.context.createBufferSource(),
+        gain = this.context.createGain();
+      source.buffer = buffer;
+      gain.gain.value = clamp01(volume);
+      source.connect(gain);
+      gain.connect(event === 'crash' || event === 'brake' ? this.transientGain : this.cueGain);
+      source.onended = () => {
+        source.disconnect();
+        gain.disconnect();
+      };
+      source.start();
+    });
   }
 
   private play(bank: string, slot: number, volume: number, bus: GainNode): void {

@@ -64,7 +64,7 @@ export async function showIsoPage(): Promise<void> {
   const intro = element(
     'p',
     'public-local-note',
-    'Choose a disc, then load the maps you want to Play or Inspect. Discs and maps stay in this browser on this device.',
+    'Choose a disc or GBA ROM, then load the maps you want to Play or Inspect. Source files and maps stay in this browser on this device.',
   );
   const dependencies = element('section', 'public-iso-requirements');
   dependencies.hidden = true;
@@ -72,13 +72,13 @@ export async function showIsoPage(): Promise<void> {
   const iso = element('section', 'public-iso');
   const input = element('input', '');
   input.type = 'file';
-  input.accept = '.iso,.bin,.gcm,.rvz';
+  input.accept = '.iso,.bin,.gcm,.rvz,.gba';
   input.id = 'public-iso';
   const label = element('label', 'public-iso-button', 'Choose disc');
   label.htmlFor = input.id;
   label.prepend(publicGlyph('disc'));
   label.title =
-    'SSX PS2 games, Jonny Moseley Mad Trix USA PS2 or 1080° Avalanche USA · Choose ISO, BIN, GCM or RVZ · Files stay on this device';
+    'SSX PS2 games, SSX Tricky GBA, Jonny Moseley Mad Trix USA PS2 or 1080° Avalanche USA · Choose ISO, BIN, GCM, RVZ or GBA · Files stay on this device';
   const count = element('span', 'public-cache');
   const totalLoaded = element('strong', '');
   count.append(element('span', '', 'Maps across all games'), totalLoaded);

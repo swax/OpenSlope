@@ -3505,13 +3505,12 @@ export function createRideModel(o: RideModelOpts) {
       if (!o.patchContact(faceIndex, patchSeed, patchP, patchN)) return false;
     }
     patchResidual.copy(patchP).sub(rayOrigin).addScaledVector(rayDirection, -rayT);
-    const nearbySeed =
-      patchSeed.x >= -0.5 &&
-      patchSeed.y >= -0.5 &&
-      patchSeed.z >= -0.5 &&
-      patchSeed.x <= 1.5 &&
-      patchSeed.y <= 1.5 &&
-      patchSeed.z <= 1.5;
+    // Bound the seed sub-quad's two parameters, rather than all three triangle weights.
+    // A valid point across its diagonal can need a weight near -1, especially when one
+    // patch edge collapses. The old weight bound rejected those exact surface hits.
+    const seedAcross = 1 - patchSeed.x;
+    const seedAlong = (faceIndex & 1) === 0 ? patchSeed.y : patchSeed.z;
+    const nearbySeed = seedAcross >= -0.5 && seedAcross <= 1.5 && seedAlong >= -0.5 && seedAlong <= 1.5;
     return patchResidual.lengthSq() < 1e-6 && rayT >= -1e-4 && rayT <= far + 1e-4 && nearbySeed;
   }
 

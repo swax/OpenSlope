@@ -8,6 +8,7 @@ const GAME_LABELS: Readonly<Record<string, string>> = {
   slopesmith: 'Custom / Authored',
   ssx: 'SSX',
   'ssx-tricky': 'SSX Tricky',
+  'ssx-tricky-gba': 'SSX Tricky (GBA)',
   'ssx-3': 'SSX 3',
   'ssx-on-tour': 'SSX On Tour',
   '1080-avalanche': '1080° Avalanche',
@@ -43,6 +44,7 @@ export function mapGame(source: { name: string; game?: string; course?: string; 
   // Legacy folders retain known course identities. An arbitrary folder name never implies Tricky.
   for (const value of [source.course, source.name]) {
     const name = splitMapSource(value ?? '').name.toUpperCase();
+    if (name.startsWith('SSXGBA_')) return 'ssx-tricky-gba';
     if (name.startsWith('SSXOT_')) return 'ssx-on-tour';
     if (name.startsWith('SSX3_')) return 'ssx-3';
     if (name.startsWith('SSX_')) return 'ssx';

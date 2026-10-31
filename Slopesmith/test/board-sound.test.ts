@@ -32,6 +32,15 @@ import {
 } from '../src/app/ui/components/audition';
 import { check, failures } from './check';
 
+const assignedMix = normalizeBoardSound({
+  clips: { ollie: 'jump.wav', land: '../other.wav', glide: 'https://elsewhere/sound.wav', unknown: 'wrong.wav' },
+});
+check(
+  JSON.stringify(assignedMix.clips) === JSON.stringify({ ollie: 'jump.wav' }),
+  'course sound assignments accept owned WAV names and reject paths and unknown events',
+);
+check(normalizeBoardSound({ clips: {} }).clips !== undefined, 'an empty course profile remains explicit silence');
+
 /** Board-ride audio (docs/034): the traced surface→family map, the bank's slot arithmetic, the authored mix,
  *  and the shared-bank reader that feeds the test ride. */
 

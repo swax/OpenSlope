@@ -23,6 +23,7 @@ import {
   type CrackedSurfaceSpec,
 } from '../../ride/cracked-surfaces';
 import { authoredPatchContact, referencePatchContact } from '../../ride/patch-contact';
+import { gbaReferenceSpawn } from '../../ride/reference-spawn';
 import { MAX_SPEED, RIDER_HEAD_Y } from '../../ride/physics-tuning';
 import type { RideObstacleHit, RideObstacleObject, RideObstacleSource, RideState } from '../../ride/physics';
 import { obstacleKeyCovers } from '../../ride/obstacles';
@@ -584,7 +585,12 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     const slots = (deps.getRefAiPaths() ?? []).filter(p => p.start && p.points.length >= 2);
     if (slots.length) {
       const slot = slots[Math.floor(slots.length / 2)];
-      return { pos: toWorld(slot.points[0]), heading: pathHeading(slot.points) };
+      const data = deps.getRefData();
+      const start =
+        /^SSXGBA_/i.test(deps.getRefLevel()) && data
+          ? gbaReferenceSpawn(data, reference.geometry, slot.points[0])
+          : slot.points[0];
+      return { pos: toWorld(start), heading: pathHeading(slot.points) };
     }
     const marker = deps.getRefStart();
     if (marker) return { pos: toWorld(marker), heading: null };

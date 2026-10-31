@@ -142,6 +142,28 @@ export async function readLevelPatches(
       : {}),
     ...(p.LightColorPoints !== undefined ? { LightColorPoints: p.LightColorPoints as number[][] } : {}),
   }));
+  // Earlier GBA caches retained mixed source-triangle winding. Native terrain implicitly
+  // faces it skyward, whereas the browser respects the analytic patch's one-sided frame.
+  // Transposing controls and their corner attributes preserves the surface and texture mapping.
+  if (/^SSXGBA_/i.test(safe) || source?.Game === 'ssx-tricky-gba') {
+    for (const patch of patches) {
+      const cp = patch.Points;
+      if (!Array.isArray(cp) || cp.length !== 16 || ![cp[0], cp[3], cp[12], cp[15]].every(p => p?.length >= 3))
+        continue;
+      const du = [0, 1].map(k => cp[12][k] + cp[15][k] - cp[0][k] - cp[3][k]);
+      const dv = [0, 1].map(k => cp[3][k] + cp[15][k] - cp[0][k] - cp[12][k]);
+      if (!(du[0] * dv[1] - du[1] * dv[0] < 0)) continue;
+      patch.Points = Array.from({ length: 16 }, (_, i) => cp[(i % 4) * 4 + Math.floor(i / 4)]);
+      if (patch.UVPoints?.length === 4) {
+        const uv = patch.UVPoints;
+        patch.UVPoints = [uv[0], uv[2], uv[1], uv[3]];
+      }
+      if (patch.LightColorPoints?.length === 16) {
+        const colors = patch.LightColorPoints;
+        patch.LightColorPoints = Array.from({ length: 16 }, (_, i) => colors[(i % 4) * 4 + Math.floor(i / 4)]);
+      }
+    }
+  }
   // [Trailmap: 527] On Tour ships overlapping on/off event terrain with different lightmaps. Choose one
   // static playtest state, rather than drawing both and depth-fighting. Keep source order and both records.
   if (/^SSXOT_/i.test(safe) || source?.Game === 'ssx-on-tour') {

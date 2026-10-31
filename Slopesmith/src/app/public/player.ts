@@ -10,7 +10,8 @@ import type { ViewportCallbacks } from '../viewport/types';
 import { createStore } from '../state/store';
 import { createPlay } from '../ride/play';
 import { rideControlHelp, type RideControlHelp } from '../ride/control-help';
-import { customSkyUrl, setAssetUrlResolver } from '../net/asset-paths';
+import { customSkyUrl, customSoundUrl, referenceSkyUrl, setAssetUrlResolver } from '../net/asset-paths';
+import { sharedAudioBuffer } from '../audio/runtime';
 import { setClientProjectId } from '../net/client';
 import type { SessionChannel } from '../net/session-channel';
 import type { PeerMarks } from '../viewport/scene/peers';
@@ -76,15 +77,26 @@ export async function preparePublicPlayer(
     bundle || course.private || course.kind === 'project'
       ? cached
       : course.isoCourses.filter(slot => cached.includes(slot));
-  const availableLevels = [
+  const localLevels = [
     ...availableCourses,
     ...Object.keys(aliases).filter(level => availableCourses.includes(aliases[level])),
   ];
+  // Private maps can use the same authenticated server library as their editor.
+  // Public maps continue to obtain retail art exclusively from this device's ISO cache.
+  const localLevelNames = new Set(localLevels.map(level => level.toLowerCase()));
+  const serverLevels = (privateLevels?.maps ?? []).map(map => map.name);
+  const serverOnlyLevels = new Set(
+    serverLevels.map(level => level.toLowerCase()).filter(level => !localLevelNames.has(level)),
+  );
+  const availableLevels = [...localLevels, ...serverLevels];
   const local = await localMapData(availableCourses, aliases, cached);
   installLocalAssetApi(local, availableCourses, !!course.private);
   setAssetUrlResolver(path => {
     const resolved = custom?.resolve(path) ?? path;
-    return resolved !== path ? resolved : local.resolveAsset(path);
+    if (resolved !== path) return resolved;
+    const level = new URL(path, location.origin).searchParams.get('level');
+    if (level && serverOnlyLevels.has(level.toLowerCase())) return path;
+    return local.resolveAsset(path);
   });
   setClientProjectId(course.kind === 'project' && !bundle ? course.id : null);
   const store = createStore({ mdoc: defaultMountain(), currentMode: 'play', storedUi: {} });
@@ -197,6 +209,12 @@ export async function preparePublicPlayer(
       privateSnapshot ??
       (await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`));
     const document = publicMountainDocument(snapshot.document, availableLevels);
+    // Decode owned cues while the terrain loads, before the first riding event can fire.
+    const courseSounds = Promise.all(
+      Object.values(document.boardSound?.clips ?? {})
+        .filter((file): file is string => !!file)
+        .map(file => sharedAudioBuffer(customSoundUrl(file))),
+    );
     store.mdoc = document;
     await viewport.setMountainProgressive(document, null, [], noop, yieldFrame);
     viewport.syncLiveModels(authoredModelLevelProps(document));
@@ -213,9 +231,10 @@ export async function preparePublicPlayer(
     const installed = new Set<string>();
     const installDonor = async (level: string) => {
       if (installed.has(level)) return;
-      const payload = parseAssetVersion(level)
-        ? await fetchJson<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`)
-        : await buildLevelPropsUncached(local.source, level);
+      const payload =
+        parseAssetVersion(level) || serverOnlyLevels.has(level.toLowerCase())
+          ? await fetchJson<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`)
+          : await buildLevelPropsUncached(local.source, level);
       payload.level = level;
       viewport.registerPropModels(decodeProps(payload));
       installed.add(level);
@@ -249,12 +268,22 @@ export async function preparePublicPlayer(
     }
     viewport.setPlacedProps(document.props ?? [], null, [], document.effects);
     viewport.setRails(document.rails ?? [], null, null);
+    await courseSounds;
     viewport.setGems(document.gems ?? [], null);
     viewport.setFreeLights(document.lights ?? [], null);
     viewport.setParticleVolumes(document.particleVolumes ?? []);
     viewport.setScreens(document.screens ?? [], document.props, null);
     if (document.skybox?.source.kind === 'level') {
-      localSky = await installLocalSky(viewport, local.source, document.skybox.source.level, local.fileUrl);
+      const level = document.skybox.source.level;
+      if (serverOnlyLevels.has(level.toLowerCase())) {
+        viewport.setSky({
+          panorama: referenceSkyUrl(level, 'panorama'),
+          ground: referenceSkyUrl(level, 'ground'),
+          topColor: document.skybox.topColor,
+        });
+      } else {
+        localSky = await installLocalSky(viewport, local.source, level, local.fileUrl);
+      }
     } else if (document.skybox?.source.kind === 'custom') {
       const name = document.skybox.source.name;
       viewport.setSky({

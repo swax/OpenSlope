@@ -979,7 +979,32 @@ export interface BoardSoundMix {
   /** The MAIN-bank game-event cues engine code plays on the gameplay path — gem chime, boost/trick pad, and
    *  the held-boost roar [Trailmap: 390-pickups-and-race]. */
   cues: number;
+  /** Mountain-owned WAVs for riding events. When present, unassigned events are silent instead of borrowing
+   *  a shared game bank. Loop roles are glide, carve, grind and boost; the others are one-shots. */
+  clips?: Partial<Record<BoardSoundEvent, string>>;
 }
+
+export type BoardSoundEvent =
+  | 'glide'
+  | 'carve'
+  | 'grind'
+  | 'ollie'
+  | 'land'
+  | 'brake'
+  | 'boost'
+  | 'airApex'
+  | 'crash'
+  | 'checkpoint'
+  | 'finish'
+  | 'trick'
+  | 'score'
+  | 'pickup'
+  | 'meterFull'
+  | 'pause'
+  | 'denied'
+  | 'ready'
+  | 'countdown'
+  | 'go';
 
 /** The authored directional sun the editor previews and the export bakes into lightmaps (008). */
 export interface SunLight {

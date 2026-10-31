@@ -58,7 +58,8 @@ import { normalizeAnnouncer } from '../../core/audio/announcer';
 import { normalizeRaceMusicArrangement } from '../../core/music/arrangement';
 import { preloadBoardAudio } from '../ride/board-audio';
 import { preloadAuthoredRideMusic, preloadReferenceRideMusic, rideMusicPlaybackEnabled } from '../audio/ride-music';
-import { setGameAudioVolume } from '../audio/runtime';
+import { preloadAudio, setGameAudioVolume } from '../audio/runtime';
+import { customSoundUrl } from '../net/asset-paths';
 import { sampleSpine } from '../../core/math/spine';
 import type { TexRef } from '../../core/paint/textures';
 import type { ReferenceMesh, RefAiPath, RefCourseAnchors, RefSplineRaw } from '../../core/reference/terrain';
@@ -1911,7 +1912,7 @@ export class Viewport {
     // which is why entering Test resets as well as leaving it.
     this.gems.setPlayMode(on ? this.raceMode : null);
     if (on) {
-      preloadBoardAudio();
+      this.preloadRideBoardAudio(target);
       this.preloadRideMusic(target);
       this.referenceEffects.beginPlay(target, this.raceMode);
     } else this.referenceEffects.endPlay();
@@ -1933,7 +1934,7 @@ export class Viewport {
   ) {
     // A run of its own, and Play setup before it may have dropped a field that already knocked props over and
     // part-marked counters. Start from the authored mountain rather than from wherever setup left it.
-    preloadBoardAudio();
+    this.preloadRideBoardAudio(target);
     this.preloadRideMusic(target);
     this.referenceEffects.beginPlay(target, this.raceMode);
     this.rideCtl.startRide(
@@ -2030,7 +2031,7 @@ export class Viewport {
     onStatsChanged?: (enabled: boolean) => void,
     onEyeBufferMeasured?: (measurement: XrEyeBufferMeasurement) => XrEyeBufferMeasurement | void,
   ): Promise<boolean> {
-    preloadBoardAudio(); // starts work synchronously but awaits nothing, preserving the WebXR user gesture
+    this.preloadRideBoardAudio(target); // awaits nothing, preserving the WebXR user gesture
     this.preloadRideMusic(target);
     this.referenceEffects.beginPlay(target, this.raceMode); // same fresh-world boundary an ordinary run gets
     return this.rideCtl.startXrPlay(
@@ -2051,6 +2052,17 @@ export class Viewport {
   stopXrPlay() {
     this.rideCtl.stopXrPlay();
     if (this._mode === 'play') this.referenceEffects.beginPlay(this.rideCtl.playTarget, this.raceMode);
+  }
+
+  private preloadRideBoardAudio(target: 'authored' | 'reference') {
+    const clips = target === 'authored' ? this.meshDoc?.boardSound?.clips : undefined;
+    if (clips)
+      preloadAudio(
+        Object.values(clips)
+          .filter((file): file is string => !!file)
+          .map(customSoundUrl),
+      );
+    else preloadBoardAudio();
   }
 
   private preloadRideMusic(target: 'authored' | 'reference') {
@@ -2900,6 +2912,12 @@ export class Viewport {
   }
 
   private beginMountain(doc: EditDoc) {
+    if (doc.boardSound?.clips)
+      preloadAudio(
+        Object.values(doc.boardSound.clips)
+          .filter((file): file is string => !!file)
+          .map(customSoundUrl),
+      );
     this.clearLiveEditPreview(false);
     this.isMountain = true;
     this.netSpacing = doc.spacing;

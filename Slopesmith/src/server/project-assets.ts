@@ -198,6 +198,9 @@ function collectDocumentAssets(document: EditDoc, wanted: WantedAssets): void {
     sounds(prop);
   }
   if (document.raceMusic) wanted.music.add(document.raceMusic);
+  for (const file of Object.values(document.boardSound?.clips ?? {})) {
+    if (file) wanted.sounds.add(file);
+  }
   for (const event of Object.values(document.announcer?.events ?? {})) {
     if (event.file) wanted.sounds.add(event.file);
   }

@@ -1,22 +1,28 @@
-import { registerDiscCourseNames } from '../../core/reference/disc-courses';
-import { registerCourseLayouts, type CourseLayout } from '../../core/reference/course-layout';
+import {
+  canonicalDiscCourse,
+  normalizeMapDisplayName,
+  registerDiscCourseNames,
+} from '../../core/reference/disc-courses';
+import { normalizeCourseLayout, registerCourseLayouts, type CourseLayout } from '../../core/reference/course-layout';
 import { createIsoImportSessions } from './iso-import-sessions';
 import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
 // Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
 export const isoCourseCacheVersion = (course: string): number =>
-  /^AVALANCHE_/i.test(course)
-    ? 3
-    : /^MADTRIX_/i.test(course)
-      ? 8
-      : /^SSXOT_.*_NIGHT$/i.test(course)
+  /^SSXGBA_/i.test(course)
+    ? 2
+    : /^AVALANCHE_/i.test(course)
+      ? 3
+      : /^MADTRIX_/i.test(course)
         ? 8
-        : /^(SSX3_|SSXOT_)/i.test(course)
-          ? 7
-          : /^SSX_/i.test(course)
-            ? 3
-            : ISO_CACHE_VERSION;
+        : /^SSXOT_.*_NIGHT$/i.test(course)
+          ? 8
+          : /^(SSX3_|SSXOT_)/i.test(course)
+            ? 7
+            : /^SSX_/i.test(course)
+              ? 3
+              : ISO_CACHE_VERSION;
 interface CachedFile {
   key: string;
   course: string;
@@ -50,7 +56,7 @@ function cachedSoundFile(db: IDBDatabase, course: string): Promise<CachedFile | 
 }
 /** Only Tricky's executable collision routing can currently repair older caches. */
 export const supportsCollisionSoundUpdate = (course: string): boolean =>
-  !/^(SSX_|SSX3_|SSXOT_|AVALANCHE_|MADTRIX_)/i.test(course);
+  !/^(SSXGBA_|SSX_|SSX3_|SSXOT_|AVALANCHE_|MADTRIX_)/i.test(course);
 
 export async function needsCollisionSoundUpdate(courses: string[]): Promise<boolean> {
   const db = await openIsoCache();
@@ -138,6 +144,54 @@ export async function cachedIsoCourses(): Promise<string[]> {
     return rows.map(row => row.course);
   } finally {
     db.close();
+  }
+}
+
+/** A new scan refreshes catalogue metadata without replacing any imported geometry or media. */
+export async function refreshCachedCourseMetadata(
+  db: IDBDatabase,
+  names: Record<string, string> = {},
+  layouts: Record<string, CourseLayout> = {},
+): Promise<void> {
+  for (const row of await getAll<CachedCourse>(db, 'courses')) {
+    const id = canonicalDiscCourse(row.course);
+    const displayName = normalizeMapDisplayName(names[id] ?? names[row.course]);
+    const layout = normalizeCourseLayout(layouts[id] ?? layouts[row.course]);
+    if (!displayName && !layout) continue;
+    const file = await new Promise<CachedFile | undefined>((resolve, reject) => {
+      const request = db.transaction('files').objectStore('files').get(`${row.course}/import.json`);
+      request.onsuccess = () => resolve(request.result as CachedFile | undefined);
+      request.onerror = () => reject(request.error);
+    });
+    let updated: CachedFile | undefined;
+    if (file) {
+      try {
+        const metadata: unknown = JSON.parse(await file.blob.text());
+        if (metadata && typeof metadata === 'object' && !Array.isArray(metadata))
+          updated = {
+            ...file,
+            blob: new Blob(
+              [
+                JSON.stringify({
+                  ...metadata,
+                  ...(displayName ? { DisplayName: displayName } : {}),
+                  ...layout,
+                }),
+              ],
+              { type: 'application/json' },
+            ),
+          };
+      } catch {
+        /* Preserve unreadable sidecars; the catalogue row can still be refreshed. */
+      }
+    }
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(['courses', 'files'], 'readwrite');
+      tx.objectStore('courses').put({ ...row, ...(displayName ? { displayName } : {}), ...(layout ? { layout } : {}) });
+      if (updated) tx.objectStore('files').put(updated);
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Course names could not be refreshed.'));
+    });
   }
 }
 export async function readCachedCourse(course: string): Promise<Map<string, Blob>> {

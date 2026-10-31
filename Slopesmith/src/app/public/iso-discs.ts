@@ -3,6 +3,7 @@ import { registerCourseLayouts, type CourseLayout } from '../../core/reference/c
 
 export const ISO_GAMES = [
   { id: 'tricky', name: 'SSX Tricky', support: 'Full support' },
+  { id: 'tricky-gba', name: 'SSX Tricky (GBA)', support: '8 courses · Preliminary support' },
   { id: 'ssx', name: 'SSX', support: 'Partial support' },
   { id: 'ssx3', name: 'SSX 3', support: 'Preliminary support' },
   { id: 'ontour', name: 'SSX On Tour', support: 'Preliminary support' },
@@ -20,6 +21,7 @@ export interface SavedIsoDisc {
 }
 
 export function isoGameForCourse(course: string): IsoGame {
+  if (/^SSXGBA_/i.test(course)) return 'tricky-gba';
   if (/^MADTRIX_/i.test(course)) return 'madtrix';
   if (/^AVALANCHE_/i.test(course)) return 'avalanche';
   if (/^SSX_/i.test(course)) return 'ssx';

@@ -1,4 +1,39 @@
-import type { BoardSoundMix } from '../doc/types';
+import type { BoardSoundEvent, BoardSoundMix } from '../doc/types';
+
+export const BOARD_SOUND_EVENTS: Record<BoardSoundEvent, string> = {
+  glide: 'Glide loop',
+  carve: 'Carve loop',
+  grind: 'Grind loop',
+  ollie: 'Jump',
+  land: 'Landing',
+  brake: 'Braking',
+  boost: 'Boost loop',
+  airApex: 'Air apex',
+  crash: 'Wipeout',
+  checkpoint: 'Checkpoint',
+  finish: 'Finish',
+  trick: 'Trick',
+  score: 'Score awarded',
+  pickup: 'Pickup / pad',
+  meterFull: 'Boost meter full',
+  pause: 'Pause / resume',
+  denied: 'Boost unavailable',
+  ready: 'Ready',
+  countdown: 'Countdown tick',
+  go: 'Go',
+};
+
+/** Translate the existing bank performance to an explicitly authored clip role. */
+export function boardClipEvent(bank: string, slot: number): BoardSoundEvent | null {
+  if (bank === BOOST_BANK) return slot === BOARD_BOOST_SLOT ? 'boost' : null;
+  if (bank !== BOARD_BANK) return null;
+  if (slot === BOARD_OLLIE_SLOT) return 'ollie';
+  if (slot === BOARD_LAND_SLOT) return 'land';
+  if (slot === boardGlideSlot(BOARD_RAIL_GROUP)) return 'grind';
+  if (slot % 8 === 4) return 'glide';
+  if (slot % 8 === 3) return 'carve';
+  return null;
+}
 
 /** The board-ride sound contract: which shared `zboard` bank slot the board is riding right now.
  *
@@ -175,5 +210,15 @@ export function normalizeBoardSound(value: unknown): BoardSoundMix {
     carve: trim('carve', DEFAULT_BOARD_SOUND.carve),
     transients: trim('transients', DEFAULT_BOARD_SOUND.transients),
     cues: trim('cues', DEFAULT_BOARD_SOUND.cues),
+    ...(raw.clips && typeof raw.clips === 'object' && !Array.isArray(raw.clips)
+      ? {
+          clips: Object.fromEntries(
+            Object.keys(BOARD_SOUND_EVENTS).flatMap(event => {
+              const file = (raw.clips as Record<string, unknown>)[event];
+              return typeof file === 'string' && /^[A-Za-z0-9_-]+\.wav$/i.test(file) ? [[event, file]] : [];
+            }),
+          ),
+        }
+      : {}),
   };
 }

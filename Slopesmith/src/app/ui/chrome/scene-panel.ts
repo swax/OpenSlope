@@ -36,6 +36,7 @@ import {
 import { normalizeRaceMusicArrangement } from '../../../core/music/arrangement';
 import {
   BOARD_AUDIO_GROUPS,
+  BOARD_SOUND_EVENTS,
   boardAudioGroup,
   boardGlideSlot,
   normalizeBoardSound,
@@ -814,14 +815,14 @@ export function createScenePanel(deps: ScenePanelDeps) {
       .name('▶ preview source');
     soundFolder.add({ stop: stopAudition }, 'stop').name('■ stop preview');
     soundFolder.add({ refresh: () => void buildSoundDetail() }, 'refresh').name('↻ refresh library');
-    renderBoardSoundDetail(soundRequest);
+    renderBoardSoundDetail(soundRequest, sounds);
     renderAnnouncerPanel(soundFolder, getDoc, scheduleRebuild, () => void buildSoundDetail(), sounds, voices);
   }
 
   /** The board bed the test ride performs (docs/034): the mix over the shared zboard loops. The layer levels
    *  are performed by the ride itself from the surface and the ride signals [Trailmap: 420-audio-runtime], so
    *  what is authored here is the balance between them, not their loudness curve. */
-  function renderBoardSoundDetail(request: number) {
+  function renderBoardSoundDetail(request: number, sounds: string[]) {
     const board = soundFolder.addFolder('Board sound');
     const doc = getDoc();
     const mix = normalizeBoardSound(doc.boardSound);
@@ -832,7 +833,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     tip(
       board.add(mix, 'enabled').name('board sound').onChange(commit),
       'Play the glide, carve, grind, and jump sounds while test riding.',
-      'They come from the game’s own shared board bank, so your mountain sounds like the game.',
+      'Use the shared board bank or assign sounds from this mountain’s library.',
     );
     tip(board.add(mix, 'volume', 0, 1, 0.01).name('volume').onChange(commit), 'Master level for every board layer.');
     tip(
@@ -845,13 +846,41 @@ export function createScenePanel(deps: ScenePanelDeps) {
     );
     tip(
       board.add(mix, 'transients', 0, 1, 0.01).name('transients').onChange(commit),
-      'Ollie pop, landing thud, and the rail grind — the board’s own one-shots.',
+      'Jump, landing, braking and wipeout one-shots.',
     );
     // The game plays cue sounds from code on the pickup itself, not from a sound in the effect graph.
     tip(
       board.add(mix, 'cues', 0, 1, 0.01).name('cues').onChange(commit),
-      'Gem chime, boost and trick pads, and the held-boost roar.',
+      'Pickups, countdown, score and other riding-event cues.',
     );
+    const source = { custom: mix.clips !== undefined };
+    board
+      .add(source, 'custom')
+      .name('course sound assignments')
+      .onChange((on: boolean) => {
+        if (on) mix.clips = {};
+        else delete mix.clips;
+        commit();
+        void buildSoundDetail();
+      });
+    if (mix.clips) {
+      const files = { Silent: '', ...Object.fromEntries(sounds.map(file => [file.replace(/\.wav$/i, ''), file])) };
+      const assignments = board.addFolder('Riding events');
+      for (const [event, label] of Object.entries(BOARD_SOUND_EVENTS)) {
+        const key = event as keyof typeof BOARD_SOUND_EVENTS;
+        const selection = { file: mix.clips[key] ?? '' };
+        assignments
+          .add(selection, 'file', files)
+          .name(label)
+          .onChange((file: string) => {
+            if (file) mix.clips![key] = file;
+            else delete mix.clips![key];
+            commit();
+          });
+      }
+      note(board, 'Unassigned events stay silent. Loop sounds follow riding speed and contact.');
+      return;
+    }
     const preview = { surface: doc.baseSurface };
     let surfaceGroups: number[] | null = null;
     let routingLoaded = false;
