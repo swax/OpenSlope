@@ -1,3 +1,4 @@
+import { loadAssetTexture } from '../net/asset-images';
 import * as THREE from 'three';
 import { renderLoadingManager } from '../viewport/render-assets';
 import {
@@ -807,7 +808,8 @@ export class PropTextureCache {
           settle = resolve;
         }),
       );
-      t = this.loader.load(
+      t = loadAssetTexture(
+        this.loader,
         textureUrl(level, file),
         loaded => {
           this.recordAlpha(level, file, loaded.image);

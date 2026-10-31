@@ -1,6 +1,7 @@
 import { parseTexRef, type TexRef } from '../../core/paint/textures';
 import { builtinCharacterUrl } from '../../core/characters/builtins';
 import { clientAssetUrl } from './client';
+import { mapSourceRequest } from './map-source';
 
 const referenceTextureRevisions = new Map<string, Map<string, string>>();
 const referenceSkyRevisions = new Map<string, { panorama?: string; ground?: string }>();
@@ -10,7 +11,9 @@ export function setAssetUrlResolver(resolve: (url: string) => string): void {
   assetResolver = resolve;
 }
 export function resolveAssetUrl(url: string): string {
-  return assetResolver(url);
+  const request = mapSourceRequest(url);
+  if (request.version) return url;
+  return assetResolver(request.source === 'server' && request.explicit ? request.url.href : url);
 }
 
 const levelKey = (level: string) => level.trim().toLowerCase();
@@ -41,8 +44,8 @@ export function textureUrl(level: string, name: string): string {
   const target = `/api/texture?level=${encodeURIComponent(level)}&name=${encodeURIComponent(name)}`;
   // Extracted banks are shared, immutable reference art. Do not partition hundreds of tile-cache entries by
   // tab or authored mountain. Only the Custom bank needs the open mountain in its URL.
-  if (level.toLowerCase() === 'custom') return assetResolver(clientAssetUrl(target));
-  return assetResolver(withRevision(target, referenceTextureRevisions.get(levelKey(level))?.get(name)));
+  if (level.toLowerCase() === 'custom') return resolveAssetUrl(clientAssetUrl(target));
+  return resolveAssetUrl(withRevision(target, referenceTextureRevisions.get(levelKey(level))?.get(name)));
 }
 
 export function textureRefUrl(ref: TexRef): string {
@@ -52,45 +55,45 @@ export function textureRefUrl(ref: TexRef): string {
 
 export function customSkyUrl(name: string, part: 'panorama' | 'ground', ring = ''): string {
   const target = `/api/${part === 'panorama' ? 'skypano' : 'skyground'}?sky=${encodeURIComponent(name)}`;
-  return assetResolver(
+  return resolveAssetUrl(
     clientAssetUrl(part === 'ground' && ring ? `${target}&ring=${encodeURIComponent(ring)}` : target),
   );
 }
 
 export function particleTextureUrl(name: string, level: string): string {
-  return assetResolver(`/api/particle-texture?name=${encodeURIComponent(name)}&level=${encodeURIComponent(level)}`);
+  return resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}&level=${encodeURIComponent(level)}`);
 }
 
 export function referenceSkyUrl(level: string, part: 'panorama' | 'ground'): string {
   const target = `/api/${part === 'panorama' ? 'skypano' : 'skyground'}?level=${encodeURIComponent(level)}`;
-  return assetResolver(withRevision(target, referenceSkyRevisions.get(levelKey(level))?.[part]));
+  return resolveAssetUrl(withRevision(target, referenceSkyRevisions.get(levelKey(level))?.[part]));
 }
 
 export function customSoundUrl(name: string): string {
-  return assetResolver(clientAssetUrl(`/api/custom-sound?name=${encodeURIComponent(name)}`));
+  return resolveAssetUrl(clientAssetUrl(`/api/custom-sound?name=${encodeURIComponent(name)}`));
 }
 
 /** One slot of a level's course / crowd bank, or of a named fixed global environment bank. */
 export function effectSoundUrl(level: string, slot: number, bank: string): string {
-  return assetResolver(
+  return resolveAssetUrl(
     `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}&bank=${encodeURIComponent(bank)}`,
   );
 }
 
 /** A shared environment-bank slot for authored mountains, without coupling them to a donor level name. */
 export function environmentSoundUrl(bank: string, slot: number, loop = true): string {
-  return assetResolver(
+  return resolveAssetUrl(
     `/api/environment-sound?bank=${encodeURIComponent(bank)}&slot=${Math.trunc(slot)}` + (loop ? '&loop=1' : ''),
   );
 }
 
 /** One page of a level's shipped sky bank, addressed by its generated ring slot. */
 export function skyPageUrl(level: string, index: number, revision?: string): string {
-  return assetResolver(withRevision(`/api/skybox/page?level=${encodeURIComponent(level)}&index=${index}`, revision));
+  return resolveAssetUrl(withRevision(`/api/skybox/page?level=${encodeURIComponent(level)}&index=${index}`, revision));
 }
 
 export function customMusicUrl(name: string): string {
-  return assetResolver(clientAssetUrl(`/api/custom-music-file?name=${encodeURIComponent(name)}`));
+  return resolveAssetUrl(clientAssetUrl(`/api/custom-music-file?name=${encodeURIComponent(name)}`));
 }
 
 export function characterModelUrl(modelId: string): string {

@@ -15,6 +15,7 @@ import {
 import { SLOPESMITH_EXPORT_MANIFEST } from '../src/core/export/manifest';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { check, failures } from './check';
+import { mapGame, mapGameLabel } from '../src/core/reference/map-game';
 
 /**
  * `Origin.json` (docs/036): what a map folder is, and whether it carries retail bytes — the two facts the
@@ -179,6 +180,47 @@ check(
     named(listed, 'LEGACY')?.retailData === true &&
     named(listed, 'RETAILMAP')?.course === 'RETAILMAP',
   'the listing carries each folder’s own answer, so the origin row says exactly what the folder recorded',
+);
+
+mapFolder('RENAMED', {
+  [MAP_ORIGIN_FILE]: { ...retailExtractOrigin('MESA'), Game: 'ssx-3' },
+  'Import.json': { Game: 'ssx', DisplayName: '  Source Mesa  ' },
+});
+mapFolder('SIDECAR', { 'Import.json': { Game: '1080-avalanche' } });
+mapFolder('SSXOT_ER4_DAY', {});
+mapFolder('GARI', {});
+const sources = await listLevelOrigins();
+const gameOf = (name: string) => sources.find(map => map.name === name)?.game;
+check(gameOf('RENAMED') === 'ssx-3', 'explicit origin game wins over import metadata and folder/course names');
+check(
+  sources.find(map => map.name === 'RENAMED')?.displayName === 'Source Mesa',
+  'import titles are trimmed and retained independently of folder and game identity',
+);
+check(gameOf('SIDECAR') === '1080-avalanche', 'a renamed legacy folder retains its import-sidecar game');
+check(
+  gameOf('SSXOT_ER4_DAY') === 'ssx-on-tour' && gameOf('GARI') === 'ssx-tricky',
+  'known legacy course IDs supply missing games',
+);
+check(
+  gameOf('AUTHORED') === 'slopesmith' && gameOf('LEGACY') === 'unknown',
+  'authored and unidentified maps have separate groups',
+);
+check(
+  normalizeMapOrigin({ ...extract, Game: ' SSX-3 ' })?.Game === 'ssx-3',
+  'the origin reader retains and normalizes the game',
+);
+check(
+  mapGame({ name: 'SSX3_PEAK1' }) === 'ssx-3' &&
+    mapGame({ name: 'TRICKY_GARI' }) === 'ssx-tricky' &&
+    mapGame({ name: 'SSX_SNOW' }) === 'ssx' &&
+    mapGame({ name: 'AVALANCHE_CRS01_00' }) === '1080-avalanche' &&
+    mapGame({ name: 'MADTRIX_TH_TAHOE' }) === 'jonny-moseley-mad-trix' &&
+    mapGameLabel(mapGame({ name: 'renamed', game: 'future-game' })) === 'future-game',
+  'all supported legacy prefixes and future explicit game IDs remain selectable',
+);
+check(
+  (await listLevelOrigins(['SIDECAR'])).length === 1,
+  'asset catalogues can request source metadata for only their own maps',
 );
 
 // A legacy export whose manifest predates the provenance guard says nothing about what it borrowed, and is

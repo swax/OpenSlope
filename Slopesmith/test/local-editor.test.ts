@@ -11,6 +11,7 @@ import { forgetAccounts } from '../src/server/accounts/store';
 import { defaultMountain } from '../src/core/doc/mountain';
 import { encodePng } from '../src/server/routes/png';
 import { readMountainArchive, createMountainArchive } from '../src/app/mountain/archive';
+import { discCourseName } from '../src/core/reference/disc-courses';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-local-editor-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
@@ -70,17 +71,23 @@ async function fileAction(page: Page, label: string) {
 }
 async function chooseReference(page: Page, level: string) {
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
-  const picker = page
-    .locator('#dock-right select')
-    .filter({ has: page.locator('option').filter({ hasText: /^GARI — Local ISO$/ }) })
-    .first();
+  const source = page.getByRole('combobox', { name: 'Reference source', exact: true });
+  if (await source.isVisible()) await source.selectOption(level === 'GARI' ? 'local' : 'server');
+  await page
+    .getByRole('combobox', { name: 'Reference game', exact: true })
+    .selectOption(level === 'GARI' ? 'ssx-tricky' : 'unknown');
+  const picker = page.getByRole('combobox', { name: 'Reference map', exact: true });
   await picker.selectOption({ label: '(none)' });
-  await picker.selectOption({ label: `${level} — ${level === 'GARI' ? 'Local ISO' : 'Server'}` });
-  await page.waitForFunction(async expected => {
-    const storageUrl = '/src/app/state/storage.ts';
-    const { REF_KEY } = await import(/* @vite-ignore */ storageUrl);
-    return JSON.parse(localStorage.getItem(REF_KEY) ?? 'null')?.level === expected;
-  }, level);
+  await picker.selectOption({ label: discCourseName(level) });
+  await page.getByRole('button', { name: 'Load reference', exact: true }).click();
+  await page.waitForFunction(
+    async expected => {
+      const storageUrl = '/src/app/state/storage.ts';
+      const { REF_KEY } = await import(/* @vite-ignore */ storageUrl);
+      return JSON.parse(localStorage.getItem(REF_KEY) ?? 'null')?.level === expected;
+    },
+    await picker.inputValue(),
+  );
   await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
 }
 try {
@@ -263,7 +270,7 @@ try {
       .filter({ hasText: `${name} —` })
       .textContent();
     assert(option);
-    await openMountain.locator('select').selectOption({ label: option });
+    await openMountain.getByRole('combobox', { name: 'Saved mountain', exact: true }).selectOption({ label: option });
     if (projectId === firstCopyId) await page.screenshot({ path: join(root, 'open-local-mountain.png') });
     await openMountain.getByRole('button', { name: 'Open', exact: true }).click();
     await page.waitForFunction(expected => document.title === `${expected} - Slopesmith`, name);
@@ -425,16 +432,10 @@ try {
   await page.getByRole('link', { name: 'Inspect Garibaldi', exact: true }).click();
   await ready(page);
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
-  await page
-    .locator('#dock-right select')
-    .filter({ has: page.locator('option').filter({ hasText: /^GARI — Local ISO$/ }) })
-    .waitFor();
-  const referenceSelect = page
-    .locator('#dock-right select')
-    .filter({ has: page.locator('option').filter({ hasText: /^GARI — Local ISO$/ }) })
-    .first();
-  assert.equal(await referenceSelect.locator('option:checked').textContent(), 'GARI — Local ISO');
-  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), ['(none)', 'GARI — Local ISO']);
+  const referenceSelect = page.getByRole('combobox', { name: 'Reference map', exact: true });
+  await referenceSelect.waitFor();
+  assert.equal(await referenceSelect.locator('option:checked').textContent(), 'Garibaldi');
+  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), ['(none)', 'Garibaldi']);
   const referenceDownload = page.waitForEvent('download');
   await fileAction(page, 'Export mountain…');
   const referenceBundle = await readMountainArchive(
@@ -457,11 +458,10 @@ try {
   await localMaps.getByRole('link', { name: 'Edit IMPORTED_LOCAL', exact: true }).click();
   await ready(page);
   assert.equal(await page.title(), 'IMPORTED_LOCAL - Slopesmith');
-  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), [
-    '(none)',
-    'SERVER_REFERENCE — Server',
-    'GARI — Local ISO',
-  ]);
+  assert.deepEqual(
+    await page.getByRole('combobox', { name: 'Reference source', exact: true }).locator('option').allTextContents(),
+    ['Local', 'Server'],
+  );
   await chooseReference(page, 'SERVER_REFERENCE');
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
   assert.equal(new URL(page.url()).searchParams.get('local'), importedCopyId);
@@ -525,7 +525,7 @@ try {
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
   await referenceSelect
     .locator('option:checked')
-    .filter({ hasText: /^GARI — Local ISO$/ })
+    .filter({ hasText: /^Garibaldi$/ })
     .waitFor({ state: 'attached' });
   await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
   assert.equal(await page.locator('#save-status').getAttribute('data-state'), 'idle');
@@ -541,11 +541,10 @@ try {
   await page.goto(`${origin}/editor/PUBLIC_RUN?project=${id}`);
   await ready(page);
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
-  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), [
-    '(none)',
-    'SERVER_REFERENCE — Server',
-    'GARI — Local ISO',
-  ]);
+  assert.deepEqual(
+    await page.getByRole('combobox', { name: 'Reference source', exact: true }).locator('option').allTextContents(),
+    ['Local', 'Server'],
+  );
   await chooseReference(page, 'SERVER_REFERENCE');
   const serverTexture = await page.evaluate(async () => {
     const moduleUrl = '/src/app/net/asset-paths.ts';
@@ -556,7 +555,7 @@ try {
   await chooseReference(page, 'GARI');
   assert.equal(
     await referenceSelect.locator('option:checked').textContent(),
-    'GARI — Local ISO',
+    'Garibaldi',
     'members can choose device-local ISO references while editing a server mountain',
   );
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');
@@ -570,12 +569,15 @@ try {
     await serverMountains.locator('.sp-modal-note').innerText(),
     `Server mountains — saved on ${new URL(origin).host}.`,
   );
-  const localOption = await serverMountains
-    .locator('option')
-    .filter({ hasText: 'IMPORTED_LOCAL — Local —' })
-    .textContent();
+  await serverMountains
+    .getByRole('combobox', { name: 'Mountain source', exact: true })
+    .selectOption({ label: 'Local' });
+  const localOption = await serverMountains.locator('option').filter({ hasText: 'IMPORTED_LOCAL —' }).textContent();
   assert(localOption, 'the server editor lists browser mountains for signed-in members');
-  await serverMountains.locator('select').selectOption({ label: localOption });
+  assert.equal(await page.title(), 'PUBLIC_RUN - Slopesmith', 'changing the source does not open a mountain');
+  await serverMountains
+    .getByRole('combobox', { name: 'Saved mountain', exact: true })
+    .selectOption({ label: localOption });
   assert.equal(
     await serverMountains.locator('.sp-modal-note').innerText(),
     'Local mountains — saved in this browser on this device.',
@@ -590,12 +592,14 @@ try {
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
   await fileAction(page, 'Open mountain…');
   const localMountains = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
-  const serverOption = await localMountains
-    .locator('option')
-    .filter({ hasText: 'PUBLIC_RUN — Server —' })
-    .textContent();
+  await localMountains
+    .getByRole('combobox', { name: 'Mountain source', exact: true })
+    .selectOption({ label: 'Server' });
+  const serverOption = await localMountains.locator('option').filter({ hasText: 'PUBLIC_RUN —' }).textContent();
   assert(serverOption, 'the signed-in local editor also lists server mountains');
-  await localMountains.locator('select').selectOption({ label: serverOption });
+  await localMountains
+    .getByRole('combobox', { name: 'Saved mountain', exact: true })
+    .selectOption({ label: serverOption });
   assert.equal(
     await localMountains.locator('.sp-modal-note').innerText(),
     `Server mountains — saved on ${new URL(origin).host}.`,

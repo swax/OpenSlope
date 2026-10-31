@@ -1,3 +1,4 @@
+import { serverMapName } from '../../core/reference/map-source';
 import { copyFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
@@ -47,7 +48,7 @@ export async function levelsWithTextures(): Promise<string[]> {
 const textureDir = (level: string): string =>
   level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
     ? projectAssetPath('textures')
-    : join(mapsRoot(), safeDataName(level), 'Textures');
+    : join(mapsRoot(), safeDataName(serverMapName(level)), 'Textures');
 
 /** All PNG file names in a level's Textures/ folder — a level's whole texture bank, slots included. */
 export async function textureFiles(level: string): Promise<string[]> {
@@ -57,7 +58,7 @@ export async function textureFiles(level: string): Promise<string[]> {
 /** The exact digest ResponseCache will use as this tile's ETag. Metadata routes publish it before image
  * loaders start, so the first byte request already has a permanent content-addressed URL. */
 export function referenceTextureRevision(level: string, name: string): Promise<string> {
-  const lvl = safeDataName(level);
+  const lvl = safeDataName(serverMapName(level));
   return referenceAssetRevision(`texture:${lvl.toLowerCase()}:${name}`, () => readReferenceTextureBytes(lvl, name));
 }
 
@@ -82,7 +83,7 @@ async function terrainUsage(level: string): Promise<Map<string, number>> {
   const usage = new Map<string, number>();
   if (level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) return usage;
   const json = await readJsonOr<{ Patches?: unknown[] } | null>(
-    join(mapsRoot(), safeDataName(level), 'Patches.json'),
+    join(mapsRoot(), safeDataName(serverMapName(level)), 'Patches.json'),
     null,
   );
   if (!json) return usage;
@@ -100,7 +101,7 @@ async function terrainUsage(level: string): Promise<Map<string, number>> {
  * (count 0 = a prop/skybox tile never used on terrain, sorted after the terrain tiles by name).
  */
 export async function deriveLevelTextures(level: string): Promise<LevelTextures> {
-  const lvl = safeDataName(level);
+  const lvl = safeDataName(serverMapName(level));
   const [usage, files] = await Promise.all([terrainUsage(lvl), textureFiles(lvl)]);
   const revisions =
     lvl.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase() ? {} : await referenceTextureRevisions(lvl, files);
@@ -135,7 +136,7 @@ async function tryTexture(level: string, name: string): Promise<Buffer | null> {
  *  slot whose donor is retained in Slopesmith.json. Prefer the staged local copy so an export stays useful
  *  after its author changes the shared library; fall back to the receiver's configured maps library. */
 export async function readReferenceTextureBytes(level: string, name: string): Promise<Buffer> {
-  const lvl = safeDataName(level);
+  const lvl = safeDataName(serverMapName(level));
   if (lvl.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) return readTextureBytes(CUSTOM_TEX_LEVEL, name);
   const ref = name.replace(/\\/g, '/').replace(/^\/+/, '');
   const levelDir = join(mapsRoot(), lvl);
@@ -149,7 +150,7 @@ export async function readReferenceTextureBytes(level: string, name: string): Pr
 
   const slash = ref.indexOf('/');
   if (slash >= 0) {
-    const sourceLevel = safeDataName(ref.slice(0, slash));
+    const sourceLevel = safeDataName(serverMapName(ref.slice(0, slash)));
     const sourceName = ref.slice(slash + 1);
     // Current exports stage qualified pages under their bare name for Unity and portable reference use.
     const local = await tryTexture(lvl, sourceName);

@@ -1,3 +1,4 @@
+import { setImageAsset } from '../net/asset-images';
 import { makeTexRef } from '../../core/paint/textures';
 import {
   analyzeTexturePixels,
@@ -115,7 +116,7 @@ export function analyzeTextureAlpha(level: string, file: string): Promise<Textur
         }
       };
       img.onerror = () => resolve({ kind: 'unknown', glow: false });
-      img.src = textureUrl(level, file);
+      setImageAsset(img, textureUrl(level, file));
     });
     analysisCache.set(key, pending);
   }

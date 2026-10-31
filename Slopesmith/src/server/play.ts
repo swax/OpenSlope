@@ -11,6 +11,8 @@ import {
 import { anonymousMember, createVisitor, guestMember } from './accounts/guests';
 import { chatIdentity } from './accounts/chat-identity';
 import { discCourseName, isDiscCourse } from '../core/reference/disc-courses';
+import { mapDisplayName } from '../core/reference/map-game';
+import { listLevelOrigins } from './routes/levels';
 import { onAccountAccessChanged } from './accounts/events';
 import { clientAddress, behindProxy } from './accounts/policy';
 import { publicRoomAllowed, publicRoomKnown, onPublicCoursesChanged } from './public-courses';
@@ -110,7 +112,7 @@ export async function issuePlayTicket(
         if (input.playRoomId && input.playRoomId !== 'lodge') link.searchParams.set('room', input.playRoomId);
         siteCourse = {
           id: courseId,
-          name: discCourseName(level),
+          name: source === 'server' ? mapDisplayName((await listLevelOrigins([level]))[0]) : discCourseName(level),
           source,
           ...(input.playRoomId ? { roomId: input.playRoomId } : {}),
           ...(published ? { playUrl: `${link.pathname}${link.search}` } : {}),

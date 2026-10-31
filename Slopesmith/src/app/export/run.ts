@@ -1,6 +1,8 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { browserExportProvider } from './provider';
+import { assetVersionsIn } from '../../core/reference/asset-version';
+import { pinDocumentAssets } from '../net/asset-versions';
 import {
   canPickDirectory,
   directoryTarget,
@@ -47,7 +49,9 @@ export async function exportMapFolder(
   target: ExportTarget,
   opts?: { lighting?: boolean; aiPaths?: boolean },
 ): Promise<BrowserExportResult> {
+  await pinDocumentAssets(doc);
   const provider = browserExportProvider({
+    assetLevels: assetVersionsIn(doc),
     folderName: target.folderName,
     existingFile: path => target.existingFile(path),
   });

@@ -1,4 +1,5 @@
 import type { SlopesmithContentProvenance } from './manifest';
+import { mapGame, normalizeMapGame } from '../reference/map-game';
 
 /**
  * `Origin.json` — where a map folder came from, and whether it carries retail bytes.
@@ -48,6 +49,8 @@ export const UNIDENTIFIED_FOLDER_REASON = 'retail-unidentified-folder';
 export interface MapOriginRecord {
   Schema: typeof MAP_ORIGIN_SCHEMA;
   Origin: MapOriginKind;
+  /** Stable source game identifier, independent of the folder/course name. */
+  Game?: string;
   /** The course slot an extract was read from (`GARI`). Absent on an authored mountain. */
   Course?: string;
   /** Whether the folder contains or references bytes that came off a retail disc. */
@@ -58,9 +61,10 @@ export interface MapOriginRecord {
 
 /** The record `snowknife import` writes. Stated here as well as in C# so the two producers cannot drift:
  *  `test/map-origin.test.ts` checks this against the shipped JSON Schema the importer validates against. */
-export const retailExtractOrigin = (course: string): MapOriginRecord => ({
+export const retailExtractOrigin = (course: string, game = mapGame({ name: course })): MapOriginRecord => ({
   Schema: MAP_ORIGIN_SCHEMA,
   Origin: 'retail',
+  ...(game !== 'unknown' ? { Game: game } : {}),
   Course: course.toUpperCase(),
   RetailData: true,
   Reasons: [RETAIL_EXTRACT_REASON],
@@ -115,6 +119,7 @@ export function normalizeMapOrigin(value: unknown): MapOriginRecord | null {
   return {
     Schema: MAP_ORIGIN_SCHEMA,
     Origin: raw.Origin,
+    ...(normalizeMapGame(raw.Game) ? { Game: normalizeMapGame(raw.Game) } : {}),
     ...(typeof raw.Course === 'string' && raw.Course ? { Course: raw.Course } : {}),
     RetailData: raw.RetailData,
     Reasons: reasons,
@@ -125,6 +130,8 @@ export function normalizeMapOrigin(value: unknown): MapOriginRecord | null {
  *  row under the Reference picker reads exactly this. */
 export interface MapOriginSummary {
   name: string;
+  displayName?: string;
+  game?: string;
   origin: MapOriginKind;
   /** The course slot an extract was read from (`GARI`), when the record names one. */
   course?: string;
@@ -134,6 +141,7 @@ export interface MapOriginSummary {
 
 export const originSummary = (name: string, record: MapOriginRecord): MapOriginSummary => ({
   name,
+  game: mapGame({ name, game: record.Game, course: record.Course, origin: record.Origin }),
   origin: record.Origin,
   ...(record.Course ? { course: record.Course } : {}),
   retailData: record.RetailData,

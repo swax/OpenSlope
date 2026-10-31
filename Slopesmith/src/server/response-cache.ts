@@ -3,6 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { promisify } from 'node:util';
 import { brotliCompress, constants as zlibConstants, gzip } from 'node:zlib';
 import { createLogger } from './log';
+import { parseAssetVersion } from '../core/reference/asset-version';
+import { resolveServerAssetVersion } from './asset-versions';
 
 // zlib's callback forms hand the work to libuv's thread pool; the `…Sync` twins run it on the event loop.
 // A props payload is megabytes, so compressing one synchronously stalls every other client for its duration.
@@ -138,6 +140,8 @@ export class ResponseCache {
     compress: boolean,
     producer: Producer<Buffer>,
   ) {
+    const version = new URL(req.url ?? '/', 'http://localhost').searchParams.get('assetVersion');
+    if (version && parseAssetVersion(version)) key += `:asset:${version}`;
     const hit = this.entries.has(key);
     if (hit) this.hits++;
     else this.misses++;
@@ -145,6 +149,9 @@ export class ResponseCache {
     if (!pending) {
       const created = (async (): Promise<CachedResponse> => {
         const raw = await producer();
+        // A map import can replace its folder while a large prop payload is being built. Never
+        // publish that result under the previous bank's identity if its inputs changed mid-build.
+        if (compress && version && parseAssetVersion(version)) await resolveServerAssetVersion(version);
         return {
           raw,
           encodingJobs: new Map(),

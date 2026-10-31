@@ -1,3 +1,4 @@
+import { setImageAsset } from '../../net/asset-images';
 import * as THREE from 'three';
 import { textureRefUrl, resolveAssetUrl } from '../../net/asset-paths';
 import { authoredParticleTextures } from '../../../core/effects/particle-textures';
@@ -749,7 +750,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       renderLoadingManager.itemError(spriteUrl);
       renderLoadingManager.itemEnd(spriteUrl);
     };
-    image.src = spriteUrl;
+    setImageAsset(image, spriteUrl);
     return index;
   }
 

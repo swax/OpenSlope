@@ -1,3 +1,4 @@
+import { serverMapName } from '../../core/reference/map-source';
 import { join } from 'node:path';
 import * as fs from '../fs-async';
 import { mapsRoot, workspaceConfig } from '../workspace-config';
@@ -43,7 +44,7 @@ type Tail<T extends unknown[]> = T extends [unknown, ...infer R] ? R : never;
  * source metadata fingerprint changes whenever an input changes, while the ordinary response cache still owns
  * in-flight sharing, compression, ETags, and hot-process LRU behavior. */
 export function readLevelPropsJsonWithCacheInfo(level: string): Promise<PersistentPropsJson> {
-  const lvl = safeDataName(level);
+  const lvl = safeDataName(serverMapName(level));
   const levelDir = join(mapsRoot(), lvl);
   // A cold build is tens of seconds of parsing and encoding, so it runs on a worker thread; a cache hit stays
   // here, because reading the finished payload is far cheaper than shipping the request across threads.

@@ -10,6 +10,7 @@ import type { GroupDef, GroupsPayload } from '../../core/reference/groups';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
 import type { SkyRing } from '../../core/sky/ring';
 import { assetBytes } from '../net/asset-bytes';
+import { safeDataName as assetTableKey } from '../../core/export/names';
 import {
   customSkyUrl,
   effectSoundUrl,
@@ -39,6 +40,7 @@ import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
  * back out for a byte mid-triangle.
  */
 export interface BrowserExportOptions {
+  assetLevels?: readonly string[];
   /** The folder name the export lands under, inside the directory the author picked. The disc recipe's
    *  commands are written relative to that directory, since a browser is never told its absolute path. */
   folderName: string;
@@ -116,6 +118,12 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
 
     async materialTables() {
       const { tables } = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>('/api/props/materials');
+      for (const level of opts.assetLevels ?? []) {
+        const value = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>(
+          `/api/props/materials?level=${encodeURIComponent(level)}`,
+        );
+        if (value.tables[assetTableKey(level)]) tables[assetTableKey(level)] = value.tables[assetTableKey(level)];
+      }
       return new Map(Object.entries(tables));
     },
 

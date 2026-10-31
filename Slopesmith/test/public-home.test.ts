@@ -1000,7 +1000,7 @@ try {
         '/api/reference-music-sample',
         '/api/environment-sound',
       ].includes(url.pathname) ||
-      ['FIXTURE', 'GARI'].includes(url.searchParams.get('level') ?? '')
+      ['FIXTURE', 'GARI', 'TRICKY_GARI'].includes(url.searchParams.get('level') ?? '')
     )
       retailRequests.push(url.pathname);
   });
@@ -1503,14 +1503,20 @@ try {
   await guest.setViewportSize({ width: 1440, height: 1000 });
   await guest.locator('#public-iso').setInputFiles(localFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
-  const managerGari = guest.locator('.public-iso-map[data-course="GARI"]');
+  const managerGari = guest.locator('.public-iso-map[data-course="TRICKY_GARI"]');
   assert.match(await managerGari.innerText(), /Garibaldi.*Not loaded/s);
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   assert.equal(
-    (await checked('/api/public/courses', 'GET', undefined, '')).courses.some((course: any) => course.id === 'GARI'),
+    (await checked('/api/public/courses', 'GET', undefined, '')).courses.some(
+      (course: any) => course.id === 'TRICKY_GARI',
+    ),
     false,
   );
-  assert.equal((await call('/api/level?name=GARI')).status, 401, 'local ISO rooms grant no access to server map files');
+  assert.equal(
+    (await call('/api/level?name=TRICKY_GARI')).status,
+    401,
+    'local ISO rooms grant no access to server map files',
+  );
   await guest.screenshot({ path: join(root, 'iso-manager.png') });
   await managerGari.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
   await managerGari.locator('.public-iso-badge.loaded').waitFor();
@@ -1551,10 +1557,10 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
   assert(
-    received.some(message => message.t === 'joined' && message.projectId === '@reference:GARI'),
+    received.some(message => message.t === 'joined' && message.projectId === '@reference:TRICKY_GARI'),
     'ISO-only riding joins the shared retail reference room',
   );
-  await assertReferencePeers('GARI');
+  await assertReferencePeers('TRICKY_GARI');
   const fog = particleVolumesToNative([createFogVolume([0, 2, 0])]);
   await guest.evaluate(
     async text => {
@@ -1569,8 +1575,8 @@ try {
           const transaction = db.transaction('files', 'readwrite');
           for (const [path, data] of Object.entries(files))
             transaction.objectStore('files').put({
-              key: `GARI/${path.toLowerCase()}`,
-              course: 'GARI',
+              key: `TRICKY_GARI/${path.toLowerCase()}`,
+              course: 'TRICKY_GARI',
               path,
               blob: new Blob([JSON.stringify(data)], { type: 'application/json' }),
             });
@@ -1582,12 +1588,12 @@ try {
       }
     },
     JSON.stringify({
-      'Effects.json': createEmptyEffectsDocument('GARI'),
+      'Effects.json': createEmptyEffectsDocument('TRICKY_GARI'),
       'ParticleInstances.json': fog.instances,
       'ParticleModels.json': fog.models,
       'Audio/SoundIndex.json': {
         Schema: 'openslope-sound-index/v1',
-        Level: 'GARI',
+        Level: 'TRICKY_GARI',
         Banks: { 2: 'tone', 3: 'crowd' },
         CollisionEvents: {},
         ResolverState: 'Deferred',
@@ -1605,7 +1611,7 @@ try {
   await repairStatus.waitFor();
   assert.equal(new URL(guest.url()).pathname, '/play/Garibaldi', 'audio repair stays on the named player route');
   await repairStatus.getByRole('link', { name: 'Load ISO maps', exact: true }).click();
-  assert.equal(new URL(guest.url()).searchParams.get('reference'), 'GARI', 'audio repair retains the ISO map');
+  assert.equal(new URL(guest.url()).searchParams.get('reference'), 'TRICKY_GARI', 'audio repair retains the ISO map');
   assert.equal(new URL(guest.url()).searchParams.get('source'), 'iso', 'audio repair retains the local ISO source');
   await closeCommunity(guest);
   await guest.locator('#public-iso').setInputFiles(soundRepairFixture);
@@ -1614,7 +1620,7 @@ try {
     await guest.evaluate(async () => {
       const moduleUrl = '/src/app/public/iso-cache.ts';
       const { readCachedCourse } = await import(/* @vite-ignore */ moduleUrl);
-      const files = await readCachedCourse('GARI');
+      const files = await readCachedCourse('TRICKY_GARI');
       const index = JSON.parse(await files.get('audio/soundindex.json')!.text());
       return {
         state: index.ResolverState,
@@ -1653,7 +1659,7 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
 
-  await guest.goto(`${origin}/isos?reference=GARI&source=iso`);
+  await guest.goto(`${origin}/isos?reference=TRICKY_GARI&source=iso`);
   await closeCommunity(guest);
   const currentIsoMap = primaryNav.getByRole('link', { name: 'Garibaldi', exact: true });
   assert(await currentIsoMap.isVisible());
@@ -1686,7 +1692,7 @@ try {
     await guest.evaluate(async () => {
       const moduleUrl = '/src/app/public/iso-cache.ts';
       const { readCachedCourse } = await import(/* @vite-ignore */ moduleUrl);
-      const files = await readCachedCourse('GARI');
+      const files = await readCachedCourse('TRICKY_GARI');
       return files.has('patches.json') && !files.has('particleinstances.json');
     }),
     'reloading extracts fresh files without stale sidecars',
@@ -1870,8 +1876,8 @@ try {
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => { await ready; return persist(); } });
     window.releaseIsoImports = release;
   })()`);
-  const queuedGari = guest.locator('.public-iso-map[data-course="GARI"]');
-  const queuedSnow = guest.locator('.public-iso-map[data-course="SNOW"]');
+  const queuedGari = guest.locator('.public-iso-map[data-course="TRICKY_GARI"]');
+  const queuedSnow = guest.locator('.public-iso-map[data-course="TRICKY_SNOW"]');
   await guest.setViewportSize({ width: 390, height: 844 });
   const tileGeometry = () =>
     guest.locator('.public-iso-map').evaluateAll(tiles =>
@@ -1987,10 +1993,10 @@ try {
     0,
     'leaving cancels active and queued ISO imports',
   );
-  const snow = guest.locator('.public-iso-map[data-course="SNOW"]');
+  const snow = guest.locator('.public-iso-map[data-course="TRICKY_SNOW"]');
   assert.match(
     (await snow.getByRole('link', { name: 'Inspect Snowdream', exact: true }).getAttribute('href'))!,
-    /\/editor\?reference=SNOW$/,
+    /\/editor\?reference=TRICKY_SNOW$/,
   );
   await snow.getByRole('link', { name: 'Play Snowdream', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
@@ -2002,7 +2008,7 @@ try {
   await lastMap.waitFor();
   assert.equal(
     new URL((await editorTab.getAttribute('href'))!).searchParams.get('reference'),
-    'SNOW',
+    'TRICKY_SNOW',
     'Maps retains the current ISO editor target',
   );
   assert.equal(
@@ -2012,11 +2018,15 @@ try {
   );
   await lastMap.click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
-  assert.equal(new URL(guest.url()).searchParams.get('reference'), 'SNOW', 'the header reopens the last ISO map');
+  assert.equal(
+    new URL(guest.url()).searchParams.get('reference'),
+    'TRICKY_SNOW',
+    'the header reopens the last ISO map',
+  );
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
   assert.equal(
     new URL((await editorTab.getAttribute('href'))!).searchParams.get('reference'),
-    'SNOW',
+    'TRICKY_SNOW',
     'ISO management retains the current editor target',
   );
   await joinChat(guest);

@@ -88,7 +88,7 @@ export function resolvePropTex(level: string, ref: string | null | undefined): {
  *  across source levels that share a numeric file name). */
 export function texDestName(ref: TexRef): string {
   const { level, name } = parseTexRef(ref);
-  return level ? `${level}_${name}` : name;
+  return level ? `${level.replace(/[^A-Za-z0-9_-]/g, '_')}_${name}` : name;
 }
 
 /**

@@ -9,6 +9,9 @@ import { referenceInRoom, type PublicCourse, type PublicCourseKind } from '../co
 import type { EditDoc } from '../core/doc/doc-edit';
 import { behaviourRecords } from '../core/props/defaults';
 import { isDiscCourse } from '../core/reference/disc-courses';
+import { mapDisplayName } from '../core/reference/map-game';
+import { parseAssetVersion } from '../core/reference/asset-version';
+import { splitMapSource } from '../core/reference/map-source';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
 import { withProjectAssets } from './project-assets';
 import { listImportedProps } from './routes/imported-props';
@@ -43,7 +46,8 @@ async function publications(): Promise<Publication[]> {
 export function projectIsoCourses(doc: EditDoc, assetTextures: readonly string[] = []): string[] {
   const levels = new Set<string>();
   const level = (value: string | undefined) => {
-    if (value && !value.startsWith('@') && value.toLowerCase() !== 'custom') levels.add(value.toUpperCase());
+    if (value && !value.startsWith('@') && value.toLowerCase() !== 'custom')
+      levels.add((parseAssetVersion(value)?.map ?? splitMapSource(value).name).toUpperCase());
   };
   const texture = (value: string | undefined | null) => {
     if (value?.includes('/')) level(value.split('/')[0]);
@@ -83,7 +87,7 @@ export async function publicCourses(): Promise<PublicCourse[]> {
     .map(map => ({
       kind: 'reference',
       id: map.name,
-      name: map.name,
+      name: mapDisplayName(map),
       retailData: map.retailData,
       isoCourses: map.retailData ? [map.course ?? map.name] : [],
     }));

@@ -627,6 +627,18 @@ body.os-xr-editing .pl-head {
   box-sizing: border-box;
   background: #0c141de8;
 }
+.sp-scene-gui .sp-game-map-control > span {
+  flex: 0 0 40px;
+}
+.sp-scene-gui .sp-game-map-control select {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #d7e3f0;
+  background: #15202c;
+  border: 1px solid #34506b;
+  border-radius: 4px;
+  padding: 3px 5px;
+}
 /* the Scene Mode header matches the other modes' lil-gui panel title bar */
 .sp-out-hdr {
   display: flex;

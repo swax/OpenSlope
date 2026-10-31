@@ -1,3 +1,4 @@
+import { loadAssetTexture } from '../net/asset-images';
 import * as THREE from 'three';
 import type { PropMaterial, PropModel, LevelProps } from '../../core/reference/props';
 import type { V3 } from '../../core/doc/types';
@@ -82,7 +83,8 @@ export class ThumbRenderer {
     if (have !== undefined) return Promise.resolve(have);
     const generation = this.projectGeneration;
     return new Promise(resolve => {
-      this.loader.load(
+      loadAssetTexture(
+        this.loader,
         textureUrl(level, file),
         tex => {
           if (generation !== this.projectGeneration && level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) {

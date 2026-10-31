@@ -5,6 +5,7 @@ import { ensureDir } from '../fs-async';
 import { serialize } from '../serialize';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
+import { prepareServerAssetVersions } from '../asset-versions';
 import { DISC_SLOT } from '../../core/export/disc';
 import { safeDataName } from '../../core/export/names';
 import type { ExportFolder } from '../../core/export/files';
@@ -194,6 +195,7 @@ export async function exportLevel(
   // observes the first one's half-written files. Exports are deliberate, infrequent acts, and queueing them
   // costs a wait rather than a corrupted map folder.
   return serialize('export', async () => {
+    await prepareServerAssetVersions(doc);
     const folder = await buildExportFolder(doc, nodeExportProvider(dir), {
       lighting: opts?.lighting,
       aiPaths: opts?.aiPaths,

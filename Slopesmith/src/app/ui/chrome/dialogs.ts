@@ -657,41 +657,67 @@ export function createDialogs(deps: DialogDeps) {
         }
         const { host, close } = modal({ sticky: required });
         const g = new GUI({ container: host, title: 'Open mountain' });
-        const state = { project: '0' };
+        const state = { source: projects[0].local ? 'local' : 'server', project: '0' };
+        const remembered = new Map<string, string>();
         const locationNote = banner(host, '', 'info');
         const showLocation = () => {
-          locationNote.textContent = projects[Number(state.project)].local
-            ? 'Local mountains — saved in this browser on this device.'
-            : `Server mountains — saved on ${location.host}.`;
+          locationNote.textContent =
+            state.source === 'local'
+              ? 'Local mountains — saved in this browser on this device.'
+              : `Server mountains — saved on ${location.host}.`;
+          if (!state.project) locationNote.textContent += ' No saved mountains in this source.';
         };
-        const options: Record<string, string> = {};
-        for (const [index, { project, local }] of projects.entries()) {
-          const date = new Date(project.updatedAt).toLocaleString();
-          options[`${project.name} — ${local ? 'Local' : 'Server'} — ${date}`] = String(index);
-        }
-        showLocation();
-        g.add(state, 'project', options).name('mountain').onChange(showLocation);
-        g.add(
-          {
-            open: async () => {
-              try {
-                const selected = projects[Number(state.project)];
-                if (selected.other) {
-                  await openOtherProject(selected.project);
-                  return;
+        const sourceCtl = g.add(state, 'source', { Local: 'local', Server: 'server' }).name('source');
+        sourceCtl.domElement.querySelector('select')!.setAttribute('aria-label', 'Mountain source');
+        sourceCtl.domElement.querySelector('select')!.removeAttribute('aria-labelledby');
+        const mountainCtl = g.add(state, 'project', { '(none)': '' }).name('mountain');
+        mountainCtl.domElement.querySelector('select')!.setAttribute('aria-label', 'Saved mountain');
+        mountainCtl.domElement.querySelector('select')!.removeAttribute('aria-labelledby');
+        const openCtl = g
+          .add(
+            {
+              open: async () => {
+                try {
+                  const selected = projects[Number(state.project)];
+                  if (!state.project || !selected || selected.local !== (state.source === 'local')) return;
+                  if (selected.other) {
+                    await openOtherProject(selected.project);
+                    return;
+                  }
+                  const document = await openProject(selected.project.id);
+                  close();
+                  await adoptDocument(document);
+                  toast(`Opened ${document.name}.`, 'ok');
+                } catch (error) {
+                  log(`open mountain failed: ${error instanceof Error ? error.message : error}`);
+                  toast('Could not open that mountain.', 'err');
                 }
-                const document = await openProject(selected.project.id);
-                close();
-                await adoptDocument(document);
-                toast(`Opened ${document.name}.`, 'ok');
-              } catch (error) {
-                log(`open mountain failed: ${error instanceof Error ? error.message : error}`);
-                toast('Could not open that mountain.', 'err');
-              }
+              },
             },
-          },
-          'open',
-        ).name('Open');
+            'open',
+          )
+          .name('Open');
+        const fillMountains = () => {
+          const available = projects.flatMap((entry, index) =>
+            entry.local === (state.source === 'local') ? [{ ...entry, index: String(index) }] : [],
+          );
+          const options: Record<string, string> = {};
+          for (const { project, index } of available)
+            options[`${project.name} — ${new Date(project.updatedAt).toLocaleString()}`] = index;
+          const previous = remembered.get(state.source);
+          state.project = available.find(entry => entry.index === previous)?.index ?? available[0]?.index ?? '';
+          mountainCtl.options(available.length ? options : { '(no saved mountains)': '' });
+          mountainCtl.updateDisplay();
+          mountainCtl.enable(available.length > 0);
+          openCtl.enable(available.length > 0);
+          showLocation();
+        };
+        sourceCtl.onChange(fillMountains);
+        mountainCtl.onChange(() => {
+          remembered.set(state.source, state.project);
+          showLocation();
+        });
+        fillMountains();
         if (!required) g.add({ cancel: close }, 'cancel').name('Cancel');
       } catch (error) {
         log(`mountain list failed: ${error instanceof Error ? error.message : error}`);

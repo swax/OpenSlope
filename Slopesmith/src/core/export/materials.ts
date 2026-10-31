@@ -1,4 +1,5 @@
 import { safeDataName } from './names';
+import { splitMapSource } from '../reference/map-source';
 import type { PropAlphaMode } from '../reference/props';
 import { resolvePropAlphaMode, type TextureAlphaAnalysis } from '../props/texture-alpha';
 
@@ -81,7 +82,10 @@ export function buildMaterialCombiner(
   const slotOf = new Map<string, number>(); // "<safeLevel>:<MaterialID>" → combined id (or -1 = untextured)
   // A level absent from the library resolves to an empty table, which is the same "no such material" answer
   // a lazy read produced.
-  const materialsOf = (level: string): readonly SourceMaterial[] => tables.get(safeDataName(level)) ?? [];
+  const materialsOf = (level: string): readonly SourceMaterial[] => {
+    const { source, name } = splitMapSource(level);
+    return tables.get(safeDataName(level)) ?? (source === 'server' ? tables.get(safeDataName(name)) : undefined) ?? [];
+  };
 
   return {
     materials,

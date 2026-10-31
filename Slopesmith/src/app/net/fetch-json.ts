@@ -2,6 +2,7 @@ import { beginRequestDiagnostic } from './diagnostics';
 import { clientFetch } from './client';
 import { renderRequest } from '../state/capture-progress';
 import { resolveAssetUrl } from './asset-paths';
+import { bindMapPayload } from './map-source';
 
 export type DownloadProgress = { receivedBytes: number; totalBytes?: number };
 
@@ -61,7 +62,7 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     const body = (await response.json()) as T;
     trace.complete();
     finishRenderRequest();
-    return body;
+    return bindMapPayload(input, body);
   } catch (error) {
     trace.fail(error);
     finishRenderRequest(error);

@@ -30,6 +30,7 @@ import type { ApiRequest } from './api/request';
 import { createLogger } from './log';
 import { NoOpenProjectError, withRequestProjectAssets } from './project-assets';
 import { ProjectPermissionError } from './projects';
+import { AssetVersionUnavailable, resolveVersionedApiUrl } from './asset-versions';
 
 export type { ApiRequest } from './api/request';
 
@@ -306,6 +307,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
   '/api/texture-usage': library,
   '/api/particle-texture': library,
   '/api/props': library,
+  '/api/map-asset-version': at('viewer'),
   '/api/custom-props': library,
   '/api/characters': library,
   '/api/character-model': library,
@@ -407,6 +409,7 @@ export async function handleApiRequest(
         const token = sessionToken(req);
         if (token) setSessionCookie(res, token, isSecureOrigin(req));
       }
+      req.url = await resolveVersionedApiUrl(req.url ?? mounted, mount);
       if (requestNeedsProjectAssets(mount, mounted)) {
         await withRequestProjectAssets(req, () => handle(req, res, controls), need === 'editor');
       } else await handle(req, res, controls);
@@ -415,7 +418,10 @@ export async function handleApiRequest(
       // which includes the project-asset wrapper above, running OUTSIDE the handler's own try/catch. A
       // request that named no mountain is a refusal with a reason rather than a fault, so it is answered as
       // one and not logged as a crash; everything else is still a 500 with the stack.
-      const expected = error instanceof NoOpenProjectError || error instanceof ProjectPermissionError;
+      const expected =
+        error instanceof NoOpenProjectError ||
+        error instanceof ProjectPermissionError ||
+        error instanceof AssetVersionUnavailable;
       if (!expected) log.error(`${req.method ?? 'GET'} ${url} failed`, { error });
       if (!res.headersSent) {
         res.statusCode = expected ? error.statusCode : 500;

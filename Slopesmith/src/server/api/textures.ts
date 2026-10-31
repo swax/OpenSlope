@@ -24,6 +24,8 @@ import {
   type ApiHandler,
 } from './common';
 import { projectAssetCacheKey } from '../project-assets';
+import { listLevelOrigins } from '../routes/levels';
+import { validateVersionedTexture } from '../asset-versions';
 
 const TEXTURE_UPLOAD_LIMIT = 32 * 1024 * 1024;
 const FAL_REQUEST_LIMIT = 64 * 1024 * 1024;
@@ -92,9 +94,11 @@ export const textureRoutes: Record<string, ApiHandler> = {
           : level
             ? `textures:${level}`
             : 'texture-levels';
-      await responseCache.json(req, res, key, async () =>
-        level ? deriveLevelTextures(level) : { levels: await levelsWithTextures() },
-      );
+      await responseCache.json(req, res, key, async () => {
+        if (level) return deriveLevelTextures(level);
+        const levels = await levelsWithTextures();
+        return { levels, maps: await listLevelOrigins(levels) };
+      });
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -118,7 +122,11 @@ export const textureRoutes: Record<string, ApiHandler> = {
         level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
           ? CUSTOM_ASSET_CACHE_CONTROL
           : REFERENCE_ASSET_CACHE_CONTROL;
-      await responseCache.bytes(req, res, key, 'image/png', cacheControl, () => readReferenceTextureBytes(level, name));
+      await responseCache.bytes(req, res, key, 'image/png', cacheControl, async () => {
+        const bytes = await readReferenceTextureBytes(level, name);
+        await validateVersionedTexture(q.get('assetVersion'), name, bytes);
+        return bytes;
+      });
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));

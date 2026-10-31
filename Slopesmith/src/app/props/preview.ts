@@ -4,6 +4,7 @@ import type { V3 } from '../../core/doc/types';
 import { placementQuat } from '../../core/props/pose';
 import { ThumbRenderer, THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION, type ThumbEntry } from './thumb-renderer';
 import { installStyles } from '../ui/components/styles';
+import { mapSourceDetails, watchMapSources } from '../state/map-sources';
 
 /**
  * The Prop Tools preview: a live 3/4 view of the prop you're holding (picked from the library or the reference
@@ -64,6 +65,10 @@ const css = `
 .pp-instance:empty { display: none; }
 .pp-stats { font: 11px system-ui, sans-serif; color: #6f8398; font-variant-numeric: tabular-nums; }
 .pp-stats:empty { display: none; }
+.pp-source { align-self: stretch; display: grid; gap: 2px; font: 11px system-ui, sans-serif; }
+.pp-source-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 6px; }
+.pp-source-label { color: #6f8398; }
+.pp-source-value { color: #9fb3c8; overflow-wrap: anywhere; }
 .pp-members { display: none; flex-direction: column; gap: 2px; align-self: stretch; margin-top: 2px;
   padding-top: 6px; border-top: 1px solid #21384c; }
 .pp-members.on { display: flex; }
@@ -86,6 +91,8 @@ export class PropPreview {
    *  when twenty panes share one model name this is the line that says which one an effect will land on. */
   private instanceEl = document.createElement('div');
   private statsEl = document.createElement('div');
+  private sourceEl = document.createElement('div');
+  private sourceLevels: readonly string[] = [];
   private membersEl = document.createElement('div');
   private thumb = new ThumbRenderer(148);
   private token = 0; // guards against an out-of-order async prepare clobbering a newer one
@@ -98,10 +105,12 @@ export class PropPreview {
   private drawQueued = false;
 
   constructor() {
+    watchMapSources(() => this.updateSourceDetails());
     installStyles('prop-preview', css);
     this.el.className = 'pp-card';
     this.thumbEl.className = 'pp-thumb';
     this.nameEl.className = 'pp-name';
+    this.sourceEl.className = 'pp-source';
     this.modelEl.className = 'pp-model';
     this.instanceEl.className = 'pp-instance';
     this.instanceEl.title =
@@ -110,7 +119,15 @@ export class PropPreview {
     this.statsEl.className = 'pp-stats';
     this.membersEl.className = 'pp-members';
     this.thumbEl.append(this.thumb.canvas);
-    this.el.append(this.nameEl, this.modelEl, this.instanceEl, this.thumbEl, this.statsEl, this.membersEl);
+    this.el.append(
+      this.nameEl,
+      this.modelEl,
+      this.instanceEl,
+      this.thumbEl,
+      this.statsEl,
+      this.sourceEl,
+      this.membersEl,
+    );
     this.wireOrbit();
   }
 
@@ -176,6 +193,8 @@ export class PropPreview {
     group?: GroupDef | null,
     instance?: string | null,
   ) {
+    this.sourceLevels = [level];
+    this.updateSourceDetails();
     this.el.classList.add('on');
     this.nameEl.textContent = name;
     // Only when it says something the label does not: a prop whose full name IS the label gains nothing from
@@ -228,6 +247,8 @@ export class PropPreview {
     lights: readonly PreviewLight[] = [],
     instance?: string | null,
   ) {
+    this.sourceLevels = members.length ? members.map(member => member.level) : ['@models'];
+    this.updateSourceDetails();
     this.el.classList.add('on');
     this.nameEl.textContent = name;
     this.modelEl.textContent = '';
@@ -275,6 +296,26 @@ export class PropPreview {
   }
 
   /** One component-list row: a marker and its text. */
+  private updateSourceDetails() {
+    this.sourceEl.replaceChildren();
+    const sources = this.sourceLevels.map(mapSourceDetails);
+    for (const key of ['source', 'game', 'map', 'version'] as const) {
+      if (key === 'version' && !sources.some(source => source.version)) continue;
+      const row = document.createElement('div');
+      row.className = 'pp-source-row';
+      row.dataset.detail = key;
+      const label = document.createElement('span');
+      label.className = 'pp-source-label';
+      label.textContent = key;
+      const value = document.createElement('span');
+      value.className = 'pp-source-value';
+      value.textContent = [...new Set(sources.map(source => source[key]))].join(', ');
+      value.title = value.textContent;
+      row.append(label, value);
+      this.sourceEl.appendChild(row);
+    }
+  }
+
   private memberRow(marker: HTMLElement, text: string) {
     const r = document.createElement('div');
     r.className = 'pp-member';
@@ -324,6 +365,8 @@ export class PropPreview {
   }
 
   hide() {
+    this.sourceLevels = [];
+    this.sourceEl.replaceChildren();
     this.el.classList.remove('on', 'orbit');
     this.token++;
   }

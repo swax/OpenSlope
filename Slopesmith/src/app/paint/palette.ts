@@ -1,3 +1,4 @@
+import { setImageAsset } from '../net/asset-images';
 /**
  * The Palette (the Tools panel's content while painting): a small staging grid where you compose the
  * exact tile + ride-feel + orientation combos you'll paint the mountain with. Drag a tile in from the
@@ -36,6 +37,7 @@ import { drawFGlyph, F_OVERLAY_CSS } from './glyph';
 import { tooltip } from '../ui/components/tooltip';
 import { infoBadge } from '../ui/components/info';
 import { installStyles } from '../ui/components/styles';
+import { mapSourceDetails, watchMapSources } from '../state/map-sources';
 import { textureRefUrl } from '../net/asset-paths';
 import { alphaClassLabel, classifyTextureAlpha, type AlphaClass } from '../props/texture-alpha';
 import {
@@ -284,6 +286,7 @@ export class Palette {
   private surfMenuOff: ((e: MouseEvent) => void) | null = null; // its outside-click closer
 
   constructor(private cb: PaletteCallbacks) {
+    watchMapSources(() => this.syncPreviewDetails());
     installStyles('paint-palette', css);
 
     this.el.className = 'sc-pad';
@@ -861,6 +864,7 @@ export class Palette {
     const c = this.previewCell();
     if (!c) return;
     const ref = this.previewRef(c);
+    for (const [key, value] of Object.entries(mapSourceDetails(parseTexRef(ref).level))) this.setDetail(key, value);
     const image = this.imageFor(ref);
     this.setDetail('filepath', ref);
     this.setDetail('type', c.appearance ?? this.textureType(ref));
@@ -939,6 +943,8 @@ export class Palette {
       const image = this.imageFor(shownRef);
       const details = document.createElement('div');
       details.className = 'sc-details';
+      for (const [key, value] of Object.entries(mapSourceDetails(parseTexRef(shownRef).level)))
+        details.append(this.detailRow(key, value));
       details.append(this.detailRow('filepath', shownRef));
       details.append(this.detailRow('type', c.appearance ?? this.textureType(shownRef)));
       details.append(
@@ -999,7 +1005,7 @@ export class Palette {
         button.className = `sc-pframe${index === this.inspectFrame ? ' on' : ''}`;
         button.title = parseTexRef(frame).name;
         const image = document.createElement('img');
-        image.src = textureRefUrl(frame);
+        setImageAsset(image, textureRefUrl(frame));
         image.alt = `Flipbook frame ${index + 1}`;
         const number = document.createElement('span');
         number.className = 'sc-pframe-no';
@@ -1254,7 +1260,7 @@ export class Palette {
         this.drawPreviewCanvas();
         this.syncPreviewDetails();
       };
-      img.src = textureRefUrl(ref);
+      setImageAsset(img, textureRefUrl(ref));
       this.imgCache.set(ref, img);
     }
     return img;

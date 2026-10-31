@@ -18,6 +18,15 @@ The staged plan, all built:
    turn / size / delete; exported **textured** into `Props.obj` (+ `Materials.json` + copied tiles) so props
    ship with their real look.
 
+The library's **Source → Game → Map** selectors narrow the available local or server maps before listing
+their props.
+The mountain's own models and uploads appear under **Custom / Authored**; unidentified legacy folders
+appear under **Unknown**. Each source/game remembers its last selected map for the session.
+The selected prop's preview shows its source, game and map; mixed assemblies list their contributing sources.
+Local/Server is a loading preference: the same content version can load from either matching copy.
+Changed geometry, materials, collision or defaults keep a separate version; the preview shows its version.
+See [asset versions](036-authored-map-references.md#prop-and-texture-versions).
+
 ## Replacing a placed prop
 
 Select a placed prop and choose **Replace prop** in its properties. Click another prop in the world
@@ -92,7 +101,7 @@ export path have not been verified. The launcher does not create a nonfunctional
   index** into `Models[]` (verified: `Models[11]` = `Mdl_RockBoulder_AlpsC_SharpSnow_2`, the model instance
   0 references).
 - **`Instances.json`** — the placements. `Instances[]`, each `{ InstanceName, Location, Rotation, Scale,
-  ModelID, Visable, … }`, including player collision, collision response mass (native `ObjectProperties.U0`),
+ModelID, Visable, … }`, including player collision, collision response mass (native `ObjectProperties.U0`),
   bounce, SurfaceType, physics-body index,
   collision-sound event, and ambience records. `Location` is raw SSX space (cm, Z-up, X-mirrored — the same space as
   `Patches.json` `Points`); `Rotation` is a quaternion `(x,y,z,w)`; `Scale` is per-axis.
@@ -142,7 +151,7 @@ and Z, with props sitting on the surface (Y −2703..75 m vs terrain −2717..23
 ## Pipeline
 
 - **`server/routes/props.ts`** — `levelsWithProps()` (folders with `Models.json` + `Instances.json` + `Meshes/`)
-  and `readLevelProps(level)`. The latter groups each *instanced* model's meshes by `MaterialID` into UV'd
+  and `readLevelProps(level)`. The latter groups each _instanced_ model's meshes by `MaterialID` into UV'd
   submeshes (welded on `(vIdx, tIdx)` so seams split cleanly; a shared mesh is parsed once), packs each
   submesh's positions + uvs (Float32) and indices (Uint32) as base64, sends a `MaterialID → texture file`
   map, packs each referenced collision proxy and player-collidable sphere body once, and returns renderable plus
@@ -150,7 +159,7 @@ and Z, with props sitting on the surface (Y −2703..75 m vs terrain −2717..23
 - **`server/api/props.ts`** — `GET /api/props` → `{ levels }`, `GET /api/props?level=<LEVEL>` → the payload. Prop
   tiles are served by the existing `GET /api/texture?level=…&name=…` (same `Textures/` the palette reads).
 - **`core/reference/props.ts`** — `decodeProps(payload)` → typed-array `LevelProps` (`{ models, instances,
-  materials, collisionMeshes, physicsBodies }`, each model a list of `{ mat, positions, uvs, indices }`
+materials, collisionMeshes, physicsBodies }`, each model a list of `{ mat, positions, uvs, indices }`
   submeshes). Browser-safe; the server
   does the disk + OBJ work.
 - **`app/props/textures.ts`** — `PropTextureCache`: textures + lit double-sided materials cached by `(level, file)`,
@@ -198,7 +207,7 @@ and Z, with props sitting on the surface (Y −2703..75 m vs terrain −2717..23
 
 **`MountainDoc.props`** — placements are `PlacedProp[]` (`{ level, model, name, pos, yaw, scale }`, plus
 optional `pitch` / `roll` and semantic `modePresence: 'showoff'`) on the doc, in editor/data coords like `corners`, so undo/redo + persistence come
-free (the net-model migration passes the field through). The model geometry is *not* stored — only which
+free (the net-model migration passes the field through). The model geometry is _not_ stored — only which
 model, from which level.
 
 **The placement rotation** is those three angles, composed YXZ — `Ry(yaw) · Rx(pitch) · Rz(roll)` —
@@ -330,7 +339,7 @@ Under the name it also prints the **full model name**, and for a selected placem
 name above them is a browsing label with the `Mdl_` prefix and the trailing `_<n>` dropped, which is right when
 that number is a copy id (`FireHyDrant_Base_1005`) and wrong when it separates different models: Megaplex ships
 twenty glass panes, `Mdl_Glass_Pane_2000` through `_5004`, each with its own mesh, and every one of them labels
-as `Glass_Pane`. Effects attach to the *instance*, so the two extra lines are what say which pane a chain will
+as `Glass_Pane`. Effects attach to the _instance_, so the two extra lines are what say which pane a chain will
 land on. Rendered
 by its own `ThumbRenderer` (a size up from the library swatches), cached per `(level, model)`. So the flow
 reads: pick a prop up (Library click, or middle-click one in the world) → see it in the preview and as the
@@ -419,8 +428,8 @@ recovered point, ellipsoid, directional, and alternate-voice forms plus their ra
 The external-event resolver also follows the retail fixed global-bank dispatcher, so machinery and wildlife
 emitters name and audition their decoded source (for example Snowdream event 90 is
 `SNOW/Snowmachine/000.wav`) instead of being mistaken for silent collision events.
-Events **16**, **28**, and **57** — Merquer's cars, fire hydrants, and police cars — are the *interactive
-ambient class* and read as `point · hit-gated`: they are silent at any range until the rider hits that exact
+Events **16**, **28**, and **57** — Merquer's cars, fire hydrants, and police cars — are the _interactive
+ambient class_ and read as `point · hit-gated`: they are silent at any range until the rider hits that exact
 instance during Test, and then sound for the rest of the run [Trailmap: 420-interactive-gate]. The arming
 follows the contact rather than the prop's collision row, which is what makes hydrants work at all — every
 retail hydrant base pairs its spray with the silent collision sentinel, so waiting for an audible impact would
@@ -510,7 +519,7 @@ the appearance readout. This stays in Texture Details without duplicating materi
 ## Materials & textures, in the prop inspector
 
 Texture Details answers "what is the surface under my cursor". The prop inspector's **Materials & textures**
-section answers the other half — what the selected placement's *model* is made of — and is where the material
+section answers the other half — what the selected placement's _model_ is made of — and is where the material
 table is authored. It lists every material the model draws with: its resting tile, how many submeshes and
 triangles wear it, its appearance (opaque / alpha pass, bit-17 priority, any declared scroll), and its flipbook
 state list.
@@ -548,7 +557,7 @@ For a model Slopesmith owns the section is editable:
 `frames[0] === texture` is an invariant on both sides, held by construction rather than by the caller: the
 resolvers re-head the list onto the model's own tile, so re-picking the texture moves frame 0 and a list
 inherited from an older document cannot drift. A list that falls below two entries resolves to no flipbook at
-all, because a state list of one *is* a still image. Renaming or deleting a tile retargets frames alongside
+all, because a state list of one _is_ a still image. Renaming or deleting a tile retargets frames alongside
 `texture` — a dropped frame shortens the list rather than leaving a dead ref, and the delete confirmation
 counts frames toward what it costs.
 
@@ -577,7 +586,7 @@ block then closes with the same three actions in the same order — **🔊 brows
 **▶ play sound**. The fields above stay a description of the sound; the ways to change or hear it sit together
 at the bottom, in the same order in the Impact, Emitters and Play sound blocks alike
 ([026](026-effects-editor.md)). Silent or unresolved records keep their diagnostic filepath without a dead Play
-action. A picked *reference* instance keeps the plain filepath-then-Play pairing: an extracted level's own
+action. A picked _reference_ instance keeps the plain filepath-then-Play pairing: an extracted level's own
 record is the reference, not the work, so there is nothing to browse or load on it.
 
 Both event ids are pickable by ear rather than by number: browse opens the Sound Library in its event mode,

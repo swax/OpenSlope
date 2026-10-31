@@ -31,6 +31,13 @@ import { fetchJson, postJson } from '../net/fetch-json';
 import { registerReferenceTextureRevisions, textureUrl } from '../net/asset-paths';
 import { installStyles } from '../ui/components/styles';
 import { defaultLibrarySource } from '../ui/components/library-default';
+import { librarySizeButton } from '../ui/components/library-dock';
+import { GameMapSelect } from '../ui/components/game-map-select';
+import type { MapSourceChoice } from '../../core/reference/map-game';
+import { isLocalWorkspace } from '../net/workspace';
+import { pinAssetMap } from '../net/asset-versions';
+import { parseAssetVersion } from '../../core/reference/asset-version';
+import { setAssetBackground } from '../net/asset-images';
 import { askName, confirmAction } from '../ui/components/prompts';
 import { contextMenu } from '../ui/components/controls';
 import { toast } from '../ui/components/toast';
@@ -50,7 +57,7 @@ export interface PaletteCallbacks {
   onBrush(brush: Brush, sampled?: boolean): void;
   /** A pick finished (answered or cancelled) — the host reapplies its normal per-mode show/hide rule. */
   onPickEnd?(): void;
-  /** The panel was shown / hidden — re-place overlays that sit above it. */
+  /** The panel's size or visibility changed — re-place overlays that sit above it. */
   onHeightChange?(): void;
   /** The panel's ✕ was pressed — the host hides it and remembers it as closed. */
   onClose?(): void;
@@ -72,9 +79,9 @@ export interface PaletteCallbacks {
 }
 
 const css = `
-.sp-pal { position: fixed; left: 0; right: 0; bottom: 0; height: 250px; overflow: hidden;
+.sp-pal {
   background: #0c141de8; border-top: 1px solid #2c3e50; color: #d7e3f0;
-  font: 12px/1.4 system-ui, sans-serif; z-index: 16; display: none; flex-direction: column; }
+  font: 12px/1.4 system-ui, sans-serif; display: none; }
 .sp-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; flex: 0 0 auto;
   flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
 /* keep each control its natural size (only the spacer flexes) so a too-narrow header scrolls sideways
@@ -130,6 +137,10 @@ export class TextureLibrary {
   private titleEl = document.createElement('span'); // 'Texture Library', or the question while picking
   private cancelBtn = document.createElement('button'); // pick mode's way out, beside the ✕
   private levelSel = document.createElement('select');
+  private sources = new GameMapSelect(this.levelSel, 'Texture library', () => {
+    this.levelChosen = true;
+    void this.loadLevel(this.levelSel.value);
+  });
   private hideUnusedChk = document.createElement('input');
   private filterCap = document.createElement('span');
   private hideStagedChk = document.createElement('input');
@@ -141,6 +152,7 @@ export class TextureLibrary {
   private hideUnused = true; // hide textures the level never uses on terrain (props/skybox); on by default
   private hideStaged = true; // hide tiles already staged in the Palette; on by default (declutter as you build)
   private tex: LevelTextures | null = null;
+  private loadedSource = '';
   private selKey = ''; // highlighted brush key
   private open = false;
   private loadGeneration = 0;
@@ -159,10 +171,6 @@ export class TextureLibrary {
     // the ✕), or the question being asked while a pick owns the panel
     this.titleEl.className = 'sp-title';
     this.titleEl.textContent = 'Texture Library';
-    this.levelSel.onchange = () => {
-      this.levelChosen = true;
-      void this.loadLevel(this.levelSel.value);
-    };
 
     // filter: hide the textures this level never paints on terrain (props / skybox / spares) — on by default
     const filt = document.createElement('label');
@@ -207,7 +215,8 @@ export class TextureLibrary {
     close.onclick = () => {
       if (!this.cancelPick()) this.cb.onClose?.();
     };
-    head.append(this.titleEl, this.levelSel, filt, filt2, grow, this.cancelBtn, close);
+    const size = librarySizeButton(this.el, 'Texture Library', () => this.cb.onHeightChange?.());
+    head.append(this.titleEl, size, ...this.sources.controls, filt, filt2, grow, this.cancelBtn, close);
 
     this.body.className = 'sp-body';
     this.fileInput.type = 'file';
@@ -246,10 +255,10 @@ export class TextureLibrary {
     // First open re-asks for the opening view: boot ordering means the reference was still loading when
     // `init` chose. Once the author has picked a level themselves, their choice stands.
     if (!this.levelChosen && !this.pick) {
-      const has = (key: string) => [...this.levelSel.options].some(option => option.value === key);
-      const levels = [...this.levelSel.options].map(option => option.value).filter(key => key !== CUSTOM_TEX_LEVEL);
+      const has = (key: string) => this.sources.has(key);
+      const levels = this.sources.levels.filter(key => key !== CUSTOM_TEX_LEVEL);
       const prefer = this.preferredSource(has, levels);
-      if (prefer && prefer !== this.levelSel.value) this.levelSel.value = prefer;
+      if (prefer && prefer !== this.levelSel.value) this.sources.select(prefer);
     }
     void this.ensureSelectedLevel();
     this.cb.onHeightChange?.();
@@ -303,9 +312,9 @@ export class TextureLibrary {
   private async revealPickTarget(current: TexRef | null) {
     if (current) {
       const { level } = parseTexRef(current);
-      if (level && level !== this.tex?.level && [...this.levelSel.options].some(o => o.value === level)) {
-        this.levelSel.value = level;
-        await this.loadLevel(level);
+      if (level && this.sources.has(level)) {
+        this.sources.select(level);
+        if (this.levelSel.value !== this.loadedSource) await this.loadLevel(this.levelSel.value);
       }
     }
     this.render();
@@ -313,7 +322,9 @@ export class TextureLibrary {
       this.body.scrollTop = 0;
       return;
     }
-    this.body.querySelector<HTMLElement>(`.sp-tile[data-ref="${current}"]`)?.scrollIntoView({ block: 'center' });
+    this.body
+      .querySelector<HTMLElement>(`.sp-tile[data-asset-ref="${current}"], .sp-tile[data-ref="${current}"]`)
+      ?.scrollIntoView({ block: 'center' });
   }
 
   /** Settle the pick: `ref` answers it (null = the "no texture" cell), no argument cancels it. Either way the
@@ -345,21 +356,21 @@ export class TextureLibrary {
 
   async init(preferredLevel?: string) {
     try {
-      const { levels } = await fetchJson<{ levels: string[] }>('/api/textures');
+      const { levels, maps } = await fetchJson<{ levels: string[]; maps?: MapSourceChoice[] }>('/api/textures');
       this.levelSel.innerHTML = '';
       // the user's own tiles — pinned FIRST, whether or not any exist yet (its body holds the + / ✨ tiles):
       // it is the one bank that is authored rather than extracted, so it should not be hunted for at the
       // bottom of thirty read-only level names
-      const custom = document.createElement('option');
-      custom.value = CUSTOM_TEX_LEVEL;
-      custom.textContent = this.mountainName();
-      this.levelSel.appendChild(custom);
-      for (const l of levels as string[]) {
-        const o = document.createElement('option');
-        o.value = o.textContent = l;
-        this.levelSel.appendChild(o);
-      }
-      const has = (key: string) => [...this.levelSel.options].some(option => option.value === key);
+      this.sources.setMaps([
+        {
+          name: CUSTOM_TEX_LEVEL,
+          game: 'slopesmith',
+          source: isLocalWorkspace() ? 'local' : 'server',
+          label: this.mountainName(),
+        },
+        ...levels.map(name => maps?.find(map => map.name === name) ?? { name }),
+      ]);
+      const has = (key: string) => this.sources.has(key);
       // Count the author's own tiles once so the opening view can prefer them. Cheap: it is the one bank
       // that is authored rather than extracted, so it is short or empty.
       try {
@@ -371,10 +382,10 @@ export class TextureLibrary {
         this.customTiles = 0;
       }
       const prefer = preferredLevel && has(preferredLevel) ? preferredLevel : this.preferredSource(has, levels);
-      this.levelSel.value = prefer;
+      this.sources.select(prefer);
       // Keep the catalogue cheap at boot. The selected level's metadata (and therefore its thumbnail image
       // requests) waits until the library is actually opened.
-      if (this.open) await this.loadLevel(prefer);
+      if (this.open) await this.loadLevel(this.levelSel.value);
     } catch {
       this.loadError = 'Texture catalogue unavailable. Start or reconnect the dev server, then reopen the library.';
       const o = document.createElement('option');
@@ -393,36 +404,38 @@ export class TextureLibrary {
 
   /** Rename only changes the display label; the compatibility pseudo-level and selected source stay put. */
   refreshMountainName(): void {
-    const custom = [...this.levelSel.options].find(option => option.value === CUSTOM_TEX_LEVEL);
-    if (custom) custom.textContent = this.mountainName();
+    this.sources.rename(CUSTOM_TEX_LEVEL, this.mountainName());
   }
 
   private async ensureSelectedLevel() {
     const level = this.levelSel.value;
-    if (!level || level.startsWith('(') || this.tex?.level === level) return;
+    if (!level || level.startsWith('(') || this.loadedSource === level) return;
     await this.loadLevel(level);
   }
 
   private async loadLevel(level: string): Promise<LevelTextures | null> {
     if (!level || level.startsWith('(')) return null;
     const generation = ++this.loadGeneration;
+    const selection = this.levelSel.value;
     try {
       const tex = await fetchJson<LevelTextures>(`/api/textures?level=${encodeURIComponent(level)}`);
-      if (generation !== this.loadGeneration || this.levelSel.value !== level) return null;
+      tex.level = await pinAssetMap(level);
+      if (generation !== this.loadGeneration || this.levelSel.value !== selection) return null;
       if (level !== CUSTOM_TEX_LEVEL) {
         registerReferenceTextureRevisions(
-          level,
+          tex.level,
           Object.fromEntries(tex.tiles.flatMap(tile => (tile.revision ? [[tile.name, tile.revision]] : []))),
         );
       }
       // Keep the opening-view count honest as tiles are added and deleted under it.
       if (level === CUSTOM_TEX_LEVEL) this.customTiles = tex.tiles?.length ?? 0;
       this.tex = tex;
+      this.loadedSource = selection;
       this.loadError = '';
       this.render();
       return tex;
     } catch (error) {
-      if (generation !== this.loadGeneration || this.levelSel.value !== level) return null;
+      if (generation !== this.loadGeneration || this.levelSel.value !== selection) return null;
       this.tex = null;
       this.loadError = `Could not load ${level} textures: ${error instanceof Error ? error.message : String(error)}`;
       this.render();
@@ -437,13 +450,19 @@ export class TextureLibrary {
     const { level, name } = parseTexRef(ref);
     // Bare refs are legacy authored paint. The catalogue selection is available without opening the library,
     // so it remains the backfill source after metadata loading became lazy.
-    const resolvedLevel = level || this.levelSel.value || this.tex?.level || '';
+    let resolvedLevel = level || this.levelSel.value || this.tex?.level || '';
+    const pinned = !!parseAssetVersion(resolvedLevel);
     if (!resolvedLevel) throw new Error(`cannot resolve a source level for ${name}`);
-    if (resolvedLevel !== this.tex?.level && [...this.levelSel.options].some(o => o.value === resolvedLevel)) {
-      this.levelSel.value = resolvedLevel;
+    if (this.sources.has(resolvedLevel)) {
+      this.sources.select(resolvedLevel);
+      if (!pinned) resolvedLevel = this.levelSel.value;
+    }
+    if (resolvedLevel !== this.tex?.level && (pinned || this.sources.has(resolvedLevel))) {
       if (!(await this.loadLevel(resolvedLevel)))
         throw new Error(this.loadError || `could not load ${resolvedLevel} textures`);
     }
+    resolvedLevel = await pinAssetMap(resolvedLevel);
+    if (pinned) this.sources.select(resolvedLevel);
     const fullRef = makeTexRef(resolvedLevel, name);
     this.selKey = `tile:${fullRef}`;
     const picked = this.tex?.tiles.find(t => t.name === name);
@@ -457,7 +476,9 @@ export class TextureLibrary {
       this.hideStagedChk.checked = false;
     }
     this.render();
-    const sw = this.body.querySelector<HTMLElement>(`.sp-tile[data-ref="${fullRef}"]`);
+    const sw = this.body.querySelector<HTMLElement>(
+      `.sp-tile[data-asset-ref="${fullRef}"], .sp-tile[data-ref="${fullRef}"]`,
+    );
     sw?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     this.emitTile(fullRef, surfaceHint ?? DEFAULT_SURFACE, rot, mirror, true); // sampling keeps ride feel + orientation
     return sw ? `picked ${name}` : `picked ${name} (not a texture in ${this.tex?.level ?? 'this level'})`;
@@ -474,7 +495,7 @@ export class TextureLibrary {
     if (key === this.selKey) return;
     this.selKey = key;
     for (const el of Array.from(this.body.querySelectorAll<HTMLElement>('.sp-tile')))
-      el.classList.toggle('sel', !!ref && el.dataset.ref === ref);
+      el.classList.toggle('sel', !!ref && (el.dataset.assetRef ?? el.dataset.ref) === ref);
   }
 
   private select(key: string) {
@@ -547,9 +568,10 @@ export class TextureLibrary {
     const ref = makeTexRef(this.tex!.level, t.name);
     const sw = document.createElement('div');
     sw.className = 'sp-tile';
-    sw.dataset.ref = ref;
+    sw.dataset.ref = makeTexRef(this.loadedSource || this.tex!.level, t.name);
+    sw.dataset.assetRef = ref;
     if (this.selKey === `tile:${ref}`) sw.classList.add('sel');
-    sw.style.backgroundImage = `url(${textureUrl(this.tex!.level, t.name)})`;
+    setAssetBackground(sw, textureUrl(this.tex!.level, t.name));
     const label = t.name.replace(/\.png$/i, '');
     tooltip(
       sw,
@@ -854,7 +876,7 @@ export class TextureLibrary {
   /** Reveal a newly stored Custom tile and make it the brush — the shared tail of both routes into the
    *  library, the + file picker and the ✨ generator. */
   private async adoptCustomTexture(name: string) {
-    this.levelSel.value = CUSTOM_TEX_LEVEL;
+    this.sources.select(CUSTOM_TEX_LEVEL);
     await this.loadLevel(CUSTOM_TEX_LEVEL);
     const ref = makeTexRef(CUSTOM_TEX_LEVEL, name);
     this.cb.onTextureRevision?.(ref);

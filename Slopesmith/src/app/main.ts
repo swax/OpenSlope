@@ -107,6 +107,7 @@ import { currentAccount, onAccountChanged, type Member } from './net/account';
 import { preferredAvatar } from './net/avatar-preference';
 import { avatarId } from '../core/characters/builtins';
 import { isLocalWorkspace } from './net/workspace';
+import { pinDocumentAssets } from './net/asset-versions';
 import { MAPS_PATH, localEditorUrl, mapPath } from './navigation';
 import { listLocalProjects } from './state/local-projects';
 import { createRegisterSync } from './net/register-sync';
@@ -588,17 +589,21 @@ function retargetDocTex(from: string, to: string | null): void {
 }
 
 // The bottom Prop Library panel (class PropLibrary): a reference world's placeable models, click to arm.
+let propMapSources: import('../core/reference/map-game').MapSourceChoice[] = [];
 const propLib = new PropLibrary({
   async levels() {
     // This mountain first, then reference levels from the configured Maps library (docs/012).
     let server: string[] = [];
     try {
-      server = (await fetchJson<{ levels?: string[] }>('/api/props')).levels ?? [];
+      const catalogue = await fetchJson<{ levels?: string[]; maps?: typeof propMapSources }>('/api/props');
+      server = catalogue.levels ?? [];
+      propMapSources = catalogue.maps ?? [];
     } catch {
       /* dev server down — the authored mountain still works */
     }
     return [AUTHORED_MODEL_LEVEL, ...server];
   },
+  maps: () => propMapSources,
   loadLevel: level => propOps.ensurePropLevel(level), // shares the propLevels cache + registers geometry
   // the two pseudo-levels are authored/imported geometry, not a shipped level with placements to mine
   groups: level =>
@@ -1466,6 +1471,7 @@ const {
 // selected knot lives in the host store.
 let syncSceneSkyPreview = () => {};
 let syncGodRayPreview = () => {};
+let referenceTitle = () => viewport.refLevelName;
 const {
   sunFolder,
   godRayFolder,
@@ -1511,7 +1517,7 @@ const {
       return [
         { id: 'world', label: 'World', origin: [0, 0, 0] as [number, number, number] },
         ...(own ? [{ id: 'authored', label: `${activeDoc().name} centre`, origin: own }] : []),
-        ...(ref ? [{ id: 'reference', label: `Reference: ${viewport.refLevelName} centre`, origin: ref }] : []),
+        ...(ref ? [{ id: 'reference', label: `Reference: ${referenceTitle()} centre`, origin: ref }] : []),
       ];
     },
   },
@@ -1534,7 +1540,7 @@ const {
   showOwnBox: on => viewport.showOwnBox(on),
   showRefBox: on => viewport.showRefBox(on),
   hasReference: () => reference.hasReference(),
-  getReferenceName: () => viewport.refLevelName,
+  getReferenceName: () => referenceTitle(),
   getCourseVisible: () => store.courseGuideOn,
   setCourseVisible: on => {
     store.courseGuideOn = on;
@@ -1729,6 +1735,7 @@ const reference = createReference({
   },
   onReferenceChanged: level => session.reference(level),
 });
+referenceTitle = () => (reference.hasReference() ? reference.getRefDisplayName() : '');
 const {
   initReference,
   initSunLight,
@@ -2494,7 +2501,7 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     setMode,
     getMountainName: () => (projectSync.current() ? store.mdoc.name : ''),
     getProjectId: () => projectSync.current()?.id ?? null,
-    getReferenceName: () => reference.getRefLevel(),
+    getReferenceName: () => reference.getRefDisplayName(),
     usersActive: () => usersMode.active(),
     toggleUsers: () => {
       usersMode.setActive(!usersMode.active());
@@ -3321,6 +3328,7 @@ function refreshSyncedDocumentUi() {
 }
 
 async function loadMountain() {
+  await pinDocumentAssets(store.mdoc);
   surfaceEdits.reset();
   syncDocumentPending = false;
   syncUiBeforeDoc = null;

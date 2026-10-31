@@ -18,9 +18,18 @@ ref plus an optional D4 orientation.
 ## The Asset Library — one flat list of textures
 
 The **Asset Library** (bottom panel) lists a level's real texture files in **one flat list**, no
-grouping. A patch's `SurfaceType` is *physics* (ride feel), not the look, so grouping the look by it is
+grouping. A patch's `SurfaceType` is _physics_ (ride feel), not the look, so grouping the look by it is
 meaningless — tiles are just listed, most-used-on-terrain first, with the prop/skybox tiles (never
 used on terrain) trailing.
+
+Choose **Source → Game → Map** to browse a bank on **Local** (this device) or **Server**. Each source/game
+remembers the last map selected while the library is open. The mountain's own textures live under
+**Custom / Authored**; unidentified legacy sources
+live under **Unknown**. Sampling or opening a texture picker switches all selectors to the tile's source.
+The selected texture's details show its source, game and map, using the same catalogue names.
+Local/Server is the loading preference for a selected bank. Matching copies share a saved content version;
+if the preferred copy is unavailable, the loader can use the other matching copy. Different bank contents
+remain separate versions, shown in the details. See [asset versions](036-authored-map-references.md#prop-and-texture-versions).
 
 - `server/routes/textures.ts` `deriveLevelTextures(level)` → `{ level, tiles }`, served at
   `/api/textures?level=…`. `tiles` is every PNG in `Textures/` as `TexTile { name, count }`, sorted
@@ -122,7 +131,7 @@ target, the destructive action must take the deliberate gesture, or aiming at th
 tiles are focusable so the keyboard Menu key raises the same popup.
 
 The stored ≤512 edge is the **editor's** budget, not the console's. Custom pages default to the proven
-type-5 32-bit path (4× a native paletted page's VRAM), and it is their *aggregate* that corrupts in-game
+type-5 32-bit path (4× a native paletted page's VRAM), and it is their _aggregate_ that corrupts in-game
 past roughly half a megabyte, not any single page. The export dialog therefore shows a VRAM bar plus
 independent **cap custom tiles at 128²** and **8-bit custom tiles (type 2)** checkboxes. The latter mirrors
 GARI's original indexed page layout and quarters the estimated pixel cost, but remains opt-in pending an
@@ -199,7 +208,7 @@ patch's `A(0,0)` corner. A tile's D4 orientation only means anything **relative 
 axes** — the editor never infers a "true" down-mountain direction from the data, but it does read a tile's
 D4 **relative to the patch it sits on**: sampling captures it (above), the F overlay shows it (pink
 art-F against green frame-F), and the Palette's selected-texture readout spells it out in degrees — the
-*brush's own* quarter-turn, so the frame the number is relative to is always explicit. Original
+_brush's own_ quarter-turn, so the frame the number is relative to is always explicit. Original
 patches don't even agree on the sign of `u` between neighbours — their UVs usually compensate, so the
 render is seamless. On the authored mountain the grid is uniform by construction — the bake lays every
 cell with `+u` down the rows toward the finish (`level.ts`, `quiltPatches`) — so a Palette cell's D4
@@ -319,12 +328,12 @@ The comparison is **not pixel-exact**, and it flags on the **worst segment, not 
 edge's outer line is averaged into a few coarse segments (`extractEdges` → `bucketize`, `EDGE_BUCKETS`),
 then `edgeDiff` returns the largest per-segment colour difference. So:
 
-- Per-pixel *grain* misalignment between two "same snow" edges doesn't read as a seam — averaging within
+- Per-pixel _grain_ misalignment between two "same snow" edges doesn't read as a seam — averaging within
   each segment washes it out (a raw 1:1 pixel comparison flagged a reference tile `0075`'s left/right at 0.19 despite
   identical average colour; the bucketed compare drops it to ~0.05).
 - A **partial** mismatch still flags — edges that agree at one end but step apart at the other (e.g.
   `0110` over `0025`@90°: blue matches, then `0025` turns white) score by their worst segment (~0.30),
-  where a whole-edge *average* would have diluted it (~0.13) below the line and missed it.
+  where a whole-edge _average_ would have diluted it (~0.13) below the line and missed it.
 
 `drawSeams` paints the markers on a `<canvas>` over the grid; the threshold is `SEAM_THRESH` (0.20). A
 self-tiling texture placed next to itself reads as aligned; two unrelated tiles, or a non-tiling texture

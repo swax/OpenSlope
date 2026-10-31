@@ -1,3 +1,6 @@
+import { safeDataName } from '../core/export/names';
+import { serverMapName } from '../core/reference/map-source';
+
 /** Shared reader for server files and browser-local ISO extractions. Paths are logical map paths. */
 export interface MapDataSource {
   root: string;
@@ -11,7 +14,7 @@ export interface MapDataSource {
 export const READ_CONCURRENCY = 8;
 export const joinMapPath = (...parts: string[]) => parts.filter(Boolean).join('/');
 export const mapBasename = (path: string) => path.replace(/\\/g, '/').split('/').at(-1) ?? '';
-export { safeDataName as safeMapName } from '../core/export/names';
+export const safeMapName = (id: string): string => safeDataName(serverMapName(id));
 export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const result: R[] = new Array(items.length);
   let next = 0;

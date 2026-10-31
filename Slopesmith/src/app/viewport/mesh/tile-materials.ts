@@ -1,3 +1,4 @@
+import { loadAssetTexture } from '../../net/asset-images';
 import * as THREE from 'three';
 import { renderLoadingManager } from '../render-assets';
 import { CUSTOM_TEX_LEVEL, parseTexRef, type TexRef } from '../../../core/paint/textures';
@@ -50,7 +51,8 @@ export function createTileMaterials(onLoaded: () => void) {
     if (!texPending.has(ref)) {
       const generation = projectGeneration;
       texPending.add(ref);
-      texLoader.load(
+      loadAssetTexture(
+        texLoader,
         textureRefUrl(ref),
         tex => {
           if (

@@ -41,6 +41,7 @@ import {
   type MapOriginSummary,
 } from '../core/export/origin';
 import { SLOPESMITH_EXPORT_MANIFEST, isSlopesmithExportManifest } from '../core/export/manifest';
+import { normalizeMapDisplayName, normalizeMapGame } from '../core/reference/map-game';
 
 /**
  * Serve extracted-level terrain to the editor's reference layer. Reads Maps/<name>/Patches.json
@@ -72,32 +73,47 @@ export async function listLevels(io: MapDataSource): Promise<string[]> {
  * Never throws. A folder that cannot be read at all reads as retail, which is the conservative direction.
  */
 export async function readLevelOrigin(io: MapDataSource, name: string): Promise<MapOriginRecord> {
+  return (await readLevelSource(io, name)).origin;
+}
+
+async function readLevelSource(
+  io: MapDataSource,
+  name: string,
+): Promise<{ origin: MapOriginRecord; displayName?: string }> {
   const safe = safeDataName(name);
   const dir = join(io.root, safe);
-  const stated = normalizeMapOrigin(await io.readJsonOr<unknown>(join(dir, MAP_ORIGIN_FILE), null));
-  if (stated) return stated;
+  const [raw, imported] = await Promise.all([
+    io.readJsonOr<unknown>(join(dir, MAP_ORIGIN_FILE), null),
+    io.readJsonOr<{ Game?: unknown; DisplayName?: unknown } | null>(join(dir, 'Import.json'), null),
+  ]);
+  const stated = normalizeMapOrigin(raw);
+  const game = stated?.Game ?? normalizeMapGame(imported?.Game);
+  const displayName = normalizeMapDisplayName(imported?.DisplayName);
+  const source = (origin: MapOriginRecord) => ({ origin, ...(displayName ? { displayName } : {}) });
+  if (stated) return source({ ...stated, ...(game ? { Game: game } : {}) });
 
   const manifest = await io.readJsonOr<unknown>(join(dir, SLOPESMITH_EXPORT_MANIFEST), null);
-  if (!isSlopesmithExportManifest(manifest)) return UNMARKED_ORIGIN;
+  if (!isSlopesmithExportManifest(manifest)) return source({ ...UNMARKED_ORIGIN, ...(game ? { Game: game } : {}) });
   const provenance = manifest.provenance;
   const reasons = (provenance?.reasons ?? []).filter(reason => reason.startsWith('retail-'));
   // `retailDerived` absent is the legacy case, not a denial: the guard that computes it postdates these
   // folders, so there is no evidence either way and the conservative reading stands.
   const retailData = provenance ? provenance.retailDerived : true;
-  return {
+  return source({
     Schema: MAP_ORIGIN_SCHEMA,
     Origin: 'slopesmith',
     RetailData: retailData,
     Reasons: retailData ? (reasons.length ? reasons : [UNCLASSIFIED_EXPORT_REASON]) : [],
-  };
+  });
 }
 
-/** Every level folder with the origin summary the reference picker lists it by. One read per folder, so it
- *  rides the same concurrency limit the presence scan above uses. */
-export async function listLevelOrigins(io: MapDataSource): Promise<MapOriginSummary[]> {
-  const names = await listLevels(io);
-  const origins = await mapLimit(names, READ_CONCURRENCY, name => readLevelOrigin(io, name));
-  return names.map((name, index) => originSummary(name, origins[index]));
+/** Source summaries for the reference picker or an asset catalogue, with bounded concurrent metadata reads. */
+export async function listLevelOrigins(io: MapDataSource, selected?: readonly string[]): Promise<MapOriginSummary[]> {
+  const names = selected ?? (await listLevels(io));
+  return mapLimit(names, READ_CONCURRENCY, async name => {
+    const { origin, displayName } = await readLevelSource(io, name);
+    return { ...originSummary(name, origin), ...(displayName ? { displayName } : {}) };
+  });
 }
 
 /** Read a level's Patches.json, trimmed to what the reference renderer needs (points + surface). */

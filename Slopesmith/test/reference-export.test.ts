@@ -165,6 +165,17 @@ try {
     'the manifest resolves a missing staged page through the level it came from',
   );
   check(
+    (await readReferenceTextureBytes('server:AUTHORED_REF', 'DONOR_0012.png')).equals(png),
+    'an explicit server reference retains its texture donor during export',
+  );
+  let localCopyBlocked = false;
+  try {
+    await readReferenceTextureBytes('local:AUTHORED_REF', 'DONOR_0012.png');
+  } catch {
+    localCopyBlocked = true;
+  }
+  check(localCopyBlocked, 'server export never substitutes a server map for an explicit local copy');
+  check(
     (await readReferenceTextureBytes('AUTHORED_REF', 'Custom/candy.png')).equals(png),
     'a qualified texture resolves through the receiver reference library',
   );

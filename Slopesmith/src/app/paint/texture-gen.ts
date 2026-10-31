@@ -1,3 +1,4 @@
+import { setImageAsset } from '../net/asset-images';
 import {
   FAL_GENERATION_HEADER,
   FAL_INPAINT_MODELS,
@@ -790,7 +791,7 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
         const img = new Image();
         img.onload = () => ok(img);
         img.onerror = () => err(new Error(`could not load ${ref}`));
-        img.src = textureRefUrl(ref);
+        setImageAsset(img, textureRefUrl(ref));
       });
       texImgs.set(ref, p);
     }

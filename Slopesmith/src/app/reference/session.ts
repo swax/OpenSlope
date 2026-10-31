@@ -49,7 +49,6 @@ import { clearGui, note, tip } from '../ui/components/gui';
 import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
 import {
-  RETAIL_EXTRACT_REASON,
   UNCLASSIFIED_EXPORT_REASON,
   UNIDENTIFIED_FOLDER_REASON,
   type MapOriginSummary as ReferenceMapSummary,
@@ -70,6 +69,9 @@ import type { LoadStatus } from '../ui/components/load-status';
 import { godRaysForSkyWorld, type SkyPreviewTarget } from '../sky/preview';
 import { registerReferenceTextureRevisions } from '../net/asset-paths';
 import type { PropLoadOptions } from '../props/level-loader';
+import { GameMapSelect } from '../ui/components/game-map-select';
+import { mapDisplayName, mapGame, mapGameLabel } from '../../core/reference/map-game';
+import { findMapChoice } from '../../core/reference/map-source';
 import { referencePropBuildStatus, referencePropLoadStatus } from './prop-progress';
 
 /**
@@ -230,6 +232,8 @@ export function createReference(deps: ReferenceDeps) {
   let refMesh: ReferenceMesh | null = null; // the loaded reference (kept for the lighting study)
   let refGeneration = 0; // changes as soon as a new reference load starts
   let refLoadStatusToken: number | null = null;
+  let refPickerLoading = false;
+  let updateRefPickerLoad = () => {};
   let refOwner: ReferenceOwner | null = null; // binds level + mesh + patches to one completed load
   let refLightingIntent: LitView = 'lightmap'; // desired study view, even while its data is still loading
   let refLightmapStatus: 'idle' | 'loading' | 'ready' | 'missing' | 'placeholder' | 'error' = 'idle';
@@ -268,7 +272,7 @@ export function createReference(deps: ReferenceDeps) {
   function refreshMountainName(): void {
     const mountainName = store.mdoc.name.trim() || 'Mountain';
     if (referenceNote)
-      referenceNote.textContent = `Choose a read-only mountain to compare with ${mountainName}. It does not change ${mountainName}.`;
+      referenceNote.textContent = `Choose Source, Game and Map, then press Load reference to compare with ${mountainName}. It does not change ${mountainName}.`;
     if (selectedReferenceLight || selectedMountainLight) rebuildSelectedReferenceLightDetails();
   }
 
@@ -341,10 +345,8 @@ export function createReference(deps: ReferenceDeps) {
     x.addEventListener('click', e => {
       e.stopPropagation();
       const neutral = opts.find(o => o.startsWith('(')) ?? opts[0]; // back to "(none)" (clears via the dropdown's onChange path too)
-      if (refState.level !== neutral) {
-        refState.level = neutral;
-        ctl.updateDisplay();
-      }
+      refState.level = neutral;
+      ctl.updateDisplay();
       clearReference();
     });
     ctl.$widget.appendChild(x);
@@ -359,12 +361,8 @@ export function createReference(deps: ReferenceDeps) {
     if (!map) return '(not in the library listing — reload to refresh)';
     if (map.origin === 'retail') {
       if (map.reasons.includes(UNIDENTIFIED_FOLDER_REASON)) return 'unidentified folder · read as retail';
-      if (map.course?.startsWith('SSXOT_')) return `SSX On Tour extract · ${map.course.slice('SSXOT_'.length)}`;
-      if (map.course?.startsWith('SSX3_')) return `SSX 3 extract · ${map.course.slice('SSX3_'.length)}`;
-      if (map.course) return `SSX Tricky extract · ${map.course}`;
-      return map.reasons.length === 1 && map.reasons[0] === RETAIL_EXTRACT_REASON
-        ? 'SSX Tricky extract'
-        : 'retail folder';
+      const game = mapGame(map);
+      return `${game === 'unknown' ? 'Unknown source' : mapGameLabel(game)} extract${map.course ? ` · ${map.course}` : ''}`;
     }
     if (!map.retailData) return 'authored in Slopesmith · no retail data';
     if (map.reasons.includes(UNCLASSIFIED_EXPORT_REASON)) return 'authored in Slopesmith · unclassified legacy export';
@@ -522,13 +520,11 @@ export function createReference(deps: ReferenceDeps) {
 
   async function initReference({ restore = true }: { restore?: boolean } = {}) {
     let opts: string[] = ['(dev server only)'];
-    let localLevels = new Set<string>();
     try {
       const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[]; localLevels?: string[] }>(
         '/api/levels',
       );
       mapOrigins = new Map((answer.maps ?? []).map(map => [map.name, map]));
-      localLevels = new Set(answer.localLevels ?? []);
       const levels = answer.levels;
       if (levels && levels.length) opts = ['(none)', ...levels]; // a neutral "nothing loaded" entry to sit on / clear back to
     } catch {
@@ -536,30 +532,70 @@ export function createReference(deps: ReferenceDeps) {
     }
     // re-load the reference that was open last session (if its level is still available)
     const storedRef = loadStored<StoredRef>(REF_KEY);
-    const restoreRef = restore && storedRef && opts.includes(storedRef.level) ? storedRef : null;
+    const restoredMap = storedRef && findMapChoice([...mapOrigins.values()], storedRef.level);
+    const restoreRef =
+      restore && storedRef && (restoredMap || opts.includes(storedRef.level))
+        ? { ...storedRef, level: restoredMap?.name ?? storedRef.level }
+        : null;
     refState.level = restoreRef ? restoreRef.level : opts[0]; // fresh session sits on the neutral "(none)" entry
     clearGui(refFolder);
     clearGui(refCourseFolder);
     referenceNote = note(refFolder, '');
     refreshMountainName();
-    // Picking a level loads it immediately (no load button); the neutral "(none)" entry clears it.
-    const choices = Object.fromEntries(
-      opts.map(level => [
-        level.startsWith('(') ? level : `${level} — ${localLevels.has(level) ? 'Local ISO' : 'Server'}`,
-        level,
-      ]),
+    // Combo changes only prepare a choice. The active reference changes on Load or the explicit clear action.
+    neutralLevel = opts.find(entry => entry.startsWith('(')) ?? '(none)';
+    const picker = new GameMapSelect(
+      document.createElement('select'),
+      'Reference',
+      () => updateRefPickerLoad(),
+      neutralLevel,
     );
-    const combo = refFolder
-      .add(refState, 'level', choices)
-      .name('mountain')
-      .onChange((name: string) => {
-        if (name && !name.startsWith('(')) void loadReference();
-        else clearReference();
-      });
-    levelCtl = combo;
-    neutralLevel = opts.find(entry => entry.startsWith('(')) ?? opts[0];
-    tip(combo, 'Pick a level to load it straight away; “(none)” or the ✕ clears it.');
-    addRefClearButton(combo, opts); // an ✕ next to the combo to clear the loaded reference
+    picker.setMaps(
+      opts.filter(name => !name.startsWith('(')).map(name => mapOrigins.get(name) ?? { name }),
+      refState.level,
+    );
+    const rows = picker.controls.map(control => {
+      const row = document.createElement('div');
+      row.className = 'lil-controller sp-gui-custom';
+      row.hidden = control.hidden;
+      if (control.hidden) row.style.display = 'none';
+      control.style.width = '100%';
+      row.appendChild(control);
+      refFolder.$children.appendChild(row);
+      return row;
+    });
+    const loadButton = document.createElement('button');
+    loadButton.type = 'button';
+    loadButton.className = 'sp-btn';
+    loadButton.textContent = 'Load reference';
+    loadButton.style.width = '100%';
+    loadButton.onclick = () => {
+      const chosen = picker.mapSelect.value;
+      if (!chosen || chosen.startsWith('(') || refPickerLoading) return;
+      refState.level = chosen;
+      void loadReference();
+    };
+    const loadRow = document.createElement('div');
+    loadRow.className = 'lil-controller sp-gui-custom';
+    loadRow.appendChild(loadButton);
+    refFolder.$children.appendChild(loadRow);
+    updateRefPickerLoad = () => {
+      const chosen = picker.mapSelect.value;
+      loadButton.disabled = refPickerLoading || !chosen || chosen.startsWith('(');
+    };
+    updateRefPickerLoad();
+    levelCtl = {
+      updateDisplay: () => {
+        const available = picker.has(refState.level);
+        picker.select(refState.level);
+        if (available) refState.level = picker.mapSelect.value;
+        updateRefPickerLoad();
+      },
+    };
+    addRefClearButton(
+      { domElement: rows[2], $widget: picker.controls[2], updateDisplay: levelCtl.updateDisplay },
+      opts,
+    );
     buildOriginRow();
     buildCostRows();
     refInfoCtl = tip(
@@ -612,6 +648,8 @@ export function createReference(deps: ReferenceDeps) {
 
   function clearReference() {
     refGeneration++;
+    refPickerLoading = false;
+    updateRefPickerLoad();
     refDocument = null;
     if (refLoadStatusToken !== null) {
       loadStatus.cancel(refLoadStatusToken);
@@ -1157,8 +1195,10 @@ export function createReference(deps: ReferenceDeps) {
     const name = refState.level;
     if (!name || name.startsWith('(')) return;
     const generation = ++refGeneration;
+    refPickerLoading = true;
+    updateRefPickerLoad();
     const statusToken = loadStatus.begin({
-      title: `Loading ${name}`,
+      title: `Loading ${mapDisplayName(mapOrigins.get(name) ?? { name })}`,
       label: 'Downloading reference terrain',
       detail: 'Waiting for the extracted mountain data',
       progress: 5,
@@ -1363,6 +1403,10 @@ export function createReference(deps: ReferenceDeps) {
       await loadStatus.fail(statusToken, message);
     } finally {
       if (refLoadStatusToken === statusToken) refLoadStatusToken = null;
+      if (refGeneration === generation) {
+        refPickerLoading = false;
+        updateRefPickerLoad();
+      }
     }
   }
 
@@ -2344,6 +2388,7 @@ export function createReference(deps: ReferenceDeps) {
     getRefCourse: () => refCourse,
     getRefLaps: () => refLaps,
     getRefLevel: () => refState.level,
+    getRefDisplayName: () => refDocument ?? mapDisplayName(mapOrigins.get(refState.level) ?? { name: refState.level }),
     /** What the slot is showing when it holds a checkpoint rather than an extracted level (docs/040). */
     getRefDocument: () => refDocument,
   };

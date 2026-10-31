@@ -45,6 +45,7 @@ import { dropScreensForProp } from './screens';
 import { toast } from '../ui/components/toast';
 import { fetchJson, postJson } from '../net/fetch-json';
 import { createPropLevelLoader, type PropLoadOptions } from './level-loader';
+import { pinAssetMap, pinDocumentAssets } from '../net/asset-versions';
 
 /**
  * Placed-prop ops (docs/012 + 015): the prop domain around a placement — the model geometry caches (base
@@ -388,6 +389,7 @@ export function createPropOps(deps: PropOpsDeps) {
    *  uses the retry; progressive loading waits before rendering, while sync redraws only for new assets.
    *  Authored models are already refreshed by renderMountainObjects, including on the first load. */
   async function syncPropGeom(rebuild = true): Promise<boolean> {
+    await pinDocumentAssets(store.mdoc);
     const modelProps = (store.mdoc.props ?? []).filter(p => !isEffectTriggerProp(p));
     const levels = new Set(modelProps.map(p => p.level));
     const defLevels = new Set(modelProps.filter(p => p.group).map(p => p.level));
@@ -603,6 +605,7 @@ export function createPropOps(deps: PropOpsDeps) {
   async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
     const request = isReplacingProp() ? replacement : null;
     try {
+      level = await pinAssetMap(level);
       await ensurePropLevel(level);
     } catch (e) {
       toast(`props load failed: ${e}`, 'err');
@@ -686,6 +689,7 @@ export function createPropOps(deps: PropOpsDeps) {
     const request = isReplacingProp() ? replacement : null;
     let def: GroupDef | undefined;
     try {
+      level = await pinAssetMap(level);
       await ensurePropLevel(level); // members render from the same level payload
       def = (await ensureGroupDefs(level)).find(d => d.id === id);
     } catch (e) {

@@ -72,6 +72,7 @@ export function createPropLevelLoader(deps: {
         await options.afterPaint?.();
         const payload = runDiagnosticPhase('props', `${level}:decode-json`, () => JSON.parse(text) as PropsPayload);
         if (payload.error) throw new Error(payload.error);
+        payload.level = level;
         const detail = `${payload.models.length} models · ${payload.instances.length} instances`;
         const props = runDiagnosticPhase('props', `${level}:decode`, () => decodeProps(payload), detail);
         const counts = { models: props.models.length, instances: props.instances.length };

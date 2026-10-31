@@ -503,7 +503,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       toolHelp.innerHTML = helpPanel('Prop Library', [
         ['click', 'pick a prop'],
         ['search', 'filter by name'],
-        ['level', 'choose a world'],
+        ['Game → Map', 'choose a source'],
       ]);
     } else {
       toolHelp.innerHTML = '';

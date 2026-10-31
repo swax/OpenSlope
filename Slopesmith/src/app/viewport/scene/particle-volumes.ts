@@ -1,3 +1,4 @@
+import { loadAssetTexture } from '../../net/asset-images';
 import * as THREE from 'three';
 import { textureRefUrl, resolveAssetUrl } from '../../net/asset-paths';
 import { renderLoadingManager } from '../render-assets';
@@ -52,7 +53,7 @@ export function createParticleVolumesLayer(stage: Stage) {
     const url = ref ? textureRefUrl(ref) : resolveAssetUrl('/api/particle-texture?name=fog0.png');
     let texture = textures.get(url);
     if (!texture) {
-      texture = new THREE.TextureLoader(renderLoadingManager).load(url, loaded => {
+      texture = loadAssetTexture(new THREE.TextureLoader(renderLoadingManager), url, loaded => {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.needsUpdate = true;
       });

@@ -9,7 +9,7 @@ import { installStyles } from './styles';
 import { tooltip } from './tooltip';
 
 const css = `
-.sp-docktab { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 17;
+.sp-docktab { position: fixed; left: calc((100% - var(--side-w, 300px) - 8px) / 2); bottom: 0; transform: translateX(-50%); z-index: 17;
   display: none; align-items: center; gap: 6px; padding: 5px 14px 6px;
   background: #0c141de8; border: 1px solid #2c3e50; border-bottom: 0; border-radius: 8px 8px 0 0;
   color: #9fb3c8; font: 600 12px system-ui, sans-serif; white-space: nowrap; cursor: pointer;
@@ -19,6 +19,9 @@ const css = `
 .sp-docktab svg { width: 13px; height: 13px; }
 /* The caret points toward the next action: up to open, down to collapse. */
 .sp-docktab-caret { color: #6ee7a8; font-size: 9px; line-height: 1; }
+@media (max-width: 760px), (max-height: 500px) {
+  .sp-docktab { left: 50%; z-index: 22; }
+}
 `;
 
 export interface DockTabOptions {

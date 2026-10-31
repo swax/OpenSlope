@@ -1,3 +1,4 @@
+import { serverMapName } from '../../core/reference/map-source';
 import { join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
 import { isDirectory, listDir, listEntries, listSubdirectories, readBytesOrNull, readJsonOr } from '../fs-async';
@@ -8,7 +9,7 @@ import { safeDataName } from './safe-name';
 
 /** Read the user-generated map sidecar Snowknife wrote from this map's source disc. */
 export async function readSoundIndex(level: string): Promise<CollisionSoundIndex | null> {
-  const safeLevel = safeDataName(level);
+  const safeLevel = safeDataName(serverMapName(level));
   if (!safeLevel) return null;
   const index = await readJsonOr<CollisionSoundIndex | null>(
     join(mapsRoot(), safeLevel, 'Audio', 'SoundIndex.json'),
@@ -19,7 +20,7 @@ export async function readSoundIndex(level: string): Promise<CollisionSoundIndex
 
 /** Read the explicit map-local off-board environment bed. Missing/old folders have no implicit fallback. */
 export async function readEnvironmentAudio(level: string): Promise<EnvironmentAudioDocument | null> {
-  const safeLevel = safeDataName(level);
+  const safeLevel = safeDataName(serverMapName(level));
   if (!safeLevel) return null;
   const document = await readJsonOr<EnvironmentAudioDocument | null>(
     join(mapsRoot(), safeLevel, 'Audio', 'Environment.json'),
@@ -31,7 +32,7 @@ export async function readEnvironmentAudio(level: string): Promise<EnvironmentAu
 /** Read the disc-global board surface routes generated beside the shared zboard bank. */
 export async function readBoardSoundIndex(level?: string): Promise<BoardSoundIndex | null> {
   if (level) {
-    const safe = safeDataName(level);
+    const safe = safeDataName(serverMapName(level));
     if (!safe || safe !== level) return null;
     const local = await readJsonOr<BoardSoundIndex | null>(
       join(mapsRoot(), safe, 'Audio', 'BoardSoundIndex.json'),
@@ -55,7 +56,7 @@ export async function readBoardSoundIndex(level?: string): Promise<BoardSoundInd
 }
 
 async function soundRequest(level: string, slot: number, loop = false) {
-  const safeLevel = safeDataName(level);
+  const safeLevel = safeDataName(serverMapName(level));
   const safeSlot = Math.trunc(slot);
   if (!safeLevel || safeSlot < 0 || safeSlot > 999) throw new Error(`invalid effect sound ${level}/${slot}`);
   const root = join(mapsRoot(), safeLevel, 'Audio', 'SFX');
@@ -134,7 +135,7 @@ function bankKind(courseBank: string | null, name: string): SoundBankKind {
  * Library. Course bank first (the slots a MainType-8 PlaySound node indexes), then crowd, board, and the
  * named global banks alphabetically. */
 export async function listSoundBanks(level: string): Promise<SoundBankListing[]> {
-  const safeLevel = safeDataName(level);
+  const safeLevel = safeDataName(serverMapName(level));
   const root = safeLevel ? join(mapsRoot(), safeLevel, 'Audio', 'SFX') : '';
   if (!root || !(await isDirectory(root))) return [];
   const courseBank = (await readSoundIndex(safeLevel))?.Banks['2'] ?? null;
@@ -178,7 +179,8 @@ async function boardSoundSources(
 ): Promise<{ level: string; dir: string; bank: string }[]> {
   const wanted = bank.trim().toLowerCase();
   if (!BOARD_BANKS.has(wanted)) return [];
-  if (level && (!safeDataName(level) || safeDataName(level) !== level)) return [];
+  if (level && (!safeDataName(serverMapName(level)) || safeDataName(serverMapName(level)) !== serverMapName(level)))
+    return [];
   const fallback = level && (await readSoundIndex(level))?.RidingFallback === 'ssx-tricky';
   const candidates = level ? [level] : (await listDir(mapsRoot())).sort();
   if (fallback) {

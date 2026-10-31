@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { serverAssetVersionLocations } from '../core/reference/asset-version';
+import { safeDataName as assetTableKey } from '../core/export/names';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../core/effects/document';
 import { readMapEffectsDocument as readEffectsDocument } from './map-effects';
 import { isOnTourCourseHelper, prepareOnTourCourseHelpers } from '../core/props/course-helpers';
@@ -531,7 +533,12 @@ async function readLevelMaterials(io: MapDataSource, level: string): Promise<Ssx
 export async function readMaterialTables(io: MapDataSource): Promise<ReadonlyMap<string, readonly SsxMaterial[]>> {
   const levels = [...new Set([...(await levelsWithProps(io)), CUSTOM_TEX_LEVEL].map(safeDataName))];
   const tables = await mapLimit(levels, READ_CONCURRENCY, level => readLevelMaterials(io, level));
-  return new Map(levels.map((level, index) => [level, tables[index]]));
+  const result = new Map(levels.map((level, index) => [level, tables[index]]));
+  for (const [id, name] of serverAssetVersionLocations()) {
+    const table = result.get(name);
+    if (table) result.set(assetTableKey(id), table);
+  }
+  return result;
 }
 
 /** The merged renderer cannot preserve a general animated object hierarchy. It can safely retain the subset

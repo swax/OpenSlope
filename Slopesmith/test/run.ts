@@ -118,6 +118,8 @@ const EXCLUSIVE_GROUP = new Map([
   ['edit-prop-tools.test.ts', 'browser-webgl'],
   ['local-editor.test.ts', 'browser-webgl'],
   ['reference-loading-browser.test.ts', 'browser-webgl'],
+  ['game-map-library-browser.test.ts', 'browser-webgl'],
+  ['library-dock-browser.test.ts', 'browser-webgl'],
   ['ssx3-run-picker.test.ts', 'browser-webgl'],
   ['surface-object-browser.test.ts', 'browser-webgl'],
   ['surface-stitch-browser.test.ts', 'browser-webgl'],

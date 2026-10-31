@@ -12,6 +12,11 @@ import { tooltip } from '../ui/components/tooltip';
 import { toast } from '../ui/components/toast';
 import { askName, confirmAction } from '../ui/components/prompts';
 import { defaultLibrarySource } from '../ui/components/library-default';
+import { librarySizeButton } from '../ui/components/library-dock';
+import { GameMapSelect } from '../ui/components/game-map-select';
+import type { MapSourceChoice } from '../../core/reference/map-game';
+import { isLocalWorkspace } from '../net/workspace';
+import { assetLocation, pinAssetMap } from '../net/asset-versions';
 import { contextMenu } from '../ui/components/controls';
 import { openBlenderGuide } from './blender-bridge';
 import { draftToRecord, glbToPropDraft } from './glb-import';
@@ -30,6 +35,7 @@ import { installStyles } from '../ui/components/styles';
 export interface PropLibraryCallbacks {
   /** List the levels that carry props (for the level picker). */
   levels(): Promise<string[]>;
+  maps?(): readonly MapSourceChoice[];
   /** Fetch + decode a level's props (shared with the viewport's geometry cache, so it's fetched once). */
   loadLevel(level: string): Promise<LevelProps>;
   /** Fetch a level's mined group defs (the Groups chip — docs/015). */
@@ -42,7 +48,7 @@ export interface PropLibraryCallbacks {
   onPickSheet?(level: string, family: SheetFamily): void;
   /** A level's rail pipes were chosen — open the rail tool wearing their tube tile. */
   onPickRail?(level: string, family: RailPipeFamily): void;
-  /** The panel was shown / hidden — re-place overlays that sit above it. */
+  /** The panel's size or visibility changed — re-place overlays that sit above it. */
   onHeightChange?(): void;
   /** The panel's ✕ was pressed — the host hides it and remembers it as closed. */
   onClose?(): void;
@@ -73,9 +79,9 @@ export interface DocModelOps {
 }
 
 const css = `
-.pl-pal { position: fixed; left: 0; right: 0; bottom: 0; height: 250px; overflow: hidden;
+.pl-pal {
   background: #0c141de8; border-top: 1px solid #2c3e50; color: #d7e3f0;
-  font: 12px/1.4 system-ui, sans-serif; z-index: 16; display: none; flex-direction: column; }
+  font: 12px/1.4 system-ui, sans-serif; display: none; }
 .pl-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; flex: 0 0 auto;
   flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
 .pl-head > *:not(.pl-grow) { flex-shrink: 0; }
@@ -140,12 +146,17 @@ const GROUPS_KW = ' groups'; // sentinel: the level's mined assemblies (group de
 export class PropLibrary {
   readonly el = document.createElement('div');
   private levelSel = document.createElement('select');
+  private sources = new GameMapSelect(this.levelSel, 'Prop library', () => {
+    this.levelChosen = true;
+    void this.loadLevel(this.levelSel.value);
+  });
   private search = document.createElement('input');
   private countEl = document.createElement('span');
   private body = document.createElement('div');
   private thumb = new ThumbRenderer(96);
   private thumbCache = new Map<string, string>(); // `${level}:${id}` -> PNG data URL
   private props: LevelProps | null = null;
+  private loadedSource = '';
   private imported: LevelProps | null = null; // the '@import' catalogue, shown alongside in the Custom view
   private fileInput = document.createElement('input'); // hidden picker behind the Custom view's + tile
   private importing = false;
@@ -177,10 +188,6 @@ export class PropLibrary {
     const title = document.createElement('span');
     title.className = 'pl-title';
     title.textContent = 'Prop Library';
-    this.levelSel.onchange = () => {
-      this.levelChosen = true;
-      void this.loadLevel(this.levelSel.value);
-    };
 
     this.search.className = 'pl-search';
     this.search.type = 'search';
@@ -225,7 +232,8 @@ export class PropLibrary {
     close.textContent = '✕';
     tooltip(close, 'Hide the Prop Library (reopen it from the prop tools).');
     close.onclick = () => this.cb.onClose?.();
-    head.append(title, this.levelSel, this.search, chips, grow, this.countEl, close);
+    const size = librarySizeButton(this.el, 'Prop Library', () => this.cb.onHeightChange?.());
+    head.append(title, size, ...this.sources.controls, this.search, chips, grow, this.countEl, close);
 
     this.body.className = 'pl-body';
     this.fileInput.type = 'file';
@@ -275,9 +283,9 @@ export class PropLibrary {
     void (async () => {
       if (!this.levelChosen) {
         await this.countCustomModels();
-        const levels = [...this.levelSel.options].map(option => option.value);
+        const levels = this.sources.levels;
         const prefer = this.preferredSource(levels);
-        if (prefer && prefer !== this.levelSel.value) this.levelSel.value = prefer;
+        if (prefer && prefer !== this.levelSel.value) this.sources.select(prefer);
       }
       await this.ensureSelectedLevel();
       this.ensureGroupsForVisibleView();
@@ -330,18 +338,19 @@ export class PropLibrary {
       this.levelSel.appendChild(o);
       return;
     }
-    for (const l of levels) {
-      const o = document.createElement('option');
-      o.value = l;
-      o.textContent = l === AUTHORED_MODEL_LEVEL ? this.mountainName() : l; // this mountain's authored pseudo-level
-      this.levelSel.appendChild(o);
-    }
+    this.sources.setMaps(
+      levels.map(name =>
+        name === AUTHORED_MODEL_LEVEL
+          ? { name, game: 'slopesmith', source: isLocalWorkspace() ? 'local' : 'server', label: this.mountainName() }
+          : (this.cb.maps?.().find(map => map.name === name) ?? { name }),
+      ),
+    );
     await this.countCustomModels();
     const prefer = preferredLevel && levels.includes(preferredLevel) ? preferredLevel : this.preferredSource(levels);
-    this.levelSel.value = prefer;
+    this.sources.select(prefer);
     // The library is normally closed at boot. Populate its cheap catalogue now, but leave the multi-MB
     // geometry payload (and the Groups mining request) until the panel is actually opened.
-    if (this.open) await this.loadLevel(prefer);
+    if (this.open) await this.loadLevel(this.levelSel.value);
   }
 
   /** Another signed-in device changed authored assets; refresh geometry and keep this panel on its level. */
@@ -360,20 +369,22 @@ export class PropLibrary {
 
   /** Rename only changes the display label; the compatibility pseudo-level and selected source stay put. */
   refreshMountainName(): void {
-    const authored = [...this.levelSel.options].find(option => option.value === AUTHORED_MODEL_LEVEL);
-    if (authored) authored.textContent = this.mountainName();
+    this.sources.rename(AUTHORED_MODEL_LEVEL, this.mountainName());
   }
 
   /** Point the library at a level (defaults to the first available). Public so the host can align it to the armed prop. */
   async setLevel(level: string) {
-    if (this.props?.level === level) return;
-    if ([...this.levelSel.options].some(o => o.value === level)) this.levelSel.value = level;
+    if (this.sources.has(level)) {
+      this.sources.select(level);
+      level = this.levelSel.value;
+    }
+    if (this.loadedSource === level) return;
     await this.loadLevel(level);
   }
 
   private async ensureSelectedLevel() {
     const level = this.levelSel.value;
-    if (!level || level.startsWith('(') || this.props?.level === level) return;
+    if (!level || level.startsWith('(') || this.loadedSource === level) return;
     await this.loadLevel(level);
   }
 
@@ -390,7 +401,7 @@ export class PropLibrary {
       // the Custom view shows both kinds of the user's own geometry: authored quad models and imported
       // GLBs. They stay separate LEVELS (docs/032) but read as one grid.
       [loaded, imported] = await Promise.all([
-        this.cb.loadLevel(level),
+        pinAssetMap(level).then(version => this.cb.loadLevel(version)),
         level === AUTHORED_MODEL_LEVEL ? (this.cb.importedProps?.().catch(() => null) ?? null) : null,
       ]);
     } catch {
@@ -398,6 +409,7 @@ export class PropLibrary {
     }
     if (generation !== this.loadGeneration || this.levelSel.value !== level) return;
     this.props = loaded;
+    this.loadedSource = loaded ? level : '';
     this.imported = imported;
     this.groupList = null; // groups are per level; refetched below
     this.render();
@@ -559,6 +571,7 @@ export class PropLibrary {
     el.className = 'pl-tile';
     el.dataset.model = String(family.models[0]); // the lazy-thumb pump renders one chunk
     el.dataset.level = level;
+    el.dataset.sourceLevel = assetLocation(level) ?? level;
     const thumb = document.createElement('div');
     thumb.className = 'pl-thumb';
     const badge = document.createElement('span');
@@ -594,6 +607,7 @@ export class PropLibrary {
     el.className = 'pl-tile';
     el.dataset.model = String(family.representative.model); // the lazy-thumb pump renders this piece
     el.dataset.level = level;
+    el.dataset.sourceLevel = assetLocation(level) ?? level;
     const thumb = document.createElement('div');
     thumb.className = 'pl-thumb';
     const badge = document.createElement('span');
@@ -703,7 +717,8 @@ export class PropLibrary {
     const el = document.createElement('div');
     el.className = 'pl-tile' + (this.selLevel === level && this.selModel === m.id ? ' sel' : '');
     el.dataset.model = String(m.id);
-    el.dataset.level = level; // the Custom view mixes levels, so a tile carries its own
+    el.dataset.level = level;
+    el.dataset.sourceLevel = assetLocation(level) ?? level; // the Custom view mixes levels, so a tile carries its own
     const thumb = document.createElement('div');
     thumb.className = 'pl-thumb';
     const name = document.createElement('span');

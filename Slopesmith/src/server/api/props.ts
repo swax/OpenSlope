@@ -1,4 +1,6 @@
 import { readLevelGroups } from '../routes/groups';
+import { listLevelOrigins } from '../routes/levels';
+import { serverMapAssetVersion } from '../asset-versions';
 import {
   cloneImportedProp,
   deleteImportedProp,
@@ -94,6 +96,22 @@ async function levelPropIndex(level: string): Promise<{ level: string; models: P
  *  slot and an authored model's tile resolve through; GET /api/props/native-art -> which extracted level
  *  supplies the rail skin and gem crystals. */
 export const propRoutes: Record<string, ApiHandler> = {
+  '/api/map-asset-version': async (req, res) => {
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'private, no-store');
+    try {
+      const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level') ?? '';
+      res.end(JSON.stringify(await serverMapAssetVersion(level)));
+    } catch (error) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+    }
+  },
   '/api/custom-prop-record': async (req, res) => {
     if (req.method !== 'GET') {
       res.statusCode = 405;
@@ -132,7 +150,10 @@ export const propRoutes: Record<string, ApiHandler> = {
       }
       const level = url.searchParams.get('level');
       if (!level) {
-        await responseCache.json(req, res, 'prop-levels', async () => ({ levels: await levelsWithProps() }));
+        await responseCache.json(req, res, 'prop-levels', async () => {
+          const levels = await levelsWithProps();
+          return { levels, maps: await listLevelOrigins(levels) };
+        });
       } else {
         await responseCache.jsonBytes(req, res, `props:${level}`, async () => {
           const generated = await readLevelPropsJsonWithCacheInfo(level);

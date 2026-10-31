@@ -12,7 +12,13 @@ import {
 } from '../src/app/public/links';
 import { MAPS_PATH, ISOS_PATH } from '../src/app/navigation';
 import type { PublicCourse } from '../src/core/session/public-courses';
-import { isDiscCourse } from '../src/core/reference/disc-courses';
+import {
+  canonicalDiscCourse,
+  discContainsCourse,
+  discCourseName,
+  isDiscCourse,
+  registerDiscCourseNames,
+} from '../src/core/reference/disc-courses';
 import { publicMountainDocument, publicPropPayload } from '../src/app/public/course-assets';
 import { defaultMountain } from '../src/core/doc/mountain';
 import { createAuthoredModel } from '../src/core/doc/models';
@@ -64,6 +70,16 @@ assert.deepEqual(
   'each donor has its own loaded state, including a partial local cache',
 );
 const origin = 'https://slopesmith.example';
+registerDiscCourseNames({ AVALANCHE_CRS01_00: 'From the selected disc', GARI: 42 });
+const imported = publicCourseGroups([], ['AVALANCHE_CRS01_00']).local[0];
+assert.equal(imported.name, 'From the selected disc');
+assert.equal(imported.id, 'AVALANCHE_CRS01_00');
+assert.equal(publicCourseRequest(new URL(publicCourseUrl(imported, origin)))?.name, imported.id);
+assert.equal(
+  publicCourseGroups([], ['GARI']).local[0].name,
+  'Garibaldi',
+  'Invalid titles do not replace legacy labels',
+);
 const named: PublicCourse = { ...mountain, name: 'My_Mountain' };
 const namedUrl = publicProjectUrl(named.name, origin);
 assert.equal(namedUrl, `${origin}/play/My_Mountain`);
@@ -187,6 +203,22 @@ assert.equal(
   'reference ISO-management links retain their required source map',
 );
 assert(isDiscCourse('gari'));
+assert(isDiscCourse('tricky_gari'));
+assert(!isDiscCourse('TRICKY_PRIVATE_REFERENCE'));
+assert(!isDiscCourse('TRICKY_SSX_SNOW'));
+assert.equal(canonicalDiscCourse('gari'), 'TRICKY_GARI');
+assert.equal(canonicalDiscCourse('SSX_SNOW'), 'SSX_SNOW');
+assert.equal(canonicalDiscCourse('TRICKY_GARI'), 'TRICKY_GARI');
+assert.equal(discCourseName('TRICKY_GARI'), 'Garibaldi');
+assert(discContainsCourse(['TRICKY_GARI'], 'GARI'));
+assert(discContainsCourse(['GARI'], 'TRICKY_GARI'));
+assert(discContainsCourse(['TRICKY_FIXTURE'], 'FIXTURE'));
+assert(discContainsCourse(['MY_RUN'], 'TRICKY_MY_RUN'));
+assert(!isDiscCourse('TRICKY_FIXTURE'), 'source aliases do not widen the public course catalogue');
+assert(!discContainsCourse(['TRICKY_SSX_SNOW'], 'SSX_SNOW'));
+assert(!discContainsCourse(['TRICKY_GARI'], 'SSX_GARI'));
+registerDiscCourseNames({ TRICKY_GARI: 'Recovered Tricky title' });
+assert.equal(discCourseName('TRICKY_GARI'), 'Recovered Tricky title');
 assert(!isDiscCourse('PRIVATE_REFERENCE'));
 assert(!isDiscCourse('toString'));
 
