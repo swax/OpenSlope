@@ -62,8 +62,9 @@ operator supplies the deliberately alarming `--unsafe-open-network` escape hatch
 
 Moving a mountain between servers is a file transfer, not a handshake, and the local service is simply the
 `127.0.0.1` one. **Export mountain** takes the current durable revision and its custom assets as a
-`.slopesmith.zip`; **Import mountain** asks for the destination name, creates a fresh project on another server,
-and switches the editor to it. **Duplicate mountain** asks for the copy's name and follows the same creation path.
+`.slopesmith.zip`; **Load map → Import from file** on the main library page asks for the ZIP, a Local or Server destination,
+and an editable name initially taken from the filename. It creates a fresh project and opens it in the editor.
+**Duplicate mountain** asks for the copy's name and follows the same creation path.
 Custom assets ride along by content hash: a direct server transfer can send a manifest first, let the receiver
 name the hashes it lacks, and send only those bytes. A file archive is self-contained so it remains usable when
 the source server is offline.
@@ -191,7 +192,7 @@ Catalogue mutations are pushed over the session channel. Other open devices refe
 props, characters, sounds, music, or skies without needing a page reload; immutable asset byte URLs retain
 their ordinary cache lifetime.
 
-The long-term direction is that authored maps and authored assets are the normal case and retail data is
+The long-term direction is that custom maps and authored assets are the normal case and retail data is
 reference and history, which is the same place a wire boundary was trying to reach — without provenance
 stamping every import, auditing every upload path, and reporting what was withheld.
 
@@ -210,7 +211,7 @@ It rests on two facts recorded per map folder, in an `Origin.json` beside the ge
 | `snowknife import` of a course | `retail` (with the `Course` slot) | always true |
 | a Slopesmith export | `slopesmith` | whatever `classifyExportProvenance` found |
 
-They are separate questions on purpose. An authored mountain that places one borrowed tree is `slopesmith`
+They are separate questions on purpose. A custom mountain that places one borrowed tree is `slopesmith`
 **and** retail, and that pair is the whole reason a single boolean would not do. Only the `retail-` half of
 the export's provenance reasons travels: a `user-` reason is a rights question with its own answer
 (`--confirm-rights` on `snowknife unity --public`), not a statement about the game.
@@ -221,7 +222,7 @@ authored, and one written before the provenance guard is treated as carrying dat
 
 `/api/levels` carries each map's summary — `origin`, `course`, `retailData`, `reasons` — and the Scene
 toolbox's Reference picker shows it as an **origin** row under the loaded mountain: *SSX Tricky extract ·
-GARI*, *authored in Slopesmith · no retail data*, *authored in Slopesmith · borrows retail prop-art, sky*, or
+GARI*, *Custom map · no retail data*, *Custom map · borrows retail prop-art, sky*, or
 the honest fallbacks for an unclassified legacy export and an unidentified folder. Nothing about rendering or
 export reads it; it is there so the person looking at a reference knows what they are looking at.
 
@@ -305,7 +306,7 @@ Offline (gray). Available/Away/Do Not Disturb is an account preference selected 
 Do Not Disturb stay set until changed. Idle is ephemeral per browser tab, and a member becomes Idle only when
 all of their connected tabs are idle. A disconnected member always appears Offline while retaining the manual
 preference for their next connection. Status is initially informational: it does not hide maps, stop voice,
-or change collaboration permissions. For anyone connected, each row also shows which authored map and
+or change collaboration permissions. For anyone connected, each row also shows which custom map and
 Reference mountain each tab has open. Clicking a username or
 picture opens a compact profile with the member's picture, bio, role, joined date, status, last-seen time, and a
 comma-separated list of the devices currently detected for them. A
@@ -317,7 +318,7 @@ head without the device label; each new visible chat line appears above it in a 
 Open maps appear as
 `map / reference`: clicking the map opens it, while clicking the reference loads it into this tab's read-only
 Reference slot. A green play icon appears immediately before whichever name one of the member's tabs is
-actively playing — authored map or Reference mountain; merely opening Test setup or watching AI riders does
+actively playing — custom map or Reference mountain; merely opening Test setup or watching AI riders does
 not count.
 The creator of the open map carries an **owner** badge. A **Map permissions** panel sits
 directly above the list: owner/moderator controls

@@ -37,6 +37,7 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-header-icon:hover, .public-about[open] > summary { background: #91b1c314; color: #e8f1f7; }
 .public-header-icon:focus-visible { outline: 2px solid #f4b65e; outline-offset: 2px; }
 .public-about { position: relative; }
+.public-more-icon, .public-mobile-links, .public-users-icon { display: none; }
 .public-about-panel { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: calc(100vw - 24px);
   box-sizing: border-box; padding: 16px; border: 1px solid #365064; border-radius: 10px;
   background: #101e2af5; box-shadow: 0 12px 32px #0006; backdrop-filter: blur(10px); }
@@ -109,13 +110,12 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-map-tile :is(.public-primary, .public-tile-link)::after { content: ''; position: absolute; inset: 0; border-radius: 11px; cursor: pointer; }
 .public-map-tile .public-primary:disabled::after { cursor: default; }
 .public-map-tile :is(.public-primary, .public-tile-link):focus-visible::after { outline: 2px solid #f4b65e; outline-offset: 3px; }
-.public-map-tile :is(a, button):not(.public-primary, .public-tile-link) { position: relative; z-index: 1; }
+.public-map-tile :is(a, button, summary):not(.public-primary, .public-tile-link) { position: relative; z-index: 1; }
 .public-map-tile:has(:is(.public-primary, .public-tile-link):hover:not(:disabled)) { border-color: #b59569; }
 .public-new-map { color: inherit; text-decoration: none; border-style: dashed; }
 .public-new-map:hover { border-color: #b59569; }
 .public-local-note { margin: 0 0 12px; color: #91a9b9; font: 12px/1.5 system-ui; }
 .public-new-map .public-local-note { margin: 0; }
-.public-course-title .public-open-folder { margin-left: auto; min-height: 28px; padding: 4px 8px; font-size: 11px; }
 .public-map-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .public-map-symbol { display: inline-flex; flex: 0 0 34px; width: 34px; height: 34px; align-items: center; justify-content: center;
   border: 1px solid #8a765b36; border-radius: 9px; background: #8a765b14; color: #e4bb82; }
@@ -136,16 +136,13 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-iso-title { margin: 0 0 8px; color: #e2edf4; font-size: 24px; }
 .public-iso-map-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin: 24px 0 12px; }
 .public-iso-map-header h2 { margin: 0; color: #dbe7ef; font-size: 18px; }
-.public-iso-map-summary { margin: 0; color: #b2c9d5; font-size: 13px; }
-.public-iso-filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.public-iso-filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 14px; }
 .public-iso-filters[hidden] { display: none; }
 .public-iso-filters button[aria-pressed="true"] { color: #e4f2fa; background: #304e60; border-color: #7196ad; }
 .public-iso-map-actions { display: flex; align-items: center; gap: 8px; }
 .public-iso-map-actions { flex-wrap: wrap; }
-.public-iso-map-actions .public-iso-reference { margin-right: 0; }
-.public-iso-reference[aria-pressed="true"] { color: #ffe0b1; background: #533e28; border-color: #bd8b4b; }
 .public-reference-controls { display: flex; flex-direction: column; gap: 6px; }
-.public-iso-map-actions button { margin-right: auto; }
+.public-iso-map-actions > button { margin-right: auto; }
 .public-iso-map-actions a { display: inline-flex; align-items: center; gap: 4px; color: #d3e4ef;
   font-size: 12px; text-decoration: none; }
 .public-iso-map-actions a:hover { color: #ffd59e; text-decoration: underline; }
@@ -385,12 +382,35 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-play .public-community-panel .public-chat-status { display: block; margin: 0; }
 .public-community-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 @media (max-width: 640px) {
-  .public-header { gap: 6px; }
-  .public-navigation { gap: 10px; }
-  .public-header .sp-account-menu { max-width: 28px; padding: 4px 5px; }
+  body.public-play { --public-header: 48px; }
+  .public-play .public-header { gap: 4px; padding: 0 8px; }
+  .public-header .public-brand { width: 32px; height: 40px; flex: 0 0 32px; justify-content: center; }
+  .public-header .public-brand .sp-brand > span { display: none; }
+  .public-play .public-header .public-navigation { gap: 4px; }
+  .public-header .public-nav { justify-content: center; min-width: 40px; padding: 2px 4px 0; }
+  .public-header :is(.public-help, .public-map-tab, .public-external-link, .public-about-icon) { display: none; }
+  .public-header .public-header-icon { width: 40px; height: 40px; }
+  .public-more-icon { display: inline-flex; width: 20px; height: 20px; }
+  .public-header .public-users-toggle { position: relative; justify-content: center; flex: 0 0 40px;
+    width: 40px; height: 40px; padding: 0; }
+  .public-header .public-users-icon { display: inline-flex; width: 20px; height: 20px; }
+  .public-users-toggle > .public-online { position: absolute; top: 7px; right: 7px; gap: 0; }
+  .public-header .public-users-toggle :is(.public-online-number, .public-online-label) { display: none; }
+  .public-users-toggle .public-online-dot { box-shadow: 0 0 0 2px #0c141d; }
+  .public-play .public-header > .sp-account-menu { justify-content: center; flex-shrink: 0;
+    width: 40px; height: 40px; min-height: 40px; max-width: 40px; padding: 0; }
+  .public-header > .sp-account-menu::after { display: none; }
   .public-header .sp-account-menu .sp-menu-btn-label { display: none; }
   .public-header .sp-account-menu .sp-account-initial { display: inline; }
+  .public-header .public-sign-in { width: 40px; height: 40px; }
+  .public-header .public-stop { min-height: 40px; gap: 4px; }
+  .public-mobile-links { display: grid; gap: 4px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #365064; }
+  .public-about-panel { max-height: calc(100dvh - var(--public-header) - 16px); overflow-y: auto; }
+  .public-about-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .public-mobile-links a, .public-about-links a { display: flex; align-items: center; min-height: 40px;
+    box-sizing: border-box; padding: 8px 10px; border-radius: 6px; color: #efc68d;
+    font: 600 12px/1.4 system-ui; overflow-wrap: anywhere; text-decoration: none; }
+  .public-mobile-links a:hover, .public-about-links a:hover { background: #91b1c314; }
 }
 @media (max-width: 480px) { .public-header .public-external-link { display: none; } }
-@media (max-width: 420px) { .public-header .public-navigation { gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { .public-play .public-community-panel { transition: none !important; } }

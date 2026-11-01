@@ -2,6 +2,8 @@ import type { PublicCourse } from '../../core/session/public-courses';
 import { canonicalDiscCourse, discCourseName } from '../../core/reference/disc-courses';
 import type { ServerReference } from '../../shared/reference-transfer';
 
+export type LibraryVisibility = 'all' | 'public' | 'private';
+
 export interface LibraryGameCourse {
   course: string;
   name: string;
@@ -9,6 +11,14 @@ export interface LibraryGameCourse {
   disc: boolean;
   server: boolean;
   publication?: PublicCourse;
+}
+
+/** Private is reserved for custom maps; game maps stay in All, Public and game views. */
+export function libraryGameSources(entry: LibraryGameCourse, visibility: LibraryVisibility) {
+  return {
+    device: visibility === 'all' && (entry.loaded || entry.disc),
+    server: entry.server && (visibility === 'all' || (visibility === 'public' && !!entry.publication)),
+  };
 }
 
 /** One course per canonical slot, retaining the actual cache key for loading and unloading old imports. */

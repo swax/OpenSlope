@@ -66,10 +66,8 @@ export type TopBarDeps = {
   toggleSpeedShade: () => void;
   getSpeedShadeOn: () => boolean;
   focusActive: () => void;
-  newMountainDialog: () => void;
   canCreateMountains: () => boolean;
   canManageMountain: () => boolean;
-  openProjectDialog: () => void;
   historyDialog: () => void;
   renameMountain: () => void;
   closePreview: () => void;
@@ -79,10 +77,8 @@ export type TopBarDeps = {
   duplicateMountain: () => void;
   deleteMountain: () => void;
   exportMountain: () => void;
-  importMountain: () => void;
   saveToFolder?: () => void;
   saveOfflineCopy?: () => void;
-  openMountainFolder?: () => void;
   exportDialog: () => void;
   settingsDialog: () => void;
   exitEditor: (destination?: string) => void;
@@ -129,10 +125,8 @@ export function createTopBar(deps: TopBarDeps) {
     toggleSpeedShade,
     getSpeedShadeOn,
     focusActive,
-    newMountainDialog,
     canCreateMountains,
     canManageMountain,
-    openProjectDialog,
     historyDialog,
     renameMountain,
     closePreview,
@@ -142,7 +136,6 @@ export function createTopBar(deps: TopBarDeps) {
     duplicateMountain,
     deleteMountain,
     exportMountain,
-    importMountain,
     exportDialog,
     settingsDialog,
     exitEditor,
@@ -408,40 +401,15 @@ export function createTopBar(deps: TopBarDeps) {
         // Workspace-wide entries lead the menu ungrouped — the brand beside the trigger already says whose
         // workspace this is, so a "Slopesmith" heading over them would only repeat it.
         {
-          label: 'New mountain…',
-          desc: mayCreate
-            ? 'Loft a new mountain around an editable starter course, or start from a blank slope.'
-            : 'Creating a mountain requires the editor role.',
-          disabled: !mayCreate,
-          onClick: newMountainDialog,
-        },
-        {
-          label: 'Open mountain…',
-          desc: 'Open a mountain saved in this browser or on the server.',
-          onClick: openProjectDialog,
-        },
-        {
-          label: 'Import mountain…',
-          desc: mayCreate
-            ? 'Import an editable .slopesmith.zip as a new mountain.'
-            : 'Importing a mountain requires the editor role.',
-          disabled: !mayCreate,
-          onClick: importMountain,
+          label: 'Library',
+          desc: 'Browse maps in the library.',
+          onClick: () => exitEditor('/'),
         },
         {
           label: 'Settings…',
           desc: 'Account, browser-local, application, and server settings.',
           onClick: settingsDialog,
         },
-        ...(deps.openMountainFolder && canSaveMountainFolder()
-          ? [
-              {
-                label: 'Open mountain folder…',
-                desc: 'Open an editable folder copy in the local editor and resume folder autosave.',
-                onClick: deps.openMountainFolder,
-              },
-            ]
-          : []),
         {
           group: currentMountain,
           label: 'History…',

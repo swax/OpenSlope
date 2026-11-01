@@ -3,6 +3,9 @@ import type { V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
 import {
   DEFAULT_BLANK_SLOPE_DEG,
+  DEFAULT_COURSE_HEIGHT_M,
+  DEFAULT_TERRAIN_WIDTH_M,
+  DEFAULT_PATCH_SIZE_M,
   blankMountain,
   buildMeshFromCourse,
   coursePathFromLine,
@@ -13,7 +16,7 @@ import { RETAIL_PROPS, type Preflight, type TileClass } from '../../../core/expo
 import { exportFolderName } from '../../../core/export/folder';
 import { canPickDirectory, pickMapsDirectory, type ExportTarget } from '../../export/landing';
 import { exportMapFolder, resolveExportTarget } from '../../export/run';
-import { createMountainArchive, readMountainArchive } from '../../mountain/archive';
+import { createMountainArchive } from '../../mountain/archive';
 import { safeDataName } from '../../../core/export/names';
 import { tip } from '../components/gui';
 import { escapeHtml as esc } from '../components/html-escape';
@@ -21,7 +24,6 @@ import { infoBadge } from '../components/info';
 import { toast } from '../components/toast';
 import { modal } from '../components/modal';
 import { askName, confirmAction } from '../components/prompts';
-import { collisionLabMountain } from '../../../core/collision/lab';
 import {
   CheckpointGoneError,
   type CheckpointChanges,
@@ -60,7 +62,6 @@ export type DialogDeps = {
   listOtherProjects: () => Promise<ClientProject[]>;
   openOtherProject: (project: ClientProject) => Promise<void>;
   exportMountainBundle: () => Promise<ProjectBundle>;
-  importMountainBundle: (bundle: ProjectBundle, name: string) => Promise<{ document: EditDoc; absent: string[] }>;
   duplicateMountainProject: (name: string) => Promise<{ document: EditDoc; absent: string[] }>;
   renameMountainProject: (name: string) => void;
   deleteMountainProject: (id: string) => Promise<void>;
@@ -118,9 +119,6 @@ const NEW_MOUNTAIN_NOTE = {
   blank:
     'Creates NO terrain — just a straight guide run hanging in space at the pitch below. Build every ' +
     'surface by hand in Edit ▸ create patch (P).',
-  collisionLab:
-    'Creates the reusable collision spec-validation lab: Garibaldi crash-bag cases with native ' +
-    'modes, gates, masses and collision bursts varied independently. Export it to target GARI.',
 } as const;
 
 /** What the History panel is, in its own banner; the schedule and restore semantics ride the info badge. */
@@ -227,7 +225,6 @@ export function createDialogs(deps: DialogDeps) {
     listOtherProjects,
     openOtherProject,
     exportMountainBundle,
-    importMountainBundle,
     duplicateMountainProject,
     renameMountainProject,
     deleteMountainProject,
@@ -335,15 +332,15 @@ export function createDialogs(deps: DialogDeps) {
       );
     }
 
-    const sourceHeight = replacement?.drop ?? 1500;
+    const sourceHeight = replacement?.drop ?? DEFAULT_COURSE_HEIGHT_M;
     const o = {
       name: 'MOUNTAIN01',
-      shape: 'lofted' as 'lofted' | 'blank' | 'collisionLab',
-      width: 400,
+      shape: 'lofted' as 'lofted' | 'blank',
+      width: DEFAULT_TERRAIN_WIDTH_M,
       height: sourceHeight,
       slope: DEFAULT_BLANK_SLOPE_DEG,
       roughness: 0.5,
-      targetPatch: 50,
+      targetPatch: DEFAULT_PATCH_SIZE_M,
       seed: randomTerrainSeed(),
     };
     let shapeCtl: Controller | null = null;
@@ -354,7 +351,6 @@ export function createDialogs(deps: DialogDeps) {
           .add(o, 'shape', {
             'lofted course': 'lofted',
             'blank — no terrain': 'blank',
-            'collision lab (GARI)': 'collisionLab',
           })
           .name('terrain'),
         'What the new mountain starts as — the note above describes the selected choice.',
@@ -394,11 +390,10 @@ export function createDialogs(deps: DialogDeps) {
     // net's nominal spacing (target patch size, which sizes brushes and knot widths) still mean anything.
     const applyShape = () => {
       const blank = o.shape === 'blank';
-      const lab = o.shape === 'collisionLab';
       slopeCtl?.show(blank);
-      widthCtl.show(!blank && !lab);
-      roughCtl.show(!blank && !lab);
-      seedCtl.show(!blank && !lab);
+      widthCtl.show(!blank);
+      roughCtl.show(!blank);
+      seedCtl.show(!blank);
       if (note) note.textContent = NEW_MOUNTAIN_NOTE[o.shape];
     };
     shapeCtl?.onChange(applyShape);
@@ -406,17 +401,6 @@ export function createDialogs(deps: DialogDeps) {
     g.add(
       {
         make: async () => {
-          if (isNew && o.shape === 'collisionLab') {
-            const lab = collisionLabMountain(o.name === 'MOUNTAIN01' ? 'COLLISION_LAB' : o.name);
-            close();
-            if (!(await installDocument(lab, true))) return;
-            toast(
-              'Collision lab created — follow the left bounce column downhill through all six cases, then ride the outer oracle column; export to target GARI.',
-              'ok',
-              9000,
-            );
-            return;
-          }
           if (isNew && o.shape === 'blank') {
             // Nothing is generated: the document starts with an empty mesh, exactly the substrate a model session
             // edits, and Edit ▸ create patch draws the first surface onto the view's construction plane.
@@ -1173,42 +1157,6 @@ export function createDialogs(deps: DialogDeps) {
     );
   }
 
-  /** Import one portable mountain ZIP as a fresh workspace mountain. */
-  function importMountain() {
-    if (!canCreateMountains()) {
-      toast('Importing a mountain requires the editor role.', 'warn', 5000);
-      return;
-    }
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.zip,application/zip';
-    input.onchange = async () => {
-      const f = input.files?.[0];
-      if (!f) return;
-      try {
-        const bundle = await readMountainArchive(f);
-        const sourceName = bundle.document.name || bundle.name || 'mountain';
-        const name = await askMountainName('Import mountain', sourceName, 'Import');
-        if (!name) return;
-        const imported = await importMountainBundle(bundle, name);
-        await adoptDocument(imported.document);
-        const absent = [...new Set([...(bundle.missing ?? []), ...(imported.absent ?? [])])];
-        if (absent.length) {
-          toast(
-            `Imported ${imported.document.name}, with ${absent.length} missing asset${absent.length === 1 ? '' : 's'}.`,
-            'warn',
-            8000,
-          );
-          log(`mountain import missing assets\n${absent.join('\n')}`);
-        } else toast(`Imported ${imported.document.name}.`, 'ok', 6000);
-      } catch (error) {
-        log(`mountain import failed: ${error instanceof Error ? (error.stack ?? error.message) : error}`);
-        toast(`Could not import that mountain: ${error instanceof Error ? error.message : error}`, 'err', 8000);
-      }
-    };
-    input.click();
-  }
-
   /**
    * The export dialog (docs/011): what this mountain ships, and the two settings that change what is written.
    * There is no target — the folder is written against none, and the disc step is `snowknife`, which holds the
@@ -1229,7 +1177,7 @@ export function createDialogs(deps: DialogDeps) {
     );
     tip(
       gTop.add(state, 'lighting').name('bake lighting'),
-      'Bake the authored sun into terrain lightmaps + Lights.json.',
+      'Bake the map’s sun into terrain lightmaps + Lights.json.',
       'Baked regardless of the viewport sun toggle. Off ships no lighting, so a repack keeps the target ' +
         'level’s original lighting and the terrain reads flat.',
     );
@@ -1360,7 +1308,6 @@ export function createDialogs(deps: DialogDeps) {
     duplicateMountain,
     deleteMountain,
     exportMountain,
-    importMountain,
     exportDialog,
   };
 }

@@ -566,7 +566,7 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
   );
   row(
     `props/view  ref ${count(p.propBatchDraws)} batch + ${count(p.propIsolatedDraws)} isolated` +
-      `  · authored ${count(p.authoredPropDraws)}`,
+      `  · custom ${count(p.authoredPropDraws)}`,
   );
   row(`batch path  ${p.multiDraw ? 'native multi-draw' : 'merged fallback'}`);
   row(

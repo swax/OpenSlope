@@ -7,7 +7,14 @@ import {
   courseCenters,
   startFrame,
 } from '../src/core/doc/course';
-import { blankMountain, buildMeshFromCourse, coursePathFromLine, defaultMountain } from '../src/core/doc/mountain';
+import {
+  blankMountain,
+  buildMeshFromCourse,
+  courseHeight,
+  coursePathFromLine,
+  defaultMountain,
+  starterCourse,
+} from '../src/core/doc/mountain';
 import { buildMountainLevel } from '../src/core/export/level';
 import { surfaceSampleAt, surfaceSamplesAt } from '../src/core/mesh/surface-height';
 import type { CoursePath, V3 } from '../src/core/doc/types';
@@ -213,6 +220,13 @@ const mountain = () => {
 
 // ---- a new mountain's run is a 30 m floor, whatever width the terrain was lofted to ----------------------------
 {
+  check(courseHeight(starterCourse()) === 300, 'New mountain’s starter course defaults to a 300 m drop');
+  check(defaultMountain().spacing === 30, 'New mountain’s nominal patch size defaults to 30 m');
+  const blank = blankMountain();
+  check(
+    blank.spacing === 30 && courseHeight(blank.course) === 300,
+    'A blank mountain shares the 300 m height and 30 m patch defaults',
+  );
   check(
     defaultMountain().course.knots.every(k => k.width === 30),
     'New mountain’s starter run has a 30 m floor',

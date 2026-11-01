@@ -10,7 +10,8 @@ import type { PresenceEntry, SessionMember } from '../net/session-channel';
 import { toast } from '../ui/components/toast';
 import { confirmAction } from '../ui/components/prompts';
 import { canSaveMountainFolder } from '../mountain/folder';
-import { openLocalMountainFolder } from '../mountain/open-folder';
+import { linkLocalMountainFolder, refreshLocalMountainFolder } from '../mountain/open-folder';
+import { listMountainFolders } from '../state/folder-autosave';
 import type { PeerMarks } from '../viewport/scene/peers';
 import { cachedIsoCourses, needsCollisionSoundUpdate } from './iso-cache';
 import { publicCourseGroups, publicCourseLabel } from './course-list';
@@ -27,6 +28,8 @@ import { activityCounter, watchChatActivity } from './chat-activity';
 import { publicAvatarPicker } from './avatar-picker';
 import { createMapLibrary } from './map-library';
 import { createReferenceLibrary } from './reference-library';
+import { showNewMapDialog, showImportMountainDialog } from './new-map';
+import { createActionMenu } from './game-actions';
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
@@ -76,6 +79,7 @@ export async function showPublicHome(): Promise<void> {
   const cardMessages = new Map<string, string>();
   let cached = await cachedIsoCourses().catch(() => [] as string[]);
   let savedProjects: ClientProject[] = [];
+  let linkedFolders = new Map<string, string>();
   const localCourses = (): PublicCourse[] =>
     savedProjects.map(project => ({
       id: project.id,
@@ -145,16 +149,32 @@ export async function showPublicHome(): Promise<void> {
   const savedGrid = element('div', 'public-courses');
   savedGrid.setAttribute('aria-label', 'Local maps');
   savedSection.append(savedTitle, savedNote, savedGrid);
-  if (canSaveMountainFolder()) {
-    const openFolder = element('button', 'public-open-folder', 'Open mountain folder…');
-    openFolder.type = 'button';
-    openFolder.addEventListener('click', () => {
-      void openLocalMountainFolder().catch(error => {
-        savedNote.textContent = error instanceof Error ? error.message : String(error);
-      });
+  const loadFromFile = element('button', '', 'Import from file');
+  loadFromFile.type = 'button';
+  loadFromFile.onclick = () => showImportMountainDialog({
+    canCreateServer: 'user' in account && account.user.role !== 'viewer',
+    localNames: savedProjects.map(project => project.name),
+  });
+  const loadFromFolder = element('button', '', 'Link folder');
+  loadFromFolder.type = 'button';
+  loadFromFolder.disabled = !canSaveMountainFolder();
+  loadFromFolder.title = loadFromFolder.disabled
+    ? 'Folder linking is unavailable in this browser.'
+    : 'Add a map folder to the library. Edits save back to that folder.';
+  loadFromFolder.onclick = () => {
+    void linkLocalMountainFolder().then(async project => {
+      if (!project) return;
+      await refreshLocalMaps();
+      library?.showPrivateMaps();
+      toast(`${project.name} linked to its folder.`, 'ok');
+    }).catch(error => {
+      toast(error instanceof Error ? error.message : String(error), 'err', 8000);
     });
-    savedTitle.append(openFolder);
-  }
+  };
+  const loadMap = createActionMenu([loadFromFile, loadFromFolder], {
+    label: 'Load map', name: 'Load map', className: 'library-load-map',
+  });
+  window.addEventListener('pagehide', () => loadMap.dispose(), { once: true });
   const localSection = element('section', 'public-local-maps');
   localSection.setAttribute('aria-label', 'Loaded ISO maps');
   const localTitle = element('h2', 'public-course-title', 'From your ISO');
@@ -195,6 +215,7 @@ export async function showPublicHome(): Promise<void> {
         { section: serverSection, grid: serverGrid, source: 'server' },
         { section: savedSection, grid: savedGrid, source: 'device' },
       ]);
+  library?.loadMapHost.append(loadMap.el);
   main.append(...(library ? [library.el] : [title, serverSection, savedSection, localSection]), requirements, status);
   document.body.append(header, main, mapControls.el);
 
@@ -243,8 +264,7 @@ export async function showPublicHome(): Promise<void> {
     ] as const) {
       const total = element('span', 'public-section-count', String(count));
       total.setAttribute('aria-hidden', 'true');
-      const folderButton = heading.querySelector('.public-open-folder');
-      heading.replaceChildren(document.createTextNode(label), total, ...(folderButton ? [folderButton] : []));
+      heading.replaceChildren(document.createTextNode(label), total);
     }
     serverGrid.replaceChildren();
     localGrid.replaceChildren();
@@ -276,17 +296,23 @@ export async function showPublicHome(): Promise<void> {
     newMap.setAttribute('aria-label', 'New map');
     newMap.append(mapHeading('New map', 'new'), element('span', 'public-local-note', 'Create on this device'));
     const createControls = element('div', 'public-card-actions');
-    const create = element('a', 'public-tile-link', 'Create');
-    create.href = localEditorUrl('', 'new');
+    const create = element('button', 'public-tile-link', 'Create');
+    create.type = 'button';
+    create.onclick = () => showNewMapDialog({
+      canCreateServer: 'user' in account && account.user.role !== 'viewer',
+      localNames: savedProjects.map(project => project.name),
+    });
     create.setAttribute('aria-label', 'New map');
     create.prepend(publicGlyph('new'));
     createControls.append(create);
+    if (!library) createControls.append(loadMap.el);
     newMap.append(createControls);
     savedGrid.replaceChildren(newMap);
     for (const project of savedProjects) {
       const card = element('article', 'public-course public-map-tile');
       card.setAttribute('aria-label', project.name);
       card.dataset.kind = 'local';
+      card.dataset.folder = linkedFolders.get(project.id) ?? '';
       card.append(mapHeading(project.name, 'mountain'));
       const controls = element('div', 'public-card-actions');
       const edit = element('a', '', 'Edit');
@@ -297,6 +323,22 @@ export async function showPublicHome(): Promise<void> {
       open.prepend(publicGlyph('play'));
       edit.setAttribute('aria-label', `Edit ${project.name}`);
       edit.prepend(publicGlyph('editor'));
+      if (linkedFolders.has(project.id)) {
+        for (const [link, editing] of [[edit, true], [open, false]] as const) {
+          link.addEventListener('click', event => {
+            if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            link.setAttribute('aria-busy', 'true');
+            void refreshLocalMountainFolder(project.id).then(current => {
+              location.assign(editing ? localEditorUrl(current.name, current.id) : publicCourseUrl({
+                ...localCourses().find(course => course.id === current.id)!, name: current.name,
+              }));
+            }).catch(error => {
+              toast(error instanceof Error ? error.message : String(error), 'err', 8000);
+            }).finally(() => link.removeAttribute('aria-busy'));
+          });
+        }
+      }
       const remove = element('button', 'public-delete', 'Delete');
       remove.type = 'button';
       remove.setAttribute('aria-label', `Delete ${project.name}`);
@@ -392,7 +434,7 @@ export async function showPublicHome(): Promise<void> {
   renderCourses();
   async function refreshLocalMaps() {
     try {
-      savedProjects = await listLocalProjects();
+      [savedProjects, linkedFolders] = await Promise.all([listLocalProjects(), listMountainFolders()]);
       savedNote.textContent = 'Saved on this device.';
       renderCourses();
     } catch {
@@ -406,7 +448,7 @@ export async function showPublicHome(): Promise<void> {
     const importer = await showIsoPage({
       host: library.gameHost,
       gamesHost: library.gamesHost,
-      summaryHost: library.summaryHost,
+      gameActionsHost: library.gameActionsHost,
       account,
       navigation,
       references: referenceLibrary,

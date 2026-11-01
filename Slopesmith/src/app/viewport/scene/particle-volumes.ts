@@ -38,11 +38,11 @@ interface FogPuffDraw {
  * controls their billboards, while Effects mode independently exposes their purple volume bounds for picking. */
 export function createParticleVolumesLayer(stage: Stage) {
   const authoredVisuals = new THREE.Group();
-  authoredVisuals.name = 'Authored ambient particles';
+  authoredVisuals.name = 'Custom ambient particles';
   const referenceVisuals = new THREE.Group();
   referenceVisuals.name = 'Reference ambient particles';
   const authoredBounds = new THREE.Group();
-  authoredBounds.name = 'Authored ambient particle bounds';
+  authoredBounds.name = 'Custom ambient particle bounds';
   const referenceBounds = new THREE.Group();
   referenceBounds.name = 'Reference ambient particle bounds';
   stage.worldRoot.add(authoredVisuals, authoredBounds);
@@ -157,7 +157,7 @@ export function createParticleVolumesLayer(stage: Stage) {
       sprite[i] = 0;
     }
     batch.setDrawRanges(0, puffs.length);
-    batch.alphaMesh.name = `${source === 'reference' ? 'Reference' : 'Authored'} ambient particle batch`;
+    batch.alphaMesh.name = `${source === 'reference' ? 'Reference' : 'Custom'} ambient particle batch`;
     batch.alphaMesh.userData.particleVolumeVisualSource = source;
     // Bounds must cover instance centres and their view-facing corners, not the shared unit quad at the origin.
     const bounds = new THREE.Box3(),

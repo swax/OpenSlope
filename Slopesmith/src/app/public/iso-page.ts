@@ -18,9 +18,10 @@ import { element, publicJson } from './dom';
 import { publicHeader } from './header';
 import { isoStatusBadges } from './iso-status';
 import { createIsoLoadQueue } from './iso-load-queue';
+import { createActionMenu, createGameActionsMenu } from './game-actions';
 import { courseEditorUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
 import { mapAvailability, mapHeading, publicGlyph } from './presentation';
-import { libraryGameCourses } from './library-courses';
+import { libraryGameCourses, libraryGameSources } from './library-courses';
 import type { LibraryFilter } from './map-library';
 import { mapGame, mapGameLabel } from '../../core/reference/map-game';
 import { confirmAction } from '../ui/components/prompts';
@@ -46,7 +47,7 @@ const SELECTED_GAME = 'slopesmith.isoGame';
 export type IsoLibraryOptions = {
   host: HTMLElement;
   gamesHost: HTMLElement;
-  summaryHost: HTMLElement;
+  gameActionsHost: HTMLElement;
   account: Account;
   navigation: ReturnType<typeof publicHeader>;
   references?: ReferenceLibrary;
@@ -97,7 +98,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   const intro = element(
     'p',
     'public-local-note',
-    `Choose a disc or GBA ROM, then load the maps you want to Play or Inspect. Source files stay on this device.${admin ? ' Use Reference to upload a loaded map to the server.' : ' Maps stay in this browser on this device.'}`,
+    `Choose a disc or GBA ROM, then load the maps you want to Play or Inspect. Source files stay on this device.${admin ? ' Use a map’s three-dot menu to upload it as a reference.' : ' Maps stay in this browser on this device.'}`,
   );
   const dependencies = element('section', 'public-iso-requirements');
   dependencies.hidden = true;
@@ -129,7 +130,13 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   const status = element('p', 'public-iso-status');
   status.setAttribute('role', 'status');
   const sourceNote = element('p', 'library-source-file');
-  const sourceActions = element('div', 'library-source-actions');
+  const loadGame = element('button', 'library-game-load', 'Load');
+  const loadImage = element('button', '', 'Load image…');
+  for (const button of [loadGame, loadImage]) {
+    button.type = 'button';
+    button.title = 'Load an ISO, BIN, GCM, RVZ or GBA file on this device';
+    button.onclick = () => input.click();
+  }
   const refreshImage = element('button', '', 'Refresh image');
   refreshImage.title = 'Rescan course names and the map list without re-extracting courses';
   const removeImage = element('button', '', 'Remove image…');
@@ -137,7 +144,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   const unloadGame = element('button', '', 'Unload game…');
   unloadGame.title = 'Remove this image and its imported courses from this browser';
   for (const button of [refreshImage, removeImage, unloadGame]) button.type = 'button';
-  sourceActions.append(refreshImage, removeImage, unloadGame);
+  const gameActions = createGameActionsMenu([refreshImage, loadImage, removeImage, unloadGame]);
   const support = element('section', 'public-iso-support');
   support.setAttribute('aria-label', 'Disc game support');
   support.append(element('h2', '', 'Games'));
@@ -187,8 +194,9 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   iso.append(actions, support, ...(options ? [sourceNote] : []), status);
   const mapHeader = element('div', 'public-iso-map-header');
   const heading = element('h2', '', 'Maps');
-  const mapSummary = element('p', 'public-iso-map-summary');
-  mapHeader.append(heading, mapSummary);
+  const gameHeading = element('div', 'library-heading');
+  gameHeading.append(heading, loadGame, gameActions.el);
+  mapHeader.append(gameHeading);
   const typeFilter = element('label', 'public-local-note');
   const showAllTypes = element('input', '');
   showAllTypes.type = 'checkbox';
@@ -221,13 +229,14 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   const rows = element('div', 'public-iso-map-list');
   rows.id = 'public-iso-maps';
   const empty = element('p', 'public-empty');
-  main.append(title, intro, dependencies, iso, mapHeader, filters, rows, empty, sourceActions);
+  main.append(title, intro, dependencies, iso, mapHeader, filters, rows, empty);
   if (options) {
     rows.remove();
     title.hidden = intro.hidden = true;
     options.host.append(main);
     options.gamesHost.append(support);
-    options.summaryHost.append(count);
+    options.gameActionsHost.append(loadGame, gameActions.el);
+    gameHeading.remove();
     const storage = element('details', 'library-storage');
     storage.append(element('summary', '', 'Device storage'), clear);
     options.gamesHost.append(storage);
@@ -239,8 +248,10 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     for (const [slot, card] of cards) card.online.set(next ? (next.courses[referenceRoom(slot)] ?? 0) : null);
   });
   let dependencyState = '';
-  let libraryFilter: LibraryFilter = { game: options ? null : selectedGame, query: '', source: 'all', enabled: true };
+  let libraryFilter: LibraryFilter = { game: options ? null : selectedGame, query: '', source: 'all', enabled: true, visibility: 'all' };
   let filterKey = '';
+  let sourceCounts = { all: 0, device: 0, server: 0 };
+  let viewCounts = { all: 0, public: 0, private: 0 };
 
   const loads = createIsoLoadQueue(async (selectedFile, slot, progress, signal) => {
     try {
@@ -260,6 +271,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     if (busy || loadingIso()) throw new Error('Wait for ISO loading to finish, or cancel it, before reloading.');
   });
   function selectGame(game: IsoGame) {
+    gameActions.close();
     if (selectedGame !== game) mapFilter = 'all';
     selectedGame = game;
     if (!options) libraryFilter.game = game;
@@ -363,9 +375,8 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     inspect.href = courseEditorUrl(course);
     inspect.setAttribute('aria-label', `Inspect ${discCourseName(slot)}`);
     inspect.prepend(publicGlyph('view'));
-    const reference = element('button', 'public-iso-reference', 'Reference');
+    const reference = element('button', 'public-iso-reference', 'Upload as reference');
     reference.type = 'button';
-    reference.setAttribute('aria-label', `Reference ${discCourseName(slot)}`);
     reference.onclick = async () => {
       const phase = uploads.state(slot)?.phase;
       if (phase === 'queued' || phase === 'uploading') {
@@ -432,7 +443,11 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         );
       else loadMaps([slot]);
     };
-    controls.append(button, open, inspect, reference);
+    const menu = createActionMenu([reference], {
+      label: '⋯', name: `Map actions for ${discCourseName(slot)}`,
+      className: 'library-map-actions', iconOnly: true,
+    });
+    controls.append(button, open, inspect, menu.el);
     const feedback = element('div', 'public-iso-feedback');
     const progress = element('progress', 'public-iso-progress');
     progress.setAttribute('aria-label', `Loading ${discCourseName(slot)}`);
@@ -441,7 +456,10 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     feedback.append(progress, message);
     const controlPanel = element('div', 'public-reference-controls');
     controlPanel.append(controls);
-    row.append(heading, origin, badge, controlPanel, feedback);
+    row.append(heading, origin);
+    if (options) heading.append(badge);
+    else row.append(badge);
+    row.append(controlPanel, feedback);
     return {
       row,
       badge,
@@ -450,6 +468,8 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       open,
       inspect,
       reference,
+      menu,
+      controls,
       progress,
       course,
       online,
@@ -472,7 +492,16 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     totalLoaded.textContent = `${cached.length} loaded`;
     input.disabled = busy || loads.busy;
     clear.disabled = busy || loads.busy || uploads.busy;
-    sourceActions.hidden = !disc && !cached.some(slot => isoGameForCourse(slot) === selectedGame);
+    gameActions.el.hidden = !disc && !cached.some(slot => isoGameForCourse(slot) === selectedGame);
+    const game = ISO_GAMES.find(game => game.id === selectedGame)!;
+    const gameName = game.name;
+    loadGame.textContent = loadImage.textContent = `Load ${game.system} ${game.system === 'GBA' ? 'ROM' : 'image'}…`;
+    loadGame.title = loadImage.title = `Load a ${game.system} ${game.system === 'GBA' ? 'ROM' : 'disc image'} on this device`;
+    gameActions.setGameName(gameName);
+    loadGame.hidden = !gameActions.el.hidden;
+    loadImage.hidden = !!disc;
+    loadGame.disabled = loadImage.disabled = input.disabled;
+    if (gameActions.el.hidden) gameActions.close();
     refreshImage.hidden = removeImage.hidden = !disc;
     refreshImage.disabled = removeImage.disabled = busy || loads.busy;
     unloadGame.disabled = busy || loads.busy || uploads.busy;
@@ -505,7 +534,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     if (options)
       sourceNote.textContent = disc
         ? `${disc.saved ? 'Saved on this device' : 'Available this visit'} · ${disc.file.name} · ${ISO_GAMES.find(game => game.id === selectedGame)!.support}`
-        : 'No game file selected. Open an ISO, BIN, GCM, RVZ or GBA file to see its courses.';
+        : 'No game file selected. Load an ISO, BIN, GCM, RVZ or GBA file to see its courses.';
     const missing = required.filter(slot => !cached.includes(slot));
     loadRequired.hidden = !required.length;
     loadRequired.style.visibility = missing.length ? 'visible' : 'hidden';
@@ -524,43 +553,44 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       options?.published?.() ?? [],
       required,
     );
-    const entries = inventory.filter(
-      entry =>
-        (!libraryFilter.game || isoGameForCourse(entry.course) === libraryFilter.game) &&
-        isoCourseVisible(entry.course, allMapTypes, required),
-    );
+    const visibleInventory = inventory.filter(entry => isoCourseVisible(entry.course, allMapTypes, required));
+    viewCounts = { all: visibleInventory.length, public: visibleInventory.filter(entry => entry.publication).length, private: 0 };
+    const entries = visibleInventory.filter(entry => !libraryFilter.game || isoGameForCourse(entry.course) === libraryFilter.game);
     entries.sort(
       (a, b) =>
         Number(required.includes(b.course)) - Number(required.includes(a.course)) || a.name.localeCompare(b.name),
     );
     const maps = entries.map(entry => entry.course);
     const byCourse = new Map(entries.map(entry => [entry.course, entry]));
+    const sourcesByCourse = new Map(entries.map(entry => [entry.course, libraryGameSources(entry, libraryFilter.visibility)]));
     const loadedCount = maps.filter(slot => cached.includes(slot)).length;
     const missingCount = maps.length - loadedCount;
     typeFilter.hidden = selectedGame !== 'ssx3';
+    mapHeader.hidden = !!options && typeFilter.hidden;
     heading.textContent = `${ISO_GAMES.find(game => game.id === selectedGame)!.name} maps`;
-    mapSummary.textContent = maps.length
-      ? `${loadedCount} of ${maps.length} maps loaded · ${missingCount} not loaded`
-      : 'Choose a disc to see its maps.';
     filters.hidden = !maps.length;
     for (const [filter, button] of filterButtons) {
       const label = filter === 'all' ? 'All maps' : filter === 'loaded' ? 'Loaded' : 'Not loaded';
       button.textContent = `${label} (${filter === 'all' ? maps.length : filter === 'loaded' ? loadedCount : missingCount})`;
       button.setAttribute('aria-pressed', String(filter === mapFilter));
     }
-    const visibleMaps = maps.filter(
+    const matchingMaps = maps.filter(
       slot =>
         libraryFilter.enabled &&
-        (libraryFilter.source === 'all' ||
-          (libraryFilter.source === 'server'
-            ? byCourse.get(slot)!.server
-            : byCourse.get(slot)!.disc || byCourse.get(slot)!.loaded)) &&
+        (libraryFilter.visibility === 'all' || sourcesByCourse.get(slot)!.device || sourcesByCourse.get(slot)!.server) &&
         (mapFilter === 'all' || cached.includes(slot) === (mapFilter === 'loaded')) &&
         (!searchQuery ||
           `${byCourse.get(slot)!.name} ${slot} ${mapGameLabel(mapGame({ name: slot }))}`
             .toLowerCase()
             .includes(searchQuery)),
     );
+    sourceCounts = {
+      all: matchingMaps.length,
+      device: matchingMaps.filter(slot => sourcesByCourse.get(slot)!.device).length,
+      server: matchingMaps.filter(slot => sourcesByCourse.get(slot)!.server).length,
+    };
+    const visibleMaps = matchingMaps.filter(slot => libraryFilter.source === 'all' ||
+      (libraryFilter.source === 'server' ? sourcesByCourse.get(slot)!.server : sourcesByCourse.get(slot)!.device));
     empty.hidden = !!visibleMaps.length;
     empty.textContent =
       searchQuery && maps.length
@@ -574,6 +604,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
               : 'All listed maps are loaded and ready to play.';
     for (const [slot, card] of cards) {
       if (!maps.includes(slot)) {
+        card.menu.dispose();
         card.row.remove();
         cards.delete(slot);
       }
@@ -584,7 +615,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         card = createCard(slot);
         cards.set(slot, card);
       }
-      const { row, badge, button, message, open, inspect, reference, progress, course, title } = card;
+      const { row, badge, button, message, open, inspect, reference, menu, controls, progress, course, title } = card;
       const entry = byCourse.get(slot)!;
       const name = entry.name;
       row.setAttribute('aria-label', name);
@@ -592,10 +623,9 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       row.dataset.server = String(entry.server);
       row
         .querySelector('.public-map-symbol')
-        ?.replaceChildren(mapAvailability({ disc: entry.disc || entry.loaded, server: entry.server }));
+        ?.replaceChildren(mapAvailability({ disc: entry.disc || entry.loaded, server: entry.server, public: !!entry.publication }));
       if (title.textContent !== name) {
         title.textContent = course.name = name;
-        reference.setAttribute('aria-label', `Reference ${name}`);
         open.href = publicCourseUrl(course);
         inspect.href = courseEditorUrl(course);
         open.setAttribute('aria-label', `Play ${name}`);
@@ -607,9 +637,9 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       const upload = uploads.state(slot);
       const referencePending = upload?.phase === 'queued' || upload?.phase === 'uploading';
       reference.disabled = !referencePending && (busy || !referenceLibrary.ready || (!!installed && loads.busy));
-      reference.setAttribute('aria-pressed', String(!!installed));
       reference.textContent =
-        upload?.phase === 'queued' ? 'Queued' : upload?.phase === 'uploading' ? 'Cancel upload' : 'Reference';
+        upload?.phase === 'queued' ? 'Cancel queued upload' : upload?.phase === 'uploading' ? 'Cancel reference upload'
+          : installed ? 'Remove reference from server' : 'Upload as reference';
       reference.title = referencePending
         ? 'Cancel reference upload'
         : installed
@@ -639,8 +669,16 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       const phase = state?.phase ?? (loaded ? 'loaded' : 'missing');
       row.dataset.state = phase;
       row.hidden = !visibleMaps.includes(slot);
+      menu.setName(`Map actions for ${name}`);
+      const unloadInMenu = loaded && !pending;
+      if (unloadInMenu) {
+        if (button.parentElement !== menu.panel) menu.panel.prepend(button);
+      } else if (button.parentElement !== controls) controls.prepend(button);
+      menu.el.hidden = !unloadInMenu && reference.hidden;
+      if (row.hidden || menu.el.hidden) menu.close();
       row.setAttribute('aria-busy', String(state?.phase === 'loading' || upload?.phase === 'uploading'));
       badge.className = `public-iso-badge ${phase}`;
+      badge.hidden = !!options && !pending && phase !== 'error';
       const badgeText = pending
         ? state.phase === 'queued'
           ? 'Queued'
@@ -820,6 +858,8 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   window.addEventListener(
     'pagehide',
     () => {
+      gameActions.dispose();
+      for (const card of cards.values()) card.menu.dispose();
       window.removeEventListener('beforeunload', confirmUnload);
       document.removeEventListener('click', confirmNavigation, true);
       abort?.abort();
@@ -878,6 +918,8 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       render();
     },
     maps: rows,
+    sourceCounts: () => sourceCounts,
+    viewCounts: () => viewCounts,
     filter(next: LibraryFilter) {
       const key = JSON.stringify([next, options?.published?.()]);
       if (key === filterKey) return;
@@ -887,7 +929,6 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       searchQuery = next.query;
       render();
     },
-    chooseFile: () => input.click(),
     currentGame: () => selectedGame,
   };
 }

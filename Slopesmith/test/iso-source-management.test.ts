@@ -39,6 +39,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 await page.addInitScript('globalThis.__name = fn => fn');
 const errors: string[] = [];
 page.on('pageerror', e => errors.push(e.message));
+const gameActions = page.getByRole('button', { name: 'Game actions for SSX 3', exact: true });
 try {
   await page.goto(origin + '/');
   await page.locator('#public-iso').setInputFiles(source);
@@ -92,6 +93,7 @@ try {
   await page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true }).check();
   const card = page.locator('.public-iso-map[data-course="SSX3_A"]');
   await card.getByRole('heading', { name: 'A (SSX 3)', exact: true }).waitFor();
+  await gameActions.click();
   await page.getByRole('button', { name: 'Refresh image', exact: true }).click();
   await card.getByRole('heading', { name: 'Disc Village', exact: true }).waitFor({ timeout: 90000 });
   await page.locator('.public-iso-status').filter({ hasText: 'Course names refreshed' }).waitFor();
@@ -140,11 +142,13 @@ try {
     .getByRole('button', { name: 'SSX 3', exact: true })
     .click();
   await page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true }).check();
+  await gameActions.click();
   await page.getByRole('button', { name: 'Remove image…', exact: true }).click();
   await page
     .getByRole('alertdialog', { name: 'Remove SSX 3 image?', exact: true })
     .getByRole('button', { name: 'Cancel', exact: true })
     .click();
+  await gameActions.click();
   assert(await page.getByRole('button', { name: 'Refresh image', exact: true }).isVisible());
   await page.getByRole('button', { name: 'Remove image…', exact: true }).click();
   await page
@@ -159,7 +163,9 @@ try {
   await page.reload();
   await page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true }).check();
   await card.getByRole('heading', { name: 'Disc Village', exact: true }).waitFor();
+  await gameActions.click();
   assert.equal(await page.getByRole('button', { name: 'Refresh image', exact: true }).count(), 0);
+  assert(await page.getByRole('button', { name: 'Load PS2 image…', exact: true }).isEnabled());
   await page.getByRole('button', { name: 'Unload game…', exact: true }).click();
   await page
     .getByRole('alertdialog', { name: 'Unload SSX 3?', exact: true })
@@ -174,7 +180,10 @@ try {
     return { courses: (await cache.cachedIsoCourses()).sort(), games: (await discs.savedIsoDiscs()).map(d => d.game) };
   });
   assert.deepEqual(remaining, { courses: ['AVALANCHE_CRS01_00', 'TRICKY_GARI'], games: ['tricky'] });
-  await page.locator('#public-iso').setInputFiles(source);
+  const loadGame = page.getByRole('button', { name: 'Load PS2 image…', exact: true });
+  const chooseGame = page.waitForEvent('filechooser');
+  await loadGame.click();
+  await (await chooseGame).setFiles(source);
   await page
     .locator('.public-iso-status')
     .filter({ hasText: /maps found/ })

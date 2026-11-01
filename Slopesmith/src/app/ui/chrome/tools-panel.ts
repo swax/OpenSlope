@@ -375,7 +375,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
         value: 'prop',
         label: 'Props / lights',
         title:
-          'Allow clicks and box selection to select placed props and authored lights. Off, clicks pass through to the mesh beneath.',
+          'Allow clicks and box selection to select placed props and custom lights. Off, clicks pass through to the mesh beneath.',
       },
     ],
     kind => store.editPickKinds[kind],
@@ -473,7 +473,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       );
       tip(
         section.add({ cut: edit.cutSelectedVertices }, 'cut').name('cut all (Ctrl+X)'),
-        'Copy the selection, then remove its authored geometry and placed props. Reference geometry remains read-only.',
+        'Copy the selection, then remove its editable geometry and placed props. Reference geometry remains read-only.',
       );
     }
     if (edit.canPasteVertices()) {
@@ -494,7 +494,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       const locked = edit.meshLockReason('delete');
       const button = tip(
         section.add({ del: edit.deleteSelectedMesh }, 'del').name('delete all (Del)'),
-        locked ?? 'Delete every selected authored mesh part and placed prop. Reference geometry remains read-only.',
+        locked ?? 'Delete every selected editable mesh part and placed prop. Reference geometry remains read-only.',
       );
       if (locked) button.disable();
     }

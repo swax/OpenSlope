@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'vite';
 import { chromium, type Browser, type Locator, type Page } from 'playwright-core';
-import { chromiumExecutable } from './browser-test-support';
+import { chromiumExecutable, clickMapAction, openMapActionsFor } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
@@ -555,21 +555,25 @@ try {
   );
   await editor.screenshot({ path: join(root, 'member-home-header.png') });
   await homeAccount.click();
-  await editor.getByRole('button', { name: 'Open editor', exact: true }).click();
+  assert.equal(await editor.getByRole('button', { name: 'Open editor', exact: true }).count(), 0);
+  await editor.keyboard.press('Escape');
+  await editor
+    .getByRole('navigation', { name: 'Primary', exact: true })
+    .getByRole('link', { name: 'Editor', exact: true })
+    .click();
   await editor.waitForFunction(
     () => document.querySelector('#load-status')?.getAttribute('aria-busy') === 'false',
     undefined,
     { timeout: 90_000 },
   );
-  assert.equal(
-    new URL(editor.url()).pathname,
-    '/editor/PUBLIC_RUN',
-    'Open editor expands the base editor route to the active map',
-  );
+  assert.equal(new URL(editor.url()).pathname, '/editor/PUBLIC_RUN', 'the Editor header link opens the active map');
   await editor.getByRole('button', { name: 'Account menu', exact: true }).click();
+  assert.equal(await editor.getByRole('button', { name: 'Exit editor', exact: true }).count(), 0);
+  await editor.keyboard.press('Escape');
+  await editor.getByRole('button', { name: 'File menu', exact: true }).click();
   await editor.getByRole('button', { name: 'Exit editor', exact: true }).click();
   await editor.getByRole('heading', { name: 'Map library', level: 1 }).waitFor();
-  assert.equal(new URL(editor.url()).pathname, '/', 'the editor profile menu provides the same exit action');
+  assert.equal(new URL(editor.url()).pathname, '/', 'the File menu retains the exit action');
   await homeAccount.click();
   await editor.getByRole('button', { name: 'My profile', exact: true }).click();
   await editor
@@ -949,8 +953,16 @@ try {
     'compact player controls fit narrow phones',
   );
   assert(await linked.getByRole('button', { name: usersButtonName }).isVisible());
-  assert(await mapTab.isVisible(), 'the selected map tab stays visible in the mobile header');
-  assert((await mapTab.boundingBox())!.width >= 24, 'the current map keeps a usable target beside the Editor tab');
+  assert(await mapTab.isHidden(), 'the selected map moves into More on mobile');
+  const mobileMore = linked.getByRole('button', { name: 'More', exact: true });
+  await mobileMore.click();
+  assert(
+    await linked
+      .getByRole('region', { name: 'More links', exact: true })
+      .getByRole('link', { name: 'Return to PUBLIC RUN', exact: true })
+      .isVisible(),
+  );
+  await mobileMore.press('Escape');
   assert(await linkedEditorTab.isVisible(), 'the Editor tab stays visible during mobile rides');
   await checkExitCorner();
   assert.equal(await linked.locator('[data-fs]').count(), 0, 'mobile public rides also omit fullscreen');
@@ -1159,8 +1171,8 @@ try {
   await guest.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     (await guest.locator('.public-header').boundingBox())?.height,
-    40,
-    'mobile navigation matches the play header height',
+    48,
+    'mobile navigation leaves room for touch controls',
   );
   assert(await primaryNav.getByRole('link', { name: 'Library', exact: true }).isVisible());
   assert(await primaryNav.getByRole('link', { name: 'Library', exact: true }).isVisible());
@@ -1588,8 +1600,8 @@ try {
   await guest.locator('#public-iso').setInputFiles(localFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   const managerGari = guest.locator('.public-iso-map[data-course="TRICKY_GARI"]');
-  assert.match(await managerGari.innerText(), /Garibaldi.*Not loaded/s);
-  await guest.getByText('0 loaded', { exact: true }).waitFor();
+  assert(await managerGari.getByRole('button', { name: 'Load local Garibaldi', exact: true }).isVisible());
+  await guest.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   assert.equal(
     (await checked('/api/public/courses', 'GET', undefined, '')).courses.some(
       (course: any) => course.id === 'TRICKY_GARI',
@@ -1603,7 +1615,7 @@ try {
   );
   await guest.screenshot({ path: join(root, 'iso-manager.png') });
   await managerGari.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
-  await managerGari.locator('.public-iso-badge.loaded').waitFor();
+  await managerGari.and(guest.locator('[data-state="loaded"]')).waitFor();
   await guest.mouse.move(1, 1);
   assert.deepEqual(
     await primaryStyle(managerGari.getByRole('link', { name: 'Play Garibaldi', exact: true })),
@@ -1612,7 +1624,7 @@ try {
   );
   await managerGari.hover({ position: { x: 12, y: 12 } });
   assert(await managerGari.locator('.public-primary').evaluate(el => el.matches(':hover')));
-  await guest.getByText('1 loaded', { exact: true }).waitFor();
+  await guest.getByText('1 loaded', { exact: true }).waitFor({ state: 'attached' });
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   const localCard = guest.locator('.library-catalogue').getByRole('article', { name: 'Garibaldi', exact: true });
   await localCard.waitFor();
@@ -1741,8 +1753,8 @@ try {
   await closeCommunity(guest);
   const currentIsoMap = primaryNav.getByRole('link', { name: 'Garibaldi', exact: true });
   assert(await currentIsoMap.isVisible());
-  await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
-  await guest.getByText('0 loaded', { exact: true }).waitFor();
+  await clickMapAction(guest.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
+  await guest.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   assert(await currentIsoMap.isHidden(), 'unloading the current ISO map removes its header tab immediately');
   assert.equal(new URL((await editorTab.getAttribute('href'))!, origin).pathname, '/editor');
   assert.equal(
@@ -1766,7 +1778,7 @@ try {
   await guest.locator('#public-iso').setInputFiles(localFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
-  await guest.getByText('1 loaded', { exact: true }).waitFor();
+  await guest.getByText('1 loaded', { exact: true }).waitFor({ state: 'attached' });
   assert(
     await guest.evaluate(async () => {
       const moduleUrl = '/src/app/public/iso-cache.ts';
@@ -1786,17 +1798,18 @@ try {
   await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
   const clearAllDialog = guest.getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true });
   await clearAllDialog.waitFor();
-  assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'opening confirmation keeps loaded maps');
+  assert.equal(await guest.getByText('1 loaded', { exact: true }).count(), 1, 'opening confirmation keeps loaded maps');
   await clearAllDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-  assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'cancelling Clear all keeps loaded maps');
+  assert.equal(await guest.getByText('1 loaded', { exact: true }).count(), 1, 'cancelling Clear all keeps loaded maps');
   assert(await currentIsoMap.isVisible(), 'cancelling Clear all also keeps the current map tab');
-  assert(await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isVisible());
+  await openMapActionsFor(guest.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
+  assert(await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }).isVisible());
   await guest.locator('.library-storage').waitFor();
   if ((await guest.locator('.library-storage:not([open])').count()) > 0)
     await guest.locator('.library-storage summary').click();
   await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
   await clearAllDialog.getByRole('button', { name: 'Unload all maps', exact: true }).click();
-  await guest.getByText('0 loaded', { exact: true }).waitFor();
+  await guest.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   assert(await currentIsoMap.isHidden(), 'Clear all removes the current ISO map tab');
   assert.equal(
     await guest.locator('.public-iso-map[data-disc="true"]').count(),
@@ -1844,7 +1857,7 @@ try {
   await guest.locator('#public-iso').setInputFiles(fixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load required maps', exact: true }).click();
-  await guest.locator('.public-iso-map[data-course="FIXTURE"] .public-iso-badge.loaded').waitFor();
+  await guest.locator('.public-iso-map[data-course="FIXTURE"][data-state="loaded"]').waitFor();
   assert(await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).isDisabled());
   assert.equal(await guest.getByRole('button', { name: 'Cards', exact: true }).count(), 0);
   const isoTileBoxes = await guest
@@ -1946,7 +1959,7 @@ try {
     .getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true })
     .getByRole('button', { name: 'Unload all maps', exact: true })
     .click();
-  await guest.getByText('0 loaded', { exact: true }).waitFor();
+  await guest.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   await guest.locator('#public-iso').setInputFiles(queueFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();
   await guest.evaluate(`(() => {
@@ -2026,9 +2039,9 @@ try {
   assert.deepEqual(await tileGeometry(), beforeLoading, 'cancellation does not reshape neighboring cards');
   await guest.getByRole('button', { name: 'Load local Snowdream', exact: true }).click();
   await guest.evaluate(() => (window as any).releaseIsoImports());
-  await queuedGari.locator('.public-iso-badge.loaded').waitFor();
-  await queuedSnow.locator('.public-iso-badge.loaded').waitFor();
-  await guest.getByText('2 loaded', { exact: true }).waitFor();
+  await queuedGari.and(guest.locator('[data-state="loaded"]')).waitFor();
+  await queuedSnow.and(guest.locator('[data-state="loaded"]')).waitFor();
+  await guest.getByText('2 loaded', { exact: true }).waitFor({ state: 'attached' });
   assert.deepEqual(await tileGeometry(), beforeLoading, 'progress messages and completed imports preserve card layout');
   assert(
     (await originalGari!.evaluate(el => el.isConnected)) && (await originalSnow!.evaluate(el => el.isConnected)),
@@ -2050,8 +2063,8 @@ try {
   assert.equal(await leaveIso.count(), 0, 'completed imports do not block navigation');
   await guest.goto(`${origin}/isos`);
   await closeCommunity(guest);
-  await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
-  await guest.getByText('1 loaded', { exact: true }).waitFor();
+  await clickMapAction(guest.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
+  await guest.getByText('1 loaded', { exact: true }).waitFor({ state: 'attached' });
   await guest.locator('#public-iso').setInputFiles(queueFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();
   await guest.evaluate(`(() => {
@@ -2063,9 +2076,10 @@ try {
   await guest.getByRole('heading', { name: 'Map library', level: 1, exact: true }).waitFor();
   assert.equal(new URL(guest.url()).pathname, '/', 'confirming leaves without a second browser prompt');
   await guest.goBack();
-  await guest.getByText('1 loaded', { exact: true }).waitFor();
+  await guest.getByText('1 loaded', { exact: true }).waitFor({ state: 'attached' });
+  await openMapActionsFor(guest.getByRole('button', { name: 'Unload Snowdream', exact: true, includeHidden: true }));
   assert(
-    await guest.getByRole('button', { name: 'Unload Snowdream', exact: true }).isVisible(),
+    await guest.getByRole('button', { name: 'Unload Snowdream', exact: true, includeHidden: true }).isVisible(),
     'leaving an active import preserves previously completed maps',
   );
   assert.equal(

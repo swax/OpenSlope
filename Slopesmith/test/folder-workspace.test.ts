@@ -13,6 +13,7 @@ import { defaultMountain } from '../src/core/doc/mountain';
 import { encodePng } from '../src/server/routes/png';
 import { readMountainArchive } from '../src/app/mountain/archive';
 import { MOUNTAIN_FOLDER_FILE } from '../src/app/mountain/folder';
+import type { ProjectBundle } from '../src/core/project/transfer';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-folder-workspace-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
@@ -79,6 +80,20 @@ async function diskNamed(name: string) {
   assert.equal(bundle.document.name, name);
   return bundle;
 }
+async function replaceDisk(bundle: ProjectBundle) {
+  await page!.evaluate(
+    async serialized => {
+      const { bundle, filename } = JSON.parse(serialized) as { bundle: ProjectBundle; filename: string };
+      const path = '/src/app/mountain/archive.ts';
+      const { createMountainArchive } = await import(/* @vite-ignore */ path);
+      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle('picked-folder');
+      const output = await (await folder.getFileHandle(filename)).createWritable();
+      await output.write(createMountainArchive(bundle).blob);
+      await output.close();
+    },
+    JSON.stringify({ bundle, filename: MOUNTAIN_FOLDER_FILE }),
+  );
+}
 try {
   const enrolled = await call('/api/auth/bootstrap', 'POST', {
     code: api.adminCode,
@@ -116,11 +131,12 @@ try {
     });
     Object.defineProperty(FileSystemHandle.prototype, 'queryPermission', {
       configurable: true,
-      value: async () => (sessionStorage.getItem('folder-permission') === 'prompt' ? 'prompt' : 'granted'),
+      value: async () => (sessionStorage.getItem('folder-permission') ? 'prompt' : 'granted'),
     });
     Object.defineProperty(FileSystemHandle.prototype, 'requestPermission', {
       configurable: true,
       value: async () => {
+        if (sessionStorage.getItem('folder-permission') === 'denied') return 'denied';
         sessionStorage.removeItem('folder-permission');
         return 'granted';
       },
@@ -145,6 +161,10 @@ try {
   });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/`);
+  await page
+    .getByRole('article', { name: 'FOLDER SOURCE', exact: true })
+    .getByRole('img', { name: 'Available on server', exact: true })
+    .waitFor();
   await page.getByRole('link', { name: 'Edit FOLDER SOURCE', exact: true }).click();
   await ready();
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
@@ -218,7 +238,8 @@ try {
   await folderSaved();
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.waitForURL(`${origin}/`);
-  await page.getByRole('link', { name: 'New map', exact: true }).click();
+  await page.getByRole('button', { name: 'New map', exact: true }).click();
+  await page.getByRole('dialog', { name: 'New map' }).getByRole('button', { name: 'Create map' }).click();
   await ready();
   assert.equal(
     await page.locator('#save-status').getAttribute('data-destination'),
@@ -228,6 +249,10 @@ try {
   assert.equal((await disk()).document.name, 'BROWSER_AHEAD');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.waitForURL(`${origin}/`);
+  await page
+    .locator('.public-course[data-kind="local"]')
+    .getByRole('img', { name: 'Saved in this browser', exact: true })
+    .waitFor();
 
   // Remove application databases, preserving the stand-in disk directory, as external folders survive site clearing.
   await page.evaluate(async () => {
@@ -242,15 +267,69 @@ try {
   });
   await page.reload();
   assert.equal(await page.getByRole('link', { name: 'Edit BROWSER_AHEAD', exact: true }).count(), 0);
-  await page.getByRole('button', { name: 'Open mountain folder…', exact: true }).click();
-  await page.waitForURL('**/editor/BROWSER_AHEAD?*');
+  const beforeLink = await disk();
+  await page.getByRole('button', { name: 'Load map', exact: true }).click();
+  await page.getByRole('button', { name: 'Link folder', exact: true }).click();
+  const linkedCard = page.getByRole('article', { name: 'BROWSER_AHEAD', exact: true });
+  await linkedCard.getByRole('img', { name: 'Linked folder: picked-folder', exact: true }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/', 'linking stays in the library');
+  assert.equal(new URL(page.url()).searchParams.get('view'), 'private', 'linked folders appear under Private');
+  const linkedId = new URL(
+    (await linkedCard.getByRole('link', { name: 'Edit BROWSER_AHEAD', exact: true }).getAttribute('href'))!,
+    origin,
+  ).searchParams.get('local');
+  const linkedDisk = await disk();
+  assert.deepEqual(linkedDisk, beforeLink, 'linking does not rewrite the folder archive');
+  await page.reload();
+  await linkedCard.getByRole('img', { name: 'Linked folder: picked-folder', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Load map', exact: true }).click();
+  await page.getByRole('button', { name: 'Link folder', exact: true }).click();
+  await page.getByText('BROWSER_AHEAD linked to its folder.', { exact: true }).waitFor();
+  assert.equal(
+    await page.getByRole('article', { name: 'BROWSER_AHEAD', exact: true }).count(),
+    1,
+    'linking again reuses the map',
+  );
+  assert.equal(
+    new URL(
+      (await linkedCard.getByRole('link', { name: 'Edit BROWSER_AHEAD', exact: true }).getAttribute('href'))!,
+      origin,
+    ).searchParams.get('local'),
+    linkedId,
+  );
+  await page.setViewportSize({ width: 375, height: 700 });
+  assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth));
+  await page.screenshot({ path: join(root, 'linked-folder-library-mobile.png') });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => sessionStorage.setItem('folder-permission', 'denied'));
+  await linkedCard.getByRole('link', { name: 'Edit BROWSER_AHEAD', exact: true }).click();
+  await page
+    .getByText('Folder access was not allowed. Your browser copy is still available.', { exact: true })
+    .waitFor();
+  assert.equal(new URL(page.url()).pathname, '/', 'denied folder access keeps the library open');
+  assert.deepEqual(await disk(), beforeLink, 'denied permission leaves the disk copy intact');
+  await page.evaluate(() => sessionStorage.setItem('folder-permission', 'prompt'));
+  const newer = structuredClone(linkedDisk);
+  newer.document.name = newer.name = 'EXTERNAL_FOLDER_UPDATE';
+  newer.takenAt = new Date().toISOString();
+  await replaceDisk(newer);
+  await linkedCard.getByRole('link', { name: 'Edit BROWSER_AHEAD', exact: true }).click();
+  await page.waitForURL('**/editor/EXTERNAL_FOLDER_UPDATE?*');
+  assert.equal(new URL(page.url()).searchParams.get('local'), linkedId, 'folder refresh preserves local identity');
+  assert.equal(
+    await page.evaluate(() => sessionStorage.getItem('folder-permission')),
+    null,
+    'opening can renew folder access',
+  );
   await ready();
   await folderSaved();
-  const restored = await diskNamed('BROWSER_AHEAD');
+  const restored = await diskNamed('EXTERNAL_FOLDER_UPDATE');
   assert.equal(restored.assets[0]?.hash, initial.assets[0].hash, 'recovery retains custom assets');
   await rename('RESTORED_FROM_FOLDER');
   await diskNamed('RESTORED_FROM_FOLDER');
   await folderSaved();
+
+  const beforeConflict = await disk();
 
   // Changing the file outside this editor must never be silently overwritten by its next autosave.
   await page.evaluate(async filename => {
@@ -268,6 +347,53 @@ try {
     return (await (await folder.getFileHandle(filename)).getFile()).text();
   }, MOUNTAIN_FOLDER_FILE);
   assert.equal(external, 'changed externally');
+  await page.keyboard.press('Escape');
+  // Legacy links only tracked archive hashes/timestamps. Matching timestamps cannot discard recovery edits.
+  await page.evaluate(async id => {
+    const path = '/src/app/state/local-projects.ts';
+    const { openLocalProjects } = await import(/* @vite-ignore */ path);
+    const projects = await openLocalProjects();
+    const takenAt = projects.bundle(id).takenAt;
+    projects.close();
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('slopesmith-mountain-folders', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('handles', 'readwrite');
+      const store = tx.objectStore('handles');
+      const request = store.get(id);
+      request.onsuccess = () => {
+        const binding = request.result;
+        delete binding.browserHash;
+        binding.savedAt = takenAt;
+        store.put(binding);
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, linkedId!);
+  const changedAgain = structuredClone(beforeConflict);
+  changedAgain.document.name = changedAgain.name = 'EXTERNAL_AFTER_CONFLICT';
+  changedAgain.takenAt = new Date().toISOString();
+  await replaceDisk(changedAgain);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.waitForURL(`${origin}/`);
+  await page.getByRole('link', { name: 'Edit KEEP_BROWSER_EDIT', exact: true }).click();
+  await page.waitForURL('**/editor/EXTERNAL_AFTER_CONFLICT?*');
+  await ready();
+  await folderSaved();
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.waitForURL(`${origin}/`);
+  const recoveryCard = page.getByRole('article', { name: 'KEEP_BROWSER_EDIT_browser_recovery', exact: true });
+  await recoveryCard.getByRole('img', { name: 'Saved in this browser', exact: true }).waitFor();
+  assert.equal((await disk()).document.name, 'EXTERNAL_AFTER_CONFLICT', 'both changed copies are kept');
+  await page.getByRole('link', { name: 'Edit EXTERNAL_AFTER_CONFLICT', exact: true }).click();
+  await ready();
+  await folderSaved();
+  await page.locator('#save-status').click();
   await page.getByRole('button', { name: 'Stop folder autosave', exact: true }).click();
   await page.waitForFunction(
     () => document.querySelector<HTMLElement>('#save-status')?.dataset.destination === 'browser',
@@ -276,7 +402,7 @@ try {
   assert.deepEqual(mutations, [], 'the entire folder workspace performs no server map mutation');
   assert.deepEqual(errors, []);
   console.log(
-    `FOLDER WORKSPACE PASS: autosave/assets, permission resume, atomic failure, reload, project isolation, storage recovery and external-change protection. Artifacts: ${root}`,
+    `FOLDER WORKSPACE PASS: library linking/icons, persistent identity, external refresh, browser recovery, autosave/assets, permission resume, atomic failure and project isolation. Artifacts: ${root}`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(root, 'failure.png') });

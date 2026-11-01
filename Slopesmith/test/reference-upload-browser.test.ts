@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium, type Browser, type Page } from 'playwright-core';
-import { chromiumExecutable } from './browser-test-support';
+import { chromiumExecutable, clickMapAction } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
@@ -81,10 +81,7 @@ try {
   await page.locator('#public-iso').setInputFiles(image);
   const card = page.locator('.public-iso-map[data-course="TRICKY_GARI"]');
   await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).waitFor();
-  assert(
-    await card.getByRole('button', { name: 'Reference Garibaldi', exact: true }).isHidden(),
-    'unloaded maps have no upload action',
-  );
+  assert(await card.locator('.public-iso-reference').isHidden(), 'unloaded maps have no upload action');
   await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   await page.waitForFunction(() =>
     ['loaded', 'error'].includes(
@@ -92,18 +89,24 @@ try {
     ),
   );
   assert.equal(await card.getAttribute('data-state'), 'loaded', await card.innerText());
-  await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
-  const toggle = card.getByRole('button', { name: 'Reference Garibaldi', exact: true });
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+  await card
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
+  const toggle = card.locator('.public-iso-reference');
+  assert.equal(await toggle.textContent(), 'Upload as reference');
   assert.equal(await page.getByRole('checkbox', { name: /Include music/ }).count(), 0, 'music has no opt-out control');
   const snowCard = page.locator('.public-iso-map[data-course="TRICKY_SNOW"]');
   const mesaCard = page.locator('.public-iso-map[data-course="TRICKY_MESA"]');
   await snowCard.getByRole('button', { name: 'Load local Snowdream', exact: true }).click();
   await mesaCard.getByRole('button', { name: 'Load local Mesablanca', exact: true }).click();
-  await snowCard.getByRole('button', { name: 'Unload Snowdream', exact: true }).waitFor({ timeout: 90_000 });
-  await mesaCard.getByRole('button', { name: 'Unload Mesablanca', exact: true }).waitFor({ timeout: 90_000 });
-  const snowToggle = snowCard.getByRole('button', { name: 'Reference Snowdream', exact: true });
-  const mesaToggle = mesaCard.getByRole('button', { name: 'Reference Mesablanca', exact: true });
+  await snowCard
+    .getByRole('button', { name: 'Unload Snowdream', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
+  await mesaCard
+    .getByRole('button', { name: 'Unload Mesablanca', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
+  const snowToggle = snowCard.locator('.public-iso-reference');
+  const mesaToggle = mesaCard.locator('.public-iso-reference');
   const plans: Array<{
     course: string;
     music: boolean;
@@ -151,30 +154,38 @@ try {
     await held;
     await route.abort('failed');
   });
-  await toggle.click();
+  await clickMapAction(toggle);
   await received;
-  await snowToggle.click();
-  assert.equal(await snowToggle.textContent(), 'Queued', 'another loaded map can queue while an upload is active');
+  await clickMapAction(snowToggle);
+  assert.equal(
+    await snowToggle.textContent(),
+    'Cancel queued upload',
+    'another loaded map can queue while an upload is active',
+  );
   await page.getByRole('navigation', { name: 'Library views' }).getByRole('button', { name: 'All maps' }).click();
   const loadedMaps = page.locator('.library-catalogue');
   assert.equal(
-    await loadedMaps.getByRole('button', { name: 'Reference Garibaldi', exact: true }).textContent(),
-    'Cancel upload',
+    await loadedMaps.locator('[data-course="TRICKY_GARI"] .public-iso-reference').textContent(),
+    'Cancel reference upload',
     'the catalogue shares the active upload with the game view',
   );
   assert.equal(
-    await loadedMaps.getByRole('button', { name: 'Reference Snowdream', exact: true }).textContent(),
-    'Queued',
+    await loadedMaps.locator('[data-course="TRICKY_SNOW"] .public-iso-reference').textContent(),
+    'Cancel queued upload',
   );
-  await loadedMaps.getByRole('button', { name: 'Reference Mesablanca', exact: true }).click();
+  await clickMapAction(loadedMaps.locator('[data-course="TRICKY_MESA"] .public-iso-reference'));
   await page.locator('.library-sidebar .public-iso-game[data-game="tricky"]').click();
-  assert.equal(await mesaToggle.textContent(), 'Queued', 'catalogue jobs share the same queue with game cards');
-  await mesaToggle.click();
-  assert.equal(await mesaToggle.textContent(), 'Reference', 'clicking a queued toggle cancels only that map');
+  assert.equal(
+    await mesaToggle.textContent(),
+    'Cancel queued upload',
+    'catalogue jobs share the same queue with game cards',
+  );
+  await clickMapAction(mesaToggle);
+  assert.equal(await mesaToggle.textContent(), 'Upload as reference', 'clicking a queued toggle cancels only that map');
   assert.equal(plans.length, 1, 'a queued reference does not negotiate while another upload owns the queue');
   releaseHeldUpload();
   await page.waitForFunction(
-    () => document.querySelector('.public-iso-reference')?.getAttribute('aria-pressed') === 'true',
+    () => document.querySelector('.public-iso-reference')?.textContent === 'Remove reference from server',
   );
   assert.equal((await readFile(join(maps, 'TRICKY_GARI/Origin.json'), 'utf8')).includes('retail'), true);
   assert((await readdir(join(maps, 'TRICKY_GARI/Source'))).length > 0, 'native sidecars arrive intact');
@@ -184,8 +195,8 @@ try {
   );
   await page.waitForFunction(
     () =>
-      document.querySelector('[data-course="TRICKY_SNOW"] .public-iso-reference')?.getAttribute('aria-pressed') ===
-      'true',
+      document.querySelector('[data-course="TRICKY_SNOW"] .public-iso-reference')?.textContent ===
+      'Remove reference from server',
   );
   const snowPlan = plans.find(plan => plan.course === 'TRICKY_SNOW');
   assert(
@@ -197,7 +208,7 @@ try {
     'the queued map skips bytes already installed by the preceding map',
   );
   assert((await readdir(join(maps, 'TRICKY_SNOW/Audio/Music'))).length > 0, 'queued maps include music automatically');
-  assert.equal(await mesaToggle.getAttribute('aria-pressed'), 'false');
+  assert.equal(await mesaToggle.textContent(), 'Upload as reference');
   const snowEncoding = JSON.parse(await readFile(join(maps, 'TRICKY_SNOW/Audio/Music/encoding.json'), 'utf8')) as {
     profile: string;
     files: Array<{ path: string; sourceSha256: string }>;
@@ -241,82 +252,90 @@ try {
   assert(lostReply, 'the upload recovered after losing an accepted chunk response');
   await page.unroute('**/api/reference-maps/uploads/*?offset=*');
   await page.reload();
-  await toggle.waitFor();
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'server state survives reload');
+  await toggle.waitFor({ state: 'attached' });
+  assert.equal(await toggle.textContent(), 'Remove reference from server', 'server state survives reload');
   await page.goto(`${origin}/maps`);
   const serverReferences = page.locator('.library-catalogue');
-  const mapsToggle = serverReferences.getByRole('button', { name: 'Reference Garibaldi', exact: true });
-  await mapsToggle.waitFor();
+  const mapsToggle = serverReferences.locator('[data-course="TRICKY_GARI"] .public-iso-reference');
+  await mapsToggle.waitFor({ state: 'attached' });
   assert.equal(
-    await mapsToggle.getAttribute('aria-pressed'),
-    'true',
+    await mapsToggle.textContent(),
+    'Remove reference from server',
     'Maps lists installed references even when unpublished',
   );
-  await mapsToggle.click();
+  await clickMapAction(mapsToggle);
   await page.getByRole('alertdialog').getByRole('button', { name: 'Remove reference', exact: true }).click();
   await page.waitForFunction(
     () =>
-      document.querySelector('[data-course="TRICKY_GARI"] .public-iso-reference')?.getAttribute('aria-pressed') ===
-      'false',
+      document.querySelector('[data-course="TRICKY_GARI"] .public-iso-reference')?.textContent ===
+      'Upload as reference',
   );
   const localMap = page.locator('.library-catalogue');
-  const localToggle = localMap.getByRole('button', { name: 'Reference Garibaldi', exact: true });
-  await localToggle.waitFor();
-  assert.equal(await localToggle.getAttribute('aria-pressed'), 'false');
-  await localToggle.click();
+  const localToggle = localMap.locator('[data-course="TRICKY_GARI"] .public-iso-reference');
+  await localToggle.waitFor({ state: 'attached' });
+  assert.equal(await localToggle.textContent(), 'Upload as reference');
+  await clickMapAction(localToggle);
   await page.waitForFunction(
     () =>
-      document.querySelector('[data-course="TRICKY_GARI"] .public-iso-reference')?.getAttribute('aria-pressed') ===
-      'true',
+      document.querySelector('[data-course="TRICKY_GARI"] .public-iso-reference')?.textContent ===
+      'Remove reference from server',
   );
-  assert.equal(await mapsToggle.getAttribute('aria-pressed'), 'true', 'Maps can upload an already extracted local map');
+  assert.equal(
+    await mapsToggle.textContent(),
+    'Remove reference from server',
+    'Maps can upload an already extracted local map',
+  );
   const publication = await page.request.put(`${origin}/api/publication?kind=reference&id=TRICKY_GARI`, {
     headers: { origin },
     data: { published: true },
   });
   assert(publication.ok(), await publication.text());
   await page.goto(`${origin}/isos`);
-  await toggle.waitFor();
+  await toggle.waitFor({ state: 'attached' });
   const publishedReference = card.getByRole('img', { name: 'Available on server', exact: true });
   await publishedReference.waitFor();
-  await toggle.click();
+  await clickMapAction(toggle);
   const confirm = page.getByRole('alertdialog', { name: 'Remove Garibaldi reference?', exact: true });
   await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'cancel preserves the installed reference');
-  await toggle.click();
+  assert.equal(await toggle.textContent(), 'Remove reference from server', 'cancel preserves the installed reference');
+  await clickMapAction(toggle);
   await confirm.getByRole('button', { name: 'Remove reference', exact: true }).click();
   await page.waitForFunction(
-    () => document.querySelector('.public-iso-reference')?.getAttribute('aria-pressed') === 'false',
+    () => document.querySelector('.public-iso-reference')?.textContent === 'Upload as reference',
   );
   await publishedReference.waitFor({ state: 'hidden' });
   assert(
-    await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isEnabled(),
+    await card.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }).isEnabled(),
     'removal keeps the local map',
   );
 
   const workersBeforeReuse = musicWorkers;
-  await toggle.click();
+  await clickMapAction(toggle);
   await page.waitForFunction(
-    () => document.querySelector('.public-iso-reference')?.getAttribute('aria-pressed') === 'true',
+    () => document.querySelector('.public-iso-reference')?.textContent === 'Remove reference from server',
   );
   assert((await readdir(join(maps, 'TRICKY_GARI/Audio/Music'))).length > 0, 'music reaches the server');
   assert.equal(musicWorkers, workersBeforeReuse, 'shared music already on the server skips conversion before upload');
-  await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+  await clickMapAction(card.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
   await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).waitFor();
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'server-only reference remains manageable');
+  assert.equal(await toggle.textContent(), 'Remove reference from server', 'server-only reference remains manageable');
   await page.getByText('Device storage', { exact: true }).click();
   await page.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Unload all maps', exact: true }).click();
-  await page.getByText('0 loaded', { exact: true }).waitFor();
+  await page.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   await page.reload();
-  await toggle.waitFor();
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'server-only card survives without a saved disc');
+  await toggle.waitFor({ state: 'attached' });
+  assert.equal(
+    await toggle.textContent(),
+    'Remove reference from server',
+    'server-only card survives without a saved disc',
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth));
   await card.screenshot({
     path: process.env.SLOPESMITH_REFERENCE_SCREENSHOT ?? join(root, 'reference-toggle-mobile.png'),
   });
-  await toggle.click();
+  await clickMapAction(toggle);
   await confirm.getByRole('button', { name: 'Remove reference', exact: true }).click();
   await card.waitFor({ state: 'detached' });
 
@@ -334,21 +353,22 @@ try {
   await page.locator('#public-iso').setInputFiles(gba);
   const gbaCard = page.locator('.public-iso-map[data-course="SSXGBA_GARIBALDI"]');
   await gbaCard.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
-  await gbaCard.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
-  const gbaToggle = gbaCard.getByRole('button', { name: 'Reference Garibaldi', exact: true });
-  await gbaToggle.click();
+  await gbaCard
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
+  const gbaToggle = gbaCard.locator('.public-iso-reference');
+  await clickMapAction(gbaToggle);
   await page.waitForFunction(
     () =>
-      document
-        .querySelector('.public-iso-map[data-course="SSXGBA_GARIBALDI"] .public-iso-reference')
-        ?.getAttribute('aria-pressed') === 'true',
+      document.querySelector('.public-iso-map[data-course="SSXGBA_GARIBALDI"] .public-iso-reference')?.textContent ===
+      'Remove reference from server',
   );
   const gbaImport = JSON.parse(await readFile(join(maps, 'SSXGBA_GARIBALDI/Import.json'), 'utf8'));
   assert.equal(gbaImport.SourceGameCode, 'AXYE', 'new GBA imports retain their source metadata');
   assert.equal(gbaImport.SourceRevision, 0);
-  await gbaToggle.click();
+  await clickMapAction(gbaToggle);
   await confirm.getByRole('button', { name: 'Remove reference', exact: true }).click();
-  await gbaCard.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+  await clickMapAction(gbaCard.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
 
   for (const session of [editorSession, '']) {
     await context.clearCookies();
@@ -357,14 +377,19 @@ try {
     await page.locator('#public-iso').setInputFiles(image);
     await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).waitFor();
     await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
-    await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
-    assert(await toggle.isHidden(), 'only admins see the toggle even for a loaded map');
-    await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+    await card
+      .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+      .waitFor({ state: 'attached', timeout: 90_000 });
+    assert(
+      await toggle.evaluate(button => (button as HTMLButtonElement).hidden),
+      'only admins have reference actions even for a loaded map',
+    );
+    await clickMapAction(card.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
     await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).waitFor();
   }
   assert.deepEqual(errors, []);
   console.log(
-    'Native extraction → queued admin uploads with hash reuse, automatic compressed music, cancellation, pressed state and confirmed removal PASS',
+    'Native extraction → map-menu admin uploads with hash reuse, automatic compressed music, queue cancellation, server state and confirmed removal PASS',
   );
 } catch (error) {
   console.error('Reference browser page errors:', errors);

@@ -1078,7 +1078,9 @@ function noise2(x: number, z: number): number {
 
 const clampN = clamp;
 
-export const DEFAULT_COURSE_HEIGHT_M = 1500;
+export const DEFAULT_COURSE_HEIGHT_M = 300;
+export const DEFAULT_TERRAIN_WIDTH_M = 210;
+export const DEFAULT_PATCH_SIZE_M = 30;
 
 /** Vertical extent of a course, matching the reference panel's maxY − minY "drop" readout. */
 export function courseHeight(line: CoursePath): number {
@@ -1306,9 +1308,9 @@ export function buildMeshFromCourse(
   meta: Partial<Omit<MountainMeta, 'kind' | 'course' | 'spacing'>> = {},
 ): QuadMeshDoc | null {
   if (line.knots.length < 2) return null;
-  const width = clampN(opts.widthM ?? 400, 30, 3000);
+  const width = clampN(opts.widthM ?? DEFAULT_TERRAIN_WIDTH_M, 30, 3000);
   const rough = clampN(opts.roughness ?? 0.5, 0, 3);
-  const target = clampN(Math.round(opts.targetPatchM ?? 50), 5, 500);
+  const target = clampN(Math.round(opts.targetPatchM ?? DEFAULT_PATCH_SIZE_M), 5, 500);
   const seed = Math.abs(Math.trunc(opts.seed ?? 0)) % 0x80000000;
   const seedX = seed % 100000,
     seedZ = Math.floor(seed / 100000);
@@ -1640,7 +1642,7 @@ export function blankMountain(
   name = 'MOUNTAIN01',
   heightM = DEFAULT_COURSE_HEIGHT_M,
   slopeDeg = DEFAULT_BLANK_SLOPE_DEG,
-  spacingM = 50,
+  spacingM = DEFAULT_PATCH_SIZE_M,
 ): QuadMeshDoc {
   const level = name.trim() || 'MOUNTAIN01';
   return {
@@ -1667,9 +1669,9 @@ export function defaultMountain(): QuadMeshDoc {
   const generated = buildMeshFromCourse(
     starterCourse(DEFAULT_COURSE_HEIGHT_M, 1),
     {
-      widthM: 400,
+      widthM: DEFAULT_TERRAIN_WIDTH_M,
       roughness: 0.5,
-      targetPatchM: 50,
+      targetPatchM: DEFAULT_PATCH_SIZE_M,
       seed: 1,
     },
     { name: 'MOUNTAIN01', baseSurface: 1 },

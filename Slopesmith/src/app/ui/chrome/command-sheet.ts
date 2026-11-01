@@ -270,7 +270,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                   ['LMB', 'select'],
                   ['Ctrl/Cmd+LMB', 'select many'],
                   ['gizmo', 'move / resize'],
-                  ['Del', 'remove authored'],
+                  ['Del', 'remove custom'],
                   ['Esc', 'deselect'],
                 ])
               : store.currentMode === 'props'

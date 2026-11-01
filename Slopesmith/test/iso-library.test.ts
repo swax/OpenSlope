@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium, type Browser, type Page } from 'playwright-core';
-import { chromiumExecutable } from './browser-test-support';
+import { chromiumExecutable, clickMapAction } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
@@ -189,22 +189,32 @@ try {
     window.releaseIsoImports = release;
   })()`);
   await page.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
+  await page.getByRole('button', { name: 'SSX 3', exact: true }).click();
+  assert(
+    await page.getByRole('button', { name: 'Load PS2 image…', exact: true }).isDisabled(),
+    'Loading another game file is blocked during imports',
+  );
+  await trickyGame.click();
+  await page.getByRole('button', { name: 'Game actions for SSX Tricky', exact: true }).click();
   for (const name of ['Refresh image', 'Remove image…', 'Unload game…'])
     assert(
       await page.getByRole('button', { name, exact: true }).isDisabled(),
       'Source changes are blocked during imports',
     );
+  await page.keyboard.press('Escape');
   await ssxGame.click();
   await page.getByRole('button', { name: 'Load local SSX_FIXTURE', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
-  assert.equal(await page.locator('.public-iso-map-summary').innerText(), '0 of 1 maps loaded · 1 not loaded');
+  assert(await filters.getByRole('button', { name: 'Loaded (0)', exact: true }).isVisible());
+  assert(await filters.getByRole('button', { name: 'Not loaded (1)', exact: true }).isVisible());
   await madtrixGame.click();
   await page.getByRole('button', { name: 'Load local Antarctica (Mad Trix)', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
   await page.evaluate(() => (window as unknown as { releaseIsoImports: () => void }).releaseIsoImports());
-  await page.locator('.public-iso-map .public-iso-badge.loaded').waitFor({ timeout: 90_000 });
-  await page.getByText('3 loaded', { exact: true }).waitFor();
-  assert.equal(await page.locator('.public-iso-map-summary').innerText(), '1 of 1 maps loaded · 0 not loaded');
+  await page.locator('.public-iso-map[data-state="loaded"]').waitFor({ timeout: 90_000 });
+  await page.getByText('3 loaded', { exact: true }).waitFor({ state: 'attached' });
+  assert(await filters.getByRole('button', { name: 'Loaded (1)', exact: true }).isVisible());
+  assert(await filters.getByRole('button', { name: 'Not loaded (0)', exact: true }).isVisible());
   assert(
     await page
       .locator('.public-iso-map')
@@ -314,7 +324,11 @@ try {
   await page.getByRole('link', { name: 'Library', exact: true }).click();
   await madtrixGame.click();
   await madtrixGame.waitFor();
-  assert(await page.getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true }).isEnabled());
+  assert(
+    await page
+      .getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true, includeHidden: true })
+      .isEnabled(),
+  );
   await page.getByRole('link', { name: 'Inspect Antarctica (Mad Trix)', exact: true }).click();
   await page
     .getByText('Source baked vertex colors loaded.', { exact: true })
@@ -328,12 +342,13 @@ try {
   await page.goto(`${origin}/isos`);
   await madtrixGame.waitFor();
   await trickyGame.click();
-  assert(await page.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isEnabled());
+  assert(await page.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }).isEnabled());
   assert(await page.getByRole('button', { name: 'Load local Snowdream', exact: true }).isEnabled());
   assert(
     (await filters.getByRole('button', { name: 'All maps (2)', exact: true }).getAttribute('aria-pressed')) === 'true',
   );
-  assert.equal(await page.locator('.public-iso-map-summary').innerText(), '1 of 2 maps loaded · 1 not loaded');
+  assert(await filters.getByRole('button', { name: 'Loaded (1)', exact: true }).isVisible());
+  assert(await filters.getByRole('button', { name: 'Not loaded (1)', exact: true }).isVisible());
   await page.locator('#load-status').waitFor({ state: 'hidden' });
   await page.screenshot({ path: join(root, 'mixed-map-states.png') });
   await filters.getByRole('button', { name: 'Loaded (1)', exact: true }).click();
@@ -343,7 +358,7 @@ try {
       .evaluateAll(rows => rows.map(row => (row as HTMLElement).dataset.course)),
     ['TRICKY_GARI'],
   );
-  await page.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+  await clickMapAction(page.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
   await filters.getByRole('button', { name: 'Loaded (0)', exact: true }).waitFor();
   assert.equal(
     await page.locator('.public-iso-map:visible').count(),
@@ -361,9 +376,13 @@ try {
   await page.reload();
   await ssxGame.waitFor();
   assert.equal(await ssxGame.getAttribute('aria-pressed'), 'true', 'the selected game survives reload');
-  assert(await page.getByRole('button', { name: 'Unload SSX_FIXTURE', exact: true }).isEnabled());
+  assert(await page.getByRole('button', { name: 'Unload SSX_FIXTURE', exact: true, includeHidden: true }).isEnabled());
   await madtrixGame.click();
-  assert(await page.getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true }).isEnabled());
+  assert(
+    await page
+      .getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true, includeHidden: true })
+      .isEnabled(),
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth), 'the game selector fits mobile screens');
   await page.locator('#load-status').waitFor({ state: 'hidden' });
@@ -383,8 +402,8 @@ try {
   await page.getByRole('button', { name: 'Load required maps', exact: true }).click();
   await page
     .locator('.public-iso-map[data-course="GARI"]')
-    .getByRole('button', { name: 'Unload Garibaldi', exact: true })
-    .waitFor();
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached' });
   assert.equal(
     await page.locator('.public-iso-map[data-course="TRICKY_GARI"]').count(),
     0,
@@ -401,7 +420,9 @@ try {
   assert.equal(await page.locator('.public-iso-map').count(), 8);
   const gbaGaribaldi = page.locator('.public-iso-map[data-course="SSXGBA_GARIBALDI"]');
   await gbaGaribaldi.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
-  await gbaGaribaldi.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
+  await gbaGaribaldi
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
   // Fresh native exports must be skyward. Recreate an older cache to cover its read-time repair too.
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -438,7 +459,9 @@ try {
     }
   });
   await page.reload();
-  await gbaGaribaldi.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor();
+  await gbaGaribaldi
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached' });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: join(root, 'gba-courses-loaded.png') });
   await gbaGaribaldi.getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
@@ -482,7 +505,7 @@ try {
     .getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true })
     .getByRole('button', { name: 'Unload all maps', exact: true })
     .click();
-  await page.getByText('0 loaded', { exact: true }).waitFor();
+  await page.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   assert(await trickyGame.isEnabled());
   assert(await ssxGame.isEnabled());
   assert(await madtrixGame.isEnabled());

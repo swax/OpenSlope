@@ -150,7 +150,7 @@ export async function setPublished(
     id = map.name;
     if (published && map.retailData && map.origin !== 'retail') {
       throw new Error(
-        'This exported map mixes authored and retail files. Publish its editable mountain instead so retail assets resolve from each visitor’s ISO.',
+        'This exported map mixes custom and retail files. Publish its editable mountain instead so retail assets resolve from each visitor’s ISO.',
       );
     }
     if (published && map.retailData && !map.course)

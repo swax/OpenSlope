@@ -216,7 +216,7 @@ function addCollisionBurst(
   addCollisionMarkerNode(doc, addEffectTemplateToProp(doc, prop.id!, 'collision-trigger'), prop.name, color);
 }
 
-/** Build the editable lab document shown by File -> New mountain -> collision lab. */
+/** Build the internal editable fixture used by collision validation and automated tests. */
 export function collisionLabMountain(name = COLLISION_LAB_NAME) {
   // A deliberately broad/long test slope gives every family its own readable area. The earlier narrow 220 m
   // quilt forced the oracle column against both the matrix and the out-of-bounds shoulder.

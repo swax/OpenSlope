@@ -2,13 +2,13 @@ import { canonicalDiscCourse, registerDiscCourseNames } from '../../core/referen
 import { registerCourseLayouts, type CourseLayout } from '../../core/reference/course-layout';
 
 export const ISO_GAMES = [
-  { id: 'tricky', name: 'SSX Tricky', support: 'Full support' },
-  { id: 'tricky-gba', name: 'SSX Tricky (GBA)', support: '8 courses · Preliminary support' },
-  { id: 'ssx', name: 'SSX', support: 'Partial support' },
-  { id: 'ssx3', name: 'SSX 3', support: 'Preliminary support' },
-  { id: 'ontour', name: 'SSX On Tour', support: 'Preliminary support' },
-  { id: 'avalanche', name: '1080° Avalanche', support: '25 course layouts · Preliminary support' },
-  { id: 'madtrix', name: 'Jonny Moseley Mad Trix', support: '11 courses · Preliminary support' },
+  { id: 'tricky', name: 'SSX Tricky', system: 'PS2', support: 'Full support' },
+  { id: 'tricky-gba', name: 'SSX Tricky (GBA)', system: 'GBA', support: '8 courses · Preliminary support' },
+  { id: 'ssx', name: 'SSX', system: 'PS2', support: 'Partial support' },
+  { id: 'ssx3', name: 'SSX 3', system: 'PS2', support: 'Preliminary support' },
+  { id: 'ontour', name: 'SSX On Tour', system: 'PS2', support: 'Preliminary support' },
+  { id: 'avalanche', name: '1080° Avalanche', system: 'GameCube', support: '25 course layouts · Preliminary support' },
+  { id: 'madtrix', name: 'Jonny Moseley Mad Trix', system: 'PS2', support: '11 courses · Preliminary support' },
 ] as const;
 
 export type IsoGame = (typeof ISO_GAMES)[number]['id'];

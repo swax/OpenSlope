@@ -301,7 +301,7 @@ export function createMeshSelectTools(
         }
         tip(
           topology!.add({ overlap: selectOverlappingVertices }, 'overlap').name('select overlapping vertices'),
-          'Swap the selection for every other authored vertex under the selected patches in this view.',
+          'Swap the selection for every other editable vertex under the selected patches in this view.',
           'The current viewport is the mask: selection passes through depth and excludes the selected ' +
             'patches’ own corners. Press Delete afterward to remove the incident mountain patches.',
         );
@@ -459,7 +459,7 @@ export function createMeshSelectTools(
     );
     const cut = tip(
       g.add({ cut: cutSelectedVertices }, 'cut').name('cut (Ctrl+X)'),
-      'Copy the selection, then remove authored geometry using the same safe operation as Delete. Reference geometry is read-only, so Cut falls back to Copy there.',
+      'Copy the selection, then remove editable geometry using the same safe operation as Delete. Reference geometry is read-only, so Cut falls back to Copy there.',
     );
     actionPair(copy, cut);
   }

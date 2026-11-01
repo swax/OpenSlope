@@ -45,7 +45,7 @@ function context(): ProjectAssetContext {
   // explicit isolated root rather than silently falling back to the old Maps/Custom shared catalogue.
   const testRoot = process.env.SLOPESMITH_PROJECT_ASSETS_ROOT;
   if (testRoot) return { projectId: 'direct', root: testRoot };
-  throw new Error('No mountain asset context is active. Open a mountain before using authored assets.');
+  throw new Error('No mountain asset context is active. Open a mountain before using custom assets.');
 }
 
 export function projectAssetPath(...parts: string[]): string {

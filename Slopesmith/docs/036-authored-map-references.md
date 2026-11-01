@@ -1,4 +1,4 @@
-# 036 — Authored map exports as references
+# 036 — Custom map exports as references
 
 Slopesmith treats any folder under the configured Reference Maps root that contains `Patches.json` as a
 reference terrain. That includes both retail maps extracted by Snowknife and map folders exported by
@@ -18,7 +18,7 @@ instance-to-effect join as Snowknife and Unity, keyed by the canonical instance 
 
 ## Portable texture provenance
 
-Native `Patches.json` must use bare texture-slot names when an authored map targets a retail ISO. A name such
+Native `Patches.json` must use bare texture-slot names when a custom map targets a retail ISO. A name such
 as `0019.png` therefore cannot itself say that the pixels came from GARI. Exports write `Slopesmith.json`
 beside `Patches.json` with:
 
@@ -39,7 +39,7 @@ instead of being retried after every sibling texture completes.
 `Patches.json` is what makes a folder a reference; it says nothing about where the folder came from, and both
 producers write one. `Origin.json` answers that separately, in two fields: `Origin` (`retail` from
 `snowknife import`, `slopesmith` from Export) and `RetailData` (always set on an extract; on an export,
-whatever `classifyExportProvenance` found). They are separate questions because an authored mountain that
+whatever `classifyExportProvenance` found). They are separate questions because a custom mountain that
 places a borrowed tree is both.
 
 Reference, Texture Library, and Prop Library selectors use **Source → Game → Map**. Source separates
@@ -47,14 +47,14 @@ browser-local and server copies, including maps with the same ID. Reference comb
 choice; **Load reference** applies it. The active reference stays loaded while choosing, and the clear
 button removes it explicitly.
 
-**File → Open mountain** also starts with a **Source** selector. It filters the saved mountain list to
-Local or Server; **Open** loads the selected mountain and switches its workspace when needed.
+Open saved mountains from the main library page. Its **Local** and **Server** filters narrow the map list;
+**Edit** opens the selected mountain in its workspace. **New map** also starts on this page.
 
 The optional `Game` in
 `Origin.json` is the stable source ID (`ssx-tricky`, `ssx-3`, `1080-avalanche`, etc.), independent of the
 folder name. Snowknife and native imports write it. Older folders fall back to `Import.json.Game`, then
-recognized course IDs; an unidentified folder appears under **Unknown**. Authored maps and the current
-mountain's own assets appear under **Custom / Authored**, even when they borrow art from another game.
+recognized course IDs; an unidentified folder appears under **Unknown**. Custom maps and the current
+mountain's own assets appear under **Custom**, even when they borrow art from another game.
 The catalogue APIs retain their `levels` lists and also return `maps` with each map's `game`.
 Reference maps keep source-qualified identities. Props and textures use the content versions below.
 Existing unqualified references retain their local-first resolution until their original assets can be pinned.
@@ -115,11 +115,11 @@ setup, glTF bundling and PS2 repacking all consume this same contract.
 
 ## Uploading browser-extracted references
 
-Admins can use **Reference** on a loaded game map's row in the Library catalogue or a game's course list.
-The toggle is pressed when that course is installed in the server reference library. Installed references remain manageable
-without a local disc or loaded map. Clicking a pressed toggle asks for confirmation before removing the server
-folder; the browser's map and disc are kept. Removal also clears that reference's public listing. Uploading a
-reference does not publish it.
+Each game-map row has a three-dot menu for **Unload** and, for admins, its server reference action.
+**Upload as reference** uploads a locally loaded map. Once installed, that action becomes **Remove reference from server**
+and asks for confirmation before removing the server folder. Installed references remain manageable without a local
+disc or loaded map. The browser's map and disc are kept; removal also clears the reference's public listing.
+Uploading a reference does not publish it. Active and queued uploads can be cancelled from the same menu.
 
 The Library uses one list, merging disc, locally imported and server copies of each game course. Disc and server
 icons show where it is available; **Load local** extracts a course for this browser. Admins also see unpublished

@@ -82,7 +82,9 @@ try {
       assert.equal(name, `Disc course ${Number(course.at(-4)) * 4 + Number(course.at(-1))}`);
     }
     await page.getByRole('button', { name: `Load ${name}`, exact: true }).click();
-    await page.getByRole('button', { name: `Unload ${name}`, exact: true }).waitFor({ timeout: 120_000 });
+    await page
+      .getByRole('button', { name: `Unload ${name}`, exact: true, includeHidden: true })
+      .waitFor({ state: 'attached', timeout: 120_000 });
     const result = await page.evaluate(async course => {
       const request = indexedDB.open('slopesmith-local-disc', 1);
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -191,7 +193,9 @@ try {
       `AVALANCHE BROWSER PASS: ${course}; RVZ picker → shared WASM → cache → textured public play; ground, spawn, reset and reload. ${JSON.stringify(result)} Artifacts: ${root}`,
     );
     await page.goto(`${origin}/isos`);
-    await page.getByRole('button', { name: `Unload ${name}`, exact: true }).waitFor({ timeout: 120_000 });
+    await page
+      .getByRole('button', { name: `Unload ${name}`, exact: true, includeHidden: true })
+      .waitFor({ state: 'attached', timeout: 120_000 });
   }
 } catch (error) {
   await page?.screenshot({ path: join(root, 'failure.png') });

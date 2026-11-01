@@ -1,4 +1,5 @@
 import type { CoursePath, PlacedProp } from '../core/doc/types';
+import { takeMountainImportNotice } from './mountain/import-notice';
 import { SURFACE_TYPES } from '../core/doc/types';
 import {
   defaultMountain,
@@ -1357,11 +1358,10 @@ function redo() {
   else redoDocument();
 }
 
-// The modal dialogs + file actions (New / borrow-a-line / History / mountain import/export
+// The modal dialogs + file actions (borrow-a-line / History / mountain export
 // / map export, and the resolution behind a refused save). They replace the document via setDoc + re-run loadMountain, and
 // read the loaded reference through getters.
 const {
-  newMountainDialog,
   buildFromReferenceCourseDialog,
   openProjectDialog,
   historyDialog,
@@ -1371,7 +1371,6 @@ const {
   duplicateMountain,
   deleteMountain,
   exportMountain,
-  importMountain,
   exportDialog,
 } = createDialogs({
   getDoc: activeDoc,
@@ -1407,11 +1406,6 @@ const {
     await navigateFromEditor(destination);
   },
   exportMountainBundle: () => projectSync.exportMountain(),
-  importMountainBundle: async (bundle, name) => {
-    const imported = await projectSync.importMountain(bundle, name);
-    joinMap(imported.document);
-    return imported;
-  },
   duplicateMountainProject: async name => {
     const duplicated = await projectSync.duplicateMountain(name);
     joinMap(duplicated.document);
@@ -2539,10 +2533,8 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     toggleSpeedShade,
     getSpeedShadeOn: () => store.speedShadeOn,
     focusActive,
-    newMountainDialog,
     canCreateMountains: () => isLocalWorkspace() || session.mayCreateMountains(),
     canManageMountain: () => isLocalWorkspace() || session.mayManageMountain(projectSync.current()),
-    openProjectDialog,
     historyDialog,
     renameMountain,
     closePreview,
@@ -2552,15 +2544,11 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     duplicateMountain,
     deleteMountain,
     exportMountain,
-    importMountain,
     saveOfflineCopy: () => {
       void saveOfflineCopy();
     },
     saveToFolder: () => {
       void saveToFolder();
-    },
-    openMountainFolder: () => {
-      void openMountainFolder();
     },
     exportDialog,
     settingsDialog: openSettingsDialog,
@@ -3572,6 +3560,15 @@ async function boot() {
 void boot().then(
   () => {
     browserViews.booted();
+    const importedMissing = takeMountainImportNotice(projectSync.current()?.id);
+    if (importedMissing.length) {
+      toast(
+        `Imported ${store.mdoc.name}, with ${importedMissing.length} missing asset${importedMissing.length === 1 ? '' : 's'}.`,
+        'warn',
+        8000,
+      );
+      log(`mountain import missing assets\n${importedMissing.join('\n')}`);
+    }
     const url = new URL(location.href);
     const panel = url.searchParams.get('account');
     if (panel === 'profile' || panel === 'settings') {
@@ -3592,12 +3589,8 @@ void boot().then(
 void installAccounts({
   openMyProfile: usersMode.showMyProfile,
   openSettings: () => openSettingsDialog('account'),
-  editorAction: {
-    label: 'Exit editor',
-    desc: 'Save pending changes and return to the homepage.',
-    onClick: () => {
-      void exitEditor();
-    },
+  goHome: () => {
+    void exitEditor();
   },
 });
 const applyMemberEquipment = (member: Member) => {

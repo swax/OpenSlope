@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { libraryGameCourses } from '../src/app/public/library-courses';
+import { libraryGameCourses, libraryGameSources } from '../src/app/public/library-courses';
 import type { PublicCourse } from '../src/core/session/public-courses';
 
 const published: PublicCourse = {
@@ -24,15 +24,32 @@ const gari = courses.find(entry => entry.course === 'GARI')!;
 assert(gari.loaded && gari.disc && gari.server);
 assert.equal(gari.publication, published);
 assert.equal(gari.course, 'GARI', 'legacy cache keys remain usable for reads and unloads');
+assert.deepEqual(libraryGameSources(gari, 'all'), { device: true, server: true });
+assert.deepEqual(
+  libraryGameSources(gari, 'public'),
+  { device: false, server: true },
+  'only the published copy is public',
+);
+assert.deepEqual(
+  libraryGameSources(gari, 'private'),
+  { device: false, server: false },
+  'loaded game maps stay out of the private custom-map view',
+);
 const gba = courses.find(entry => entry.course === 'SSXGBA_GARIBALDI')!;
 assert(gba.loaded && !gba.server, 'same names in different games stay distinct');
+assert.deepEqual(libraryGameSources(gba, 'public'), { device: false, server: false });
+assert.deepEqual(libraryGameSources(gba, 'private'), { device: false, server: false });
 const snow = courses.find(entry => entry.course === 'TRICKY_SNOW')!;
 assert(snow.disc && !snow.loaded && !snow.server, 'maps can be available on disc before extraction');
+assert.deepEqual(libraryGameSources(snow, 'private'), { device: false, server: false });
 const mesa = courses.find(entry => entry.course === 'TRICKY_MESA')!;
 assert(
   mesa.server && !mesa.loaded && !mesa.disc && !mesa.publication,
   'unpublished server references remain manageable',
 );
+assert.deepEqual(libraryGameSources(mesa, 'all'), { device: false, server: true });
+assert.deepEqual(libraryGameSources(mesa, 'private'), { device: false, server: false });
+assert.deepEqual(libraryGameSources(mesa, 'public'), { device: false, server: false });
 assert.equal(
   libraryGameCourses([], [], [], [published]).length,
   1,

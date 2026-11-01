@@ -1,0 +1,104 @@
+.library-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.library-heading .library-game-load {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.library-actions-menu > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 12px;
+  box-sizing: border-box;
+  border: 1px solid #354b5b;
+  border-radius: 6px;
+  color: #b9cddd;
+  background: #172834;
+  font: 600 12px/1.4 system-ui;
+  cursor: pointer;
+  list-style: none;
+}
+.library-game-actions > summary,
+.library-map-actions > summary {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  font: 22px/1 system-ui;
+}
+.library-load-map > summary {
+  padding: 10px 15px;
+}
+.public-map-tile:has(.library-map-actions[open]) {
+  z-index: 10;
+}
+.library-actions-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.library-actions-menu:not([open]) > .library-actions-menu-panel {
+  display: none;
+}
+.library-actions-menu > summary:hover,
+.library-actions-menu[open] > summary {
+  background: #304e60;
+}
+.library-heading .library-game-load:focus-visible,
+.library-actions-menu > summary:focus-visible,
+.library-actions-menu-panel > button:focus-visible {
+  outline: 2px solid #f4b65e;
+  outline-offset: 2px;
+}
+.library-actions-menu-panel {
+  position: fixed;
+  z-index: 3000;
+  display: grid;
+  gap: 4px;
+  min-width: min(190px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid #3a505f;
+  border-radius: 8px;
+  background: #101f2a;
+  box-shadow: 0 8px 24px #0008;
+}
+.library-actions-menu-panel > button {
+  justify-content: flex-start;
+  margin: 0;
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+}
+.library-actions-menu-panel > button:hover:not(:disabled) {
+  background: #304e60;
+}
+@media (max-width: 600px) {
+  .library-heading {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .library-heading .library-game-load,
+  .library-game-actions > summary,
+  .library-map-actions > summary {
+    min-height: 40px;
+  }
+  .library-game-actions > summary,
+  .library-map-actions > summary {
+    width: 40px;
+    height: 40px;
+  }
+  .library-load-map > summary {
+    min-height: 40px;
+  }
+}

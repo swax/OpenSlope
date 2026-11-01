@@ -682,7 +682,7 @@ export class TextureLibrary {
       value: stem,
       confirmLabel: 'Rename',
       hint:
-        'Painted cells, authored models and imported props are repointed to the new name, so nothing ' +
+        'Painted cells, editable models and imported props are repointed to the new name, so nothing ' +
         'loses its art. Letters, digits, hyphens and underscores are kept; anything else is dropped.',
       validate: this.nameTaken(stem),
     });
@@ -779,7 +779,7 @@ export class TextureLibrary {
       body:
         `Removes assets/textures/${stem}.png from this mountain. This is not undoable.` +
         (costs.length
-          ? ` It is currently used by ${costs.join(' and ')}. Painted cells and authored models are cleared ` +
+          ? ` It is currently used by ${costs.join(' and ')}. Painted cells and editable models are cleared ` +
             'and fall back to their surface tint; imported props keep the reference and will show as ' +
             'untextured until you point them somewhere else.'
           : ' Nothing is currently using it.'),

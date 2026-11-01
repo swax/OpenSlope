@@ -1060,7 +1060,7 @@ export function createPropTools(ctx: ToolsContext) {
           host.changed();
         }),
       'Ship this placement full-bright — the sun never shades it.',
-      'How retail lights sign faces, LCD screens, jumbotrons and lamp heads. Off = lit by the authored sun ' +
+      'How retail lights sign faces, LCD screens, jumbotrons and lamp heads. Off = lit by the map’s sun ' +
         'like the snow under it.',
     );
     return lightingSection;
@@ -1117,7 +1117,7 @@ export function createPropTools(ctx: ToolsContext) {
           }),
         ),
       CONTACT_HELP.shape,
-      `${CONTACT_MORE.shape} An authored mesh proxy is generated from this placement.`,
+      `${CONTACT_MORE.shape} A custom mesh proxy is generated from this placement.`,
     );
     const gates = { contact: profile.playerCollision, response: profile.playerBounce };
     tip(
@@ -1931,7 +1931,7 @@ export function createPropTools(ctx: ToolsContext) {
     if (resolved.source === 'extraction')
       return [
         `Imported placement defaults for ${name}.`,
-        'These settings apply to copies on your authored mountain. The source course stays a static reference. You can change the collision settings before placing.',
+        'These settings apply to copies on your custom mountain. The source course stays a static reference. You can change the collision settings before placing.',
       ];
     if (resolved.source === 'reference') {
       const all = resolved.matching === resolved.total;

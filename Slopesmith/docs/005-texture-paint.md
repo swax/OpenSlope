@@ -24,7 +24,7 @@ used on terrain) trailing.
 
 Choose **Source → Game → Map** to browse a bank on **Local** (this device) or **Server**. Each source/game
 remembers the last map selected while the library is open. The mountain's own textures live under
-**Custom / Authored**; unidentified legacy sources
+**Custom**; unidentified legacy sources
 live under **Unknown**. Sampling or opening a texture picker switches all selectors to the tile's source.
 The selected texture's details show its source, game and map, using the same catalogue names.
 Local/Server is the loading preference for a selected bank. Matching copies share a saved content version;
@@ -210,7 +210,7 @@ D4 **relative to the patch it sits on**: sampling captures it (above), the F ove
 art-F against green frame-F), and the Palette's selected-texture readout spells it out in degrees — the
 _brush's own_ quarter-turn, so the frame the number is relative to is always explicit. Original
 patches don't even agree on the sign of `u` between neighbours — their UVs usually compensate, so the
-render is seamless. On the authored mountain the grid is uniform by construction — the bake lays every
+render is seamless. On the custom mountain the grid is uniform by construction — the bake lays every
 cell with `+u` down the rows toward the finish (`level.ts`, `quiltPatches`) — so a Palette cell's D4
 paints exactly what its art shows. Orientation is worked **visually**, with the F overlay:
 

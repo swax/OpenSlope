@@ -704,7 +704,7 @@ export function buildPlayTools(ctx: ToolsContext) {
     recordAi,
     store.playTarget === 'authored'
       ? 'Start riding your mountain and record the AI run immediately. Esc stops the run and saves the paths.'
-      : 'Choose your authored mountain to record an AI run.',
+      : 'Choose your custom mountain to record an AI run.',
   );
 
   const options = editSection('play-options', 'Options', true);
@@ -741,7 +741,7 @@ export function buildPlayTools(ctx: ToolsContext) {
         releaseKeyboard();
       }),
     'Run the reference course’s READY · 3 · 2 · 1 · GO on the next Play.',
-    'Leave off for immediate test runs. Authored mountains and references without a proven countdown always ' +
+    'Leave off for immediate test runs. Custom mountains and references without a proven countdown always ' +
       'start immediately.',
   );
 

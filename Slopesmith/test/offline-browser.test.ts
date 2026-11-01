@@ -141,7 +141,8 @@ try {
   const onlineRequests = apiRequests.length;
   await context!.setOffline(true);
   // The editor and player have not been visited: their lazy chunks must already be in the app cache.
-  await page!.getByRole('link', { name: 'New map', exact: true }).click();
+  await page!.getByRole('button', { name: 'New map', exact: true }).click();
+  await page!.getByRole('dialog', { name: 'New map' }).getByRole('button', { name: 'Create map' }).click();
   await editorReady();
   const mountain = defaultMountain();
   mountain.name = 'OFFLINE_RUN';
@@ -160,16 +161,17 @@ try {
     missing: [],
   };
   const archive = createMountainArchive(bundle);
-  const chooser = page!.waitForEvent('filechooser');
-  await fileAction('Import mountain…');
-  await (
-    await chooser
-  ).setFiles({
+  await page!.getByRole('link', { name: 'Slopesmith', exact: true }).click();
+  await page!.getByRole('button', { name: 'Load map', exact: true }).click();
+  await page!.getByRole('button', { name: 'Import from file', exact: true }).click();
+  const importDialog = page!.getByRole('dialog', { name: 'Import mountain', exact: true });
+  await importDialog.getByLabel('Mountain file').setInputFiles({
     name: 'offline.slopesmith.zip',
     mimeType: 'application/zip',
     buffer: Buffer.from(await archive.blob.arrayBuffer()),
   });
-  await page!.getByRole('button', { name: 'Import', exact: true }).click();
+  await importDialog.getByLabel('Map name').fill('OFFLINE_RUN');
+  await importDialog.getByRole('button', { name: 'Import mountain', exact: true }).click();
   await page!.waitForFunction(() => document.title === 'OFFLINE_RUN - Slopesmith');
   await editorReady();
   const editorUrl = page!.url();
@@ -198,7 +200,9 @@ try {
   await page!.locator('#public-iso').setInputFiles(iso);
   await page!.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await page!.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
-  await page!.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor();
+  await page!
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached' });
   const isoCard = page!.locator('.public-iso-map[data-course="TRICKY_GARI"]');
   assert.equal(await isoCard.locator('.public-primary').count(), 1);
   assert(
@@ -208,7 +212,7 @@ try {
   );
   assert.equal(
     await isoCard
-      .getByRole('button', { name: 'Unload Garibaldi', exact: true })
+      .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
       .evaluate(el => el.classList.contains('public-primary')),
     false,
   );
@@ -287,6 +291,8 @@ try {
   await context!.setOffline(true);
   await page!.goto(savedEditorUrl);
   await editorReady();
+  // A new tab must not retry the deliberately broken worker after downloads are enabled again.
+  writeFileSync(join(dist, 'sw.js'), originalWorker);
   failPrecache = false;
 
   // A complete release becomes available to new visits while existing editors keep their own assets.
@@ -307,9 +313,13 @@ try {
   const updateNotice = page!.getByRole('region', { name: 'App update', exact: true });
   await updateNotice.waitFor();
   assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
+  const updateCaches = await page!.evaluate(async () =>
+    (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+  );
   assert.equal(
-    await page!.evaluate(async () => (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length),
+    updateCaches.length,
     2,
+    `only the current and updated release caches remain: ${updateCaches.join(', ')}`,
   );
   await updateNotice.getByRole('button', { name: 'Reload to update', exact: true }).click();
   await editorReady();

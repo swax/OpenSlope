@@ -117,28 +117,42 @@ its name, for example `/play/MyMountain`.
 Shared maps load immediately for visitors and members. No rider name or sign-in
 is required. Private or deleted links show an unavailable message. The sign-in page includes **Back to homepage**.
 The homepage `/` is the map library. Games in its sidebar share one place to browse, load, play and inspect courses.
-Use search and source filters to narrow the list, or switch between compact rows and cards. **Open game file**
-accepts supported disc images and GBA ROMs; the file and imported courses stay on this device.
+The sidebar offers **All maps**, **Public** and **Private**. Public contains published server maps and references;
+Private contains only custom maps saved in the browser, linked to folders or unpublished on the server.
+Game maps appear in **All maps** and their game views, and published references also appear in **Public**.
+The All maps, Public and Private sidebar rows show total map counts. Local/Server buttons filter the sources available
+in the chosen view.
+Use search and source filters to narrow the map list. Select a game and choose **Load PS2 image…**,
+**Load GameCube image…** or **Load GBA ROM…** beside its name
+to select a supported disc image or GBA ROM; the file and imported courses stay on this device.
+Games with a saved image or imported maps show a three-dot menu in that position for managing their local data.
+If only imported maps remain, the same Load action in that menu can restore the source image.
+Beside **New map**, **Load map** offers **Import from file** to create a Local or Server map from an editable ZIP,
+and **Link folder** to add an existing mountain folder to Private maps without leaving the library.
+Linked maps retain their folder connection across reloads; opening one checks for folder changes before editing.
+Folder and browser icons match the editor's save indicator. Private server maps and references use a cloud;
+public ones use a globe. Game maps with both copies stack their disc and server icons in separate boxes.
+The dropdown stays available in every library view.
 `/maps` and `/isos` forward to this library. The editor uses `/editor/<mapname>`.
 Each game's **Refresh image** rescans its saved image for current course names and inventory without
 re-extracting loaded courses. **Remove image…** forgets the source image while keeping imported courses
 playable. **Unload game…** removes that game's saved image and imported courses; other games and custom
 mountains stay in place. These controls ask before removing data.
-Signed-in members also see **Private server maps** on `/`. Those tiles open the existing server mountain
-in the editor; public mountains stay in **Public maps** without duplicate tiles. Guests receive only the public
-catalogue, and private mountains remain unavailable through public play links.
-Each authored map has **Edit**; ISO maps have **Inspect**, which opens the map as a read-only reference beside
+Signed-in members also see unpublished server mountains under **Private**. Those entries open the existing server
+mountain in the editor; published mountains appear under **Public**. Guests receive only the public server
+catalogue alongside their own local maps, and private mountains remain unavailable through public play links.
+Each custom map has **Edit**; ISO maps have **Inspect**, which opens the map as a read-only reference beside
 an empty editing workspace. Signed-in authors keep the server editor. Signed-out visitors edit locally:
 the published mountain is copied into browser storage, and references come from this device's loaded ISO maps.
 Editing, creating, importing, duplicating, and exporting mountains stay on the device. No server project is
 created or saved and no collaboration session connects. **Export mountain…** downloads an editable ZIP with
-the custom assets; **Import mountain…** restores one locally. Browser storage is separate from signed-in
+the custom assets; **Load map → Import from file** on `/` restores one locally. Browser storage is separate from signed-in
 recovery and can be cleared by the browser. **Save to folder…** keeps `mountain.slopesmith.zip` in a folder you
 choose and updates it automatically after browser saves, including custom assets. The save icon distinguishes
 browser, folder, and server saves; click it for the location, last save time, and backup actions. Folder autosave
 requires a browser with the directory picker (such as desktop Chrome or Edge). If folder permission expires,
 choose **Resume folder autosave** from the save icon. The folder copy survives clearing site data; use
-**Open mountain folder…** in the editor or on `/` to reopen it. Other browsers can use Export/Import mountain
+**Load map → Link folder** on `/` to add it back to the library, then choose **Edit**. Other browsers can use Export mountain and Import from file
 for file backups. **Export map…** writes the map files Snowknife uses to repack the course into your ISO.
 The **Home** icon saves
 pending edits and returns to `/`. Its **Local maps** section lists browser-saved mountains, including
@@ -148,19 +162,21 @@ renames it without changing its identity or the public source. Local tiles have 
 before removing that browser copy and its custom assets. Deleting a browser copy keeps folder copies and downloads.
 Local tiles stay local even for signed-in
 members; local copies are never uploaded automatically. Signed-in members keep their account menu in the local
-editor, including profile, settings, sign-out and Exit editor. Only signed-out local editors use the Home-only
+editor, including profile, settings and sign-out. Only signed-out local editors use the Home-only
 control. Sign in from the Library header to use the server editor.
-Its header uses the editor's logo and signed-in account menu. **File → Exit editor** and
-**Account menu → Exit editor** save pending changes and return home without signing out.
-GitHub, Discord and About live at the right of the library and player toolbar. About describes using your
-own assets and links to the source and server setup guide; narrow player headers keep those links inside About.
-Map rows offer **Play**, with **Edit** for authored mountains and **Inspect** for references.
+Its header uses the editor's logo and signed-in account menu. The **Editor** header link opens the editor;
+**File → Library** and **File → Exit editor** save pending changes and return home without signing out.
+GitHub, Discord and About live at the right of the library and player toolbar. On mobile, a taller header keeps
+Library and Editor visible beside chat and account icons; the chat icon carries a connection-status dot.
+The **⋯** menu contains Help, About, project links, offline information and **Return to [map]** for the last map.
+About describes using your own assets and links to the source and server setup guide.
+Map rows offer **Play**, with **Edit** for custom mountains and **Inspect** for references.
 Missing game assets link to the matching game's import view. **New map** starts an editable local mountain.
 In a game's library view, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
 Loaded courses also offer **Play** and **Inspect**. **Device storage** in the sidebar contains the control
 for clearing saved game files and imported courses from this browser.
 Primary buttons share the same highlighted style; secondary actions keep their own targets.
-**Play**, **Play in VR**, **View map**, and **Edit map** (authored mountains) or **Inspect map** (references)
+**Play**, **Play in VR**, **View map**, and **Edit map** (custom mountains) or **Inspect map** (references)
 appear over the map preview.
 Click the map to choose a local start point; **Reset start** restores its default. **View map** shows the mouse
 movement legend for start placement, orbit, pan, and zoom. Hold **Alt + WASD** to move the camera.
@@ -201,15 +217,14 @@ missing riding sounds can use a Tricky map loaded in this browser.
 see the [Mad Trix importer limits](../Native/docs/madtrix-import.md).
 Original SSX courses have separate names such as
 **Snowdream (SSX)**, so both games can be loaded together. See the [SSX importer limits](../Native/docs/ssx-import.md).
-Authored mountains that borrow game assets
+Custom mountains that borrow game assets
 are labelled **ISO optional** and remain playable without it: missing game textures render as plain
 surfaces and missing props are omitted. Custom textures, models and uploaded skies remain available, and a
 mountain whose only borrowing is the ring an uploaded sky is cut against for export carries no ISO label at
 all ([025](docs/025-skybox.md#export-contract)). Supplying an ISO
 restores its assets locally. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves
-the extracted maps in IndexedDB. The homepage has separate **Public maps** and **From your ISO**
-sections. Only maps already loaded on this device appear in the latter, including maps the server
-has never imported or published.
+the extracted maps in IndexedDB. The library's **All maps** and game views include local game maps, even when the server
+has never imported or published them. Local and server copies share one row, with icons for each available source.
 
 ### Offline use in Chrome
 
@@ -325,7 +340,7 @@ Use **File → Settings → Server → Local storage** to choose the workspace a
 [Local Projects](docs/035-local-projects.md).
 
 **File → Export mountain…** downloads the current editable revision and its complete mountain-local asset library as
-`<NAME>-r<REVISION>-<UTC-TIMESTAMP>.slopesmith.zip`. **Import mountain…** asks for the new workspace mountain's name, then creates it from
+`<NAME>-r<REVISION>-<UTC-TIMESTAMP>.slopesmith.zip`. **Load map → Import from file** asks for the new workspace mountain's name, then creates it from
 one of those archives; it never overwrites the source mountain or an existing name. **Duplicate mountain**
 asks for the copy's name and makes the same kind of fork inside one server without sending asset bytes through
 the browser. History checkpoints can be exported in the same portable
@@ -342,7 +357,7 @@ Scene’s launcher reads **Reference: `<name>`**, or **Reference: None** when no
 Course, AI Paths, Sound, Lighting, Skybox, God Rays, and Camera use a **Mountain / Reference** split button;
 shared display and preview controls sit above it. Each section remembers its selected side. Effects/Test
 selectors retain the **Reference** role label.
-See [Authored Map References](docs/036-authored-map-references.md).
+See [Custom Map References](docs/036-authored-map-references.md).
 
 In **Scene → AI Paths**, the reference map’s shared AI routes are selectable objects. Opening the category
 shows the path overlay; click a path in the viewport to highlight it and inspect its events.
@@ -363,7 +378,7 @@ jump-event ranges for approach and charge release, preserving source order when 
 current path. Labels describe observed SSX Tricky behavior rather than recovered original event names;
 meanings in other games remain unconfirmed. Reference paths remain read-only.
 
-On an authored mountain, choose **Test → AI settings → Record AI run** to launch the ride with recording active.
+On a custom mountain, choose **Test → AI settings → Record AI run** to launch the ride with recording active.
 Ride your line, then press **Esc** to stop and save it; Stop also saves. Recording automatically samples the route,
 keeps extra detail through turns and jumps, and creates overlapping sections with jump events.
 In **Scene → AI Paths → Mountain**, click a path in the viewport to inspect its events and geometry, rename it,

@@ -1478,7 +1478,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
           `this, so ${
             bare
               ? 'the prop this curve follows is untouched and the grind'
-              : 'the tube is drawn and ' + 'solid exactly as authored and simply'
+              : 'the tube is drawn and ' + 'solid exactly as created and simply'
           } cannot be caught yet. ` +
           "Slopesmith's own test ride refuses it too, because no preview here runs the toggle.",
         value => {
@@ -2796,7 +2796,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         row(
           'Target prop',
           input(call.targetLabel, () => {}, { readonly: true }),
-          'The authored prop that receives the call, and whose position the effect runs at.',
+          'The custom prop that receives the call, and whose position the effect runs at.',
         ),
         row('Runs effect', effectControl, 'The effect that runs on the target prop.'),
       );
@@ -4118,7 +4118,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         el(
           'div',
           'sp-fx-note',
-          'At runtime the exact hit point replaces the stored origin, and the outward hit normal replaces the base-velocity direction. The authored vector contributes only its length; velocity variation remains authored.',
+          'At runtime the exact hit point replaces the stored origin, and the outward hit normal replaces the base-velocity direction. The stored vector contributes only its length; velocity variation uses the stored value.',
         ),
       );
 

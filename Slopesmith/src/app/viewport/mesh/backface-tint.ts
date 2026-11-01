@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-/** The warning colour a back face tints toward — a saturated magenta nothing else in the viewport wears.
+/** The warning colour a back face tints toward — solid magenta, distinct from missing assets' checkerboard.
  *  Shared with the Surface view's prop clay (scene/prop-shade.ts) and the legend swatch, so the one hue
  *  that means "you are looking at this from behind its normal" cannot drift between the two surfaces. */
 export const BACKFACE_TINT_RGB: readonly [number, number, number] = [0.92, 0.2, 0.74];

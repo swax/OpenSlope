@@ -1256,7 +1256,7 @@ export function createRideHud(o: RideHudOpts) {
       setField(
         'transparent',
         `ref ${count(perf.renderTransparentRefBatches)} batch + ` +
-          `${count(perf.renderTransparentRefIsolated)} isolated · authored ${count(perf.renderTransparentAuthoredProps)}` +
+          `${count(perf.renderTransparentRefIsolated)} isolated · custom ${count(perf.renderTransparentAuthoredProps)}` +
           ` · other ${count(perf.renderTransparentOther)}` +
           (perf.renderTransparentOtherSources ? ` (${perf.renderTransparentOtherSources})` : ''),
       );
@@ -1264,7 +1264,7 @@ export function createRideHud(o: RideHudOpts) {
         'props',
         `batch ${count(perf.propBatchDraws)} draws / ${count(perf.propBatchSlots)} slots · ` +
           `isolated ${count(perf.propIsolatedDraws)} / ${count(perf.propIsolatedSlots)} · ` +
-          `authored ${count(perf.authoredPropDraws)}`,
+          `custom ${count(perf.authoredPropDraws)}`,
       );
       perfIsolationEl.style.display = perf.propIsolation ? '' : 'none';
       setField('isolation', perf.propIsolation || '—');

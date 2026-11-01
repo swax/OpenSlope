@@ -1,5 +1,5 @@
 import { clientFetch } from '../../net/client';
-import { button, group, iconBar, menu, type MenuItem } from '../components/controls';
+import { button, group, iconBar, menu } from '../components/controls';
 import { svg } from '../components/icons';
 import { tooltip } from '../components/tooltip';
 import { postJson } from '../../net/fetch-json';
@@ -54,7 +54,6 @@ export function createAccountMenu(user: Member, deps: AccountMenuDeps): HTMLButt
       desc: 'Edit your account and device, or open application and server settings.',
       onClick: deps.openSettings,
     },
-    ...(deps.editorAction ? [deps.editorAction] : []),
     {
       label: 'Sign out',
       desc: 'End this browser session and return to sign in.',
@@ -83,7 +82,6 @@ export function createAccountMenu(user: Member, deps: AccountMenuDeps): HTMLButt
 export interface AccountMenuDeps {
   openMyProfile: () => void;
   openSettings: () => void;
-  editorAction?: MenuItem;
 }
 
 /**
@@ -94,7 +92,7 @@ export interface AccountMenuDeps {
  *
  * Signed-out browser workspaces get Home. A signed-in member keeps their account menu in every workspace.
  */
-export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
+export async function installAccounts(deps: AccountMenuDeps & { goHome?: () => void }): Promise<void> {
   const account = await currentAccount();
   if (isLocalWorkspace() && !('user' in account)) {
     const home = group(
@@ -103,7 +101,7 @@ export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
           icon: svg('<path d="m3 10 9-7 9 7v11H3Z"/><path d="M9 21v-8h6v8"/>'),
           label: 'Home',
           title: 'Save pending changes and return to Maps.',
-          onClick: deps.editorAction?.onClick ?? (() => location.assign(MAPS_PATH)),
+          onClick: deps.goHome ?? (() => location.assign(MAPS_PATH)),
         },
       ]).el,
     );

@@ -1,6 +1,24 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Locator } from 'playwright-core';
+
+/** Open the actions belonging to one map before exercising a menu-only control. */
+export async function openMapActionsFor(action: Locator): Promise<void> {
+  const trigger = action.locator('xpath=ancestor::article[1]').getByRole('button', { name: /^Map actions for / });
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+    await trigger.scrollIntoViewIfNeeded();
+    // Let scrolling finish before opening a menu that dismisses on page scroll.
+    await trigger.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await trigger.click();
+  }
+}
+
+export async function clickMapAction(action: Locator): Promise<void> {
+  await action.and(action.page().locator('button:enabled')).waitFor({ state: 'attached' });
+  await openMapActionsFor(action);
+  await action.click();
+}
 
 /**
  * The installed Chromium-family browser the real-WebGL checks launch through playwright-core, which ships no

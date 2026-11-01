@@ -83,8 +83,9 @@ async function chooseReference(page: Page, level: string) {
   await page.waitForFunction(
     async expected => {
       const storageUrl = '/src/app/state/storage.ts';
-      const { REF_KEY } = await import(/* @vite-ignore */ storageUrl);
-      return JSON.parse(localStorage.getItem(REF_KEY) ?? 'null')?.level === expected;
+      const { referenceStorageKey } = await import(/* @vite-ignore */ storageUrl);
+      const key = referenceStorageKey();
+      return JSON.parse((key && localStorage.getItem(key)) ?? 'null')?.level === expected;
     },
     await picker.inputValue(),
   );
@@ -241,47 +242,49 @@ try {
   const imported = structuredClone(bundle);
   imported.document.name = 'IMPORTED_LOCAL';
   const archive = createMountainArchive(imported);
-  const chooser = page.waitForEvent('filechooser');
-  await fileAction(page, 'Import mountain…');
-  await (
-    await chooser
-  ).setFiles({
+  await page.getByRole('button', { name: 'File menu', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Import mountain…', exact: true }).count(), 0);
+  await page.keyboard.press('Escape');
+  assert.equal(requests.length, bootstrapReads, 'editing, saving and export issue no map-data API requests');
+  await editorBrand.click();
+  await page.getByRole('button', { name: 'Load map', exact: true }).click();
+  assert(await page.getByRole('button', { name: 'Link folder', exact: true }).isDisabled());
+  await page.getByRole('button', { name: 'Import from file', exact: true }).click();
+  const importDialog = page.getByRole('dialog', { name: 'Import mountain', exact: true });
+  await importDialog.getByLabel('Mountain file').setInputFiles({
     name: 'mountain.slopesmith.zip',
     mimeType: 'application/zip',
     buffer: Buffer.from(await archive.blob.arrayBuffer()),
   });
-  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  assert.equal(await importDialog.getByLabel('Map name').inputValue(), 'mountain');
+  await importDialog.getByLabel('Map name').fill('IMPORTED_LOCAL');
+  await importDialog.getByRole('button', { name: 'Import mountain', exact: true }).click();
   await page.waitForFunction(() => document.title === 'IMPORTED_LOCAL - Slopesmith');
   await ready(page);
+  const importBootstrapReads = requests.length;
+  assert(
+    requests.every(request => request.startsWith('GET ')),
+    'local import sends no server mutations',
+  );
   const importedCopyId = new URL(page.url()).searchParams.get('local');
   assert(importedCopyId);
   for (const [projectId, name] of [
     [firstCopyId!, 'LOCAL_RUN'],
     [importedCopyId, 'IMPORTED_LOCAL'],
   ]) {
-    await fileAction(page, 'Open mountain…');
-    const openMountain = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
-    assert.equal(
-      await openMountain.locator('.sp-modal-note').innerText(),
-      'Local mountains — saved in this browser on this device.',
-    );
-    const option = await openMountain
-      .locator('option')
-      .filter({ hasText: `${name} —` })
-      .textContent();
-    assert(option);
-    await openMountain.getByRole('combobox', { name: 'Saved mountain', exact: true }).selectOption({ label: option });
+    await editorBrand.click();
+    const editLocal = page.locator('.public-saved-maps').getByRole('link', { name: `Edit ${name}`, exact: true });
+    await editLocal.waitFor();
     if (projectId === firstCopyId) await page.screenshot({ path: join(root, 'open-local-mountain.png') });
-    await openMountain.getByRole('button', { name: 'Open', exact: true }).click();
+    await editLocal.click();
     await page.waitForFunction(expected => document.title === `${expected} - Slopesmith`, name);
     await ready(page);
-    assert.equal(
-      new URL(page.url()).searchParams.get('local'),
-      projectId,
-      'Open mountain follows the selected local map',
-    );
+    assert.equal(new URL(page.url()).searchParams.get('local'), projectId, 'the library opens the selected local map');
   }
-  assert.equal(requests.length, bootstrapReads, 'editing, saving, export and import issue no map-data API requests');
+  assert(
+    requests.slice(importBootstrapReads).every(request => request.startsWith('GET ')),
+    'reopening imported mountains through the library sends no server mutations',
+  );
   assert.deepEqual(sockets, [], 'guest editing opens no editor or named chat session');
   assert.deepEqual(errors, []);
   const server = (await (await call(`/api/public/project?id=${id}`)).json()) as any;
@@ -332,13 +335,15 @@ try {
   await ready(page);
   assert.equal(new URL(page.url()).searchParams.get('local'), secondCopyId, 'reload reopens the existing copy');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await page.getByRole('article', { name: 'New map', exact: true }).click({ position: { x: 12, y: 12 } });
+  await page.getByRole('button', { name: 'New map', exact: true }).click();
+  await page.getByRole('dialog', { name: 'New map' }).getByRole('button', { name: 'Create map' }).click();
   await ready(page);
   assert.equal(await page.title(), 'MOUNTAIN01 - Slopesmith');
   const newMapId = new URL(page.url()).searchParams.get('local');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await localMaps.getByRole('link', { name: 'Edit MOUNTAIN01', exact: true }).waitFor();
-  await page.getByRole('link', { name: 'New map', exact: true }).click();
+  await page.getByRole('button', { name: 'New map', exact: true }).click();
+  await page.getByRole('dialog', { name: 'New map' }).getByRole('button', { name: 'Create map' }).click();
   await ready(page);
   assert.equal(await page.title(), 'MOUNTAIN02 - Slopesmith');
   assert.notEqual(new URL(page.url()).searchParams.get('local'), newMapId);
@@ -500,7 +505,10 @@ try {
   });
   await accountMenu.click();
   await page.screenshot({ path: join(root, 'signed-in-local-account-mobile.png') });
-  await page.getByRole('button', { name: 'Exit editor', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Exit editor', exact: true }).count(), 0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'File menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Library', exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
   const memberDeleteRequests = requests.length;
@@ -563,51 +571,24 @@ try {
   assert.deepEqual(referenceReads, [], 'reference terrain and art from a loaded ISO never request server map bytes');
   await page.screenshot({ path: join(root, 'server-editor-local-iso-reference.png') });
   assert.equal(await page.getByText('Local workspace', { exact: true }).count(), 0);
-  await fileAction(page, 'Open mountain…');
-  const serverMountains = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
-  assert.equal(
-    await serverMountains.locator('.sp-modal-note').innerText(),
-    `Server mountains — saved on ${new URL(origin).host}.`,
-  );
-  await serverMountains
-    .getByRole('combobox', { name: 'Mountain source', exact: true })
-    .selectOption({ label: 'Local' });
-  const localOption = await serverMountains.locator('option').filter({ hasText: 'IMPORTED_LOCAL —' }).textContent();
-  assert(localOption, 'the server editor lists browser mountains for signed-in members');
-  assert.equal(await page.title(), 'PUBLIC_RUN - Slopesmith', 'changing the source does not open a mountain');
-  await serverMountains
-    .getByRole('combobox', { name: 'Saved mountain', exact: true })
-    .selectOption({ label: localOption });
-  assert.equal(
-    await serverMountains.locator('.sp-modal-note').innerText(),
-    'Local mountains — saved in this browser on this device.',
-    'the location follows the selected mountain',
-  );
+  await editorBrand.click();
+  const locationFilters = page.getByRole('group', { name: 'Filter map sources', exact: true });
+  await locationFilters.getByRole('button', { name: /^Local/ }).click();
+  const editImported = localMaps.getByRole('link', { name: 'Edit IMPORTED_LOCAL', exact: true });
+  await editImported.waitFor();
   await page.screenshot({ path: join(root, 'open-server-mountain.png') });
-  await serverMountains.getByRole('button', { name: 'Open', exact: true }).click();
+  await editImported.click();
   await page.waitForURL(url => url.searchParams.get('local') === importedCopyId);
   await ready(page);
   assert.equal(new URL(page.url()).searchParams.get('local'), importedCopyId);
   assert.equal(await page.title(), 'IMPORTED_LOCAL - Slopesmith');
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
-  await fileAction(page, 'Open mountain…');
-  const localMountains = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
-  await localMountains
-    .getByRole('combobox', { name: 'Mountain source', exact: true })
-    .selectOption({ label: 'Server' });
-  const serverOption = await localMountains.locator('option').filter({ hasText: 'PUBLIC_RUN —' }).textContent();
-  assert(serverOption, 'the signed-in local editor also lists server mountains');
-  await localMountains
-    .getByRole('combobox', { name: 'Saved mountain', exact: true })
-    .selectOption({ label: serverOption });
-  assert.equal(
-    await localMountains.locator('.sp-modal-note').innerText(),
-    `Server mountains — saved on ${new URL(origin).host}.`,
-  );
-  await localMountains.getByRole('button', { name: 'Open', exact: true }).click();
-  await page.waitForURL(url => url.searchParams.get('project') === id && !url.searchParams.has('local'));
+  await editorBrand.click();
+  await locationFilters.getByRole('button', { name: /^Server/ }).click();
+  await page.getByRole('link', { name: 'Edit PUBLIC RUN', exact: true }).click();
+  await page.waitForURL(url => url.pathname === '/editor/PUBLIC_RUN' && !url.searchParams.has('local'));
   await ready(page);
-  assert.equal(new URL(page.url()).searchParams.get('project'), id);
+  await page.waitForFunction(expected => document.getElementById('capture-status')?.dataset.projectId === expected, id);
   assert.equal(new URL(page.url()).searchParams.has('local'), false);
   assert.equal(await page.title(), 'PUBLIC_RUN - Slopesmith');
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');

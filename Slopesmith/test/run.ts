@@ -117,6 +117,8 @@ const EXCLUSIVE_GROUP = new Map([
   ['sync-browser.test.ts', 'browser-webgl'],
   ['edit-prop-tools.test.ts', 'browser-webgl'],
   ['local-editor.test.ts', 'browser-webgl'],
+  ['new-map-browser.test.ts', 'browser-webgl'],
+  ['import-mountain-browser.test.ts', 'browser-webgl'],
   ['missing-assets-browser.test.ts', 'browser-webgl'],
   ['reference-loading-browser.test.ts', 'browser-webgl'],
   ['game-map-library-browser.test.ts', 'browser-webgl'],

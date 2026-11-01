@@ -39,11 +39,11 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex').slice(0,
 
 const GOLDEN: Record<string, Record<string, string>> = {
   'defaultMountain': {
-    doc: 'e411d03dbe1a98b8',
-    'AIP.json': '2d354e43a325de60',
-    'SOP.json': '693c467b53eca57f',
-    'Patches.json': 'e83cda16c869c706',
-    'Props.obj': '8743fee764ffa51d',
+    doc: 'b459233a768306c3',
+    'AIP.json': 'af596ef66255ad5a',
+    'SOP.json': 'c6368a0bdde2575a',
+    'Patches.json': '8ab2c85e777a66db',
+    'Props.obj': '76c909d697ec14cd',
   },
   'migrate(v1)': {
     doc: 'e9a82422371dc941',
@@ -53,32 +53,32 @@ const GOLDEN: Record<string, Record<string, string>> = {
     'Props.obj': '822e6d034b940505',
   },
   'migrate(v5 passthrough)': {
-    doc: 'e411d03dbe1a98b8',
-    'AIP.json': '2d354e43a325de60',
-    'SOP.json': '693c467b53eca57f',
-    'Patches.json': 'e83cda16c869c706',
-    'Props.obj': '8743fee764ffa51d',
+    doc: 'b459233a768306c3',
+    'AIP.json': 'af596ef66255ad5a',
+    'SOP.json': 'c6368a0bdde2575a',
+    'Patches.json': '8ab2c85e777a66db',
+    'Props.obj': '76c909d697ec14cd',
   },
   'migrate(garbage)': {
-    doc: 'e411d03dbe1a98b8',
-    'AIP.json': '2d354e43a325de60',
-    'SOP.json': '693c467b53eca57f',
-    'Patches.json': 'e83cda16c869c706',
-    'Props.obj': '8743fee764ffa51d',
+    doc: 'b459233a768306c3',
+    'AIP.json': 'af596ef66255ad5a',
+    'SOP.json': 'c6368a0bdde2575a',
+    'Patches.json': '8ab2c85e777a66db',
+    'Props.obj': '76c909d697ec14cd',
   },
   'buildMeshFromCourse (generated terrain)': {
-    doc: '4ce6d6aa5627009a',
-    'AIP.json': '88e9994eae813092',
-    'SOP.json': '6d8dae32f824ba52',
-    'Patches.json': '1bb02917de86083d',
-    'Props.obj': '23052eec23d2c811',
+    doc: 'e1bb74db4922f1c8',
+    'AIP.json': '0157b9efcfaf1df5',
+    'SOP.json': '8ba8090206762ae5',
+    'Patches.json': '99937cb8ec33dcc1',
+    'Props.obj': '6cac5c5c1b35437a',
   },
   'defaultMountain (AI field)': {
-    doc: 'e411d03dbe1a98b8',
-    'AIP.json': '57baa8fa4ac77f1e',
-    'SOP.json': '693c467b53eca57f',
-    'Patches.json': 'e83cda16c869c706',
-    'Props.obj': '8743fee764ffa51d',
+    doc: 'b459233a768306c3',
+    'AIP.json': 'f531ad0f41f8aec2',
+    'SOP.json': 'c6368a0bdde2575a',
+    'Patches.json': '8ab2c85e777a66db',
+    'Props.obj': '76c909d697ec14cd',
   },
 };
 
@@ -392,7 +392,8 @@ console.log('\n== the common generator trims and extends course height ==');
 
 console.log('\n== course terrain has visible cross-edge relief and skyward winding ==');
 {
-  const course = defaultMountain().course;
+  // Keep this wide-terrain winding fixture independent of the application’s smaller new-map defaults.
+  const course = starterCourse(1500, 1);
   const flat = buildMeshFromCourse(course, { widthM: 140, roughness: 0, targetPatchM: 50 })!;
   const rough = buildMeshFromCourse(course, { widthM: 140, roughness: 1, targetPatchM: 50 })!;
   const firstRailPoints = 5; // ceil(140/50), rounded up to an even segment count, plus one centre point
@@ -463,7 +464,7 @@ console.log('\n== course terrain has visible cross-edge relief and skyward windi
   );
   const sharedReferencePath = !!borrowedViaSharedGenerator;
   const defaults = buildMeshFromCourse(knotCourse)!;
-  const explicitDefaults = buildMeshFromCourse(knotCourse, { widthM: 400, roughness: 0.5, targetPatchM: 50, seed: 0 })!;
+  const explicitDefaults = buildMeshFromCourse(knotCourse, { widthM: 210, roughness: 0.5, targetPatchM: 30, seed: 0 })!;
   const defaultOptions = JSON.stringify(defaults) === JSON.stringify(explicitDefaults);
   const seededA = buildMeshFromCourse(knotCourse, { widthM: 300, roughness: 0.5, targetPatchM: 50, seed: 1234 })!;
   const seededARepeat = buildMeshFromCourse(knotCourse, { widthM: 300, roughness: 0.5, targetPatchM: 50, seed: 1234 })!;

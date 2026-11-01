@@ -109,7 +109,7 @@ export function buildSculptTools(ctx: ToolsContext) {
     'Surface-normal displace',
   );
   family('Refine', [
-    { value: 'smooth', label: 'Smooth', title: 'Relax the broad corner shape and authored Bezier detail.' },
+    { value: 'smooth', label: 'Smooth', title: 'Relax the broad corner shape and custom Bezier detail.' },
     { value: 'flatten', label: 'Flatten', title: 'Move complete Bezier cages toward a chosen plane.' },
   ]);
   family('Move', [

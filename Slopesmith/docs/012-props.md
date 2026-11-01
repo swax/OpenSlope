@@ -20,7 +20,7 @@ The staged plan, all built:
 
 The library's **Source → Game → Map** selectors narrow the available local or server maps before listing
 their props.
-The mountain's own models and uploads appear under **Custom / Authored**; unidentified legacy folders
+The mountain's own models and uploads appear under **Custom**; unidentified legacy folders
 appear under **Unknown**. Each source/game remembers its last selected map for the session.
 The selected prop's preview shows its source, game and map; mixed assemblies list their contributing sources.
 Local/Server is a loading preference: the same content version can load from either matching copy.
@@ -605,8 +605,9 @@ These defaults are authoring conveniences, not additional validity rules: effect
 evaluated directly from the independent fields defined by collision-data spec 130, whose behavior is grounded in
 the documented engine reverse engineering. Diagnostics explain surprising combinations without changing them.
 
-**File → New mountain → collision lab (GARI)** builds the reusable first matrix: sixteen labeled crash bags in
-four down-course mode/control bands and four cross-course response-mass lanes, each with a distinct collision-burst color,
+The internal collision-validation fixture (`src/core/collision/lab.ts`) builds the reusable first matrix:
+sixteen labeled crash bags in four down-course mode/control bands and four cross-course response-mass lanes,
+each with a distinct collision-burst color,
 plus one centred downhill follow-up for nonzero mode 1 with PlayerBounce off. That follow-up was live-confirmed:
 its cyan marker fires but the rider passes through, proving contact dispatch survives while physical response is suppressed.
 Following one lane downhill therefore visits modes 1, 2, 3, then a control; crossing one band compares response masses.

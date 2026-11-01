@@ -71,6 +71,27 @@ New mountains and imported mountain ZIPs create projects. The mountain picker re
 activates an existing project. Switching mountains resets undo/redo because snapshots from two mountains must
 never share a history stack.
 
+Use **Load map → Import from file** beside **New map** on the main library page to choose an editable ZIP, its destination (Local or Server),
+and its name. The proposed name comes from the filename without `.slopesmith.zip` or `.zip`; it remains editable.
+Local imports work without signing in. Server imports require a signed-in account with permission to create maps.
+**Load map → Link folder** adds an existing mountain folder to Private maps, in browsers that support the directory picker.
+Linking stays in the library and remembers the directory handle per local project without rewriting the folder.
+A folder icon distinguishes linked maps from browser-only maps. Private server maps and references use a cloud;
+public ones use a globe.
+The library's **Private** view contains only custom maps: browser maps, linked folders and unpublished server
+mountains. Game maps stay in **All maps** and their game views; **Public** shows published server entries.
+Source buttons count the Local and Server copies eligible for the chosen view.
+Opening a linked map checks the folder archive before activating its browser replica, including editor reloads.
+Folder updates replace the cached bundle while keeping the project's local identity and assets. If browser edits
+also differ from the last synchronized copy, they are preserved as a separate browser recovery map first.
+An unavailable or invalid folder pauses folder autosave; a library click reports the problem, while a direct
+editor reload can still open the browser recovery copy. Removing a linked map keeps its independent folder copy.
+
+The loaded reference and its placement offset are remembered per project in this browser, using the durable
+project ID. New mountains start with no reference; opening another mountain restores only its own saved choice.
+The former browser-wide reference preference is ignored because it cannot identify which mountain it belonged to.
+Reference viewing preferences are separate from the mountain document and its saved prop/texture asset references.
+
 ## The open mountain is the URL
 
 `slopesmith.example.com/editor/MOUNTAIN01` is the map this tab has open (`app/state/map-url.ts`). It is a link worth
@@ -87,7 +108,8 @@ somebody else's mountain opens the editor rather than failing.
 Map names sit below `/editor`, so names such as `maps` and `assets` cannot collide with root pages or static
 files. Reaching these addresses needs the SPA fallback the editor is already served with —
 `try_files {path} /index.html` in `deploy/Caddyfile.example`, and Vite's own in development.
-Public riding uses `/play/<mapname>`, the catalogue uses `/maps`, and local disc management uses `/isos`.
+Public riding uses `/play/<mapname>`. The catalogue and local disc management share the library at `/`;
+legacy `/maps` and `/isos` links forward there.
 
 The URL is written with `replaceState`, so Back leaves the editor as it always has rather than swapping the
 document out from under an author mid-edit.

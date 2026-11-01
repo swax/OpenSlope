@@ -4,7 +4,7 @@ import { brand } from '../ui/components/controls';
 import { createAccountMenu } from '../ui/chrome/sign-in';
 import type { Account } from '../net/account';
 import { MAPS_PATH, EDITOR_PATH, editorAccountUrl } from '../navigation';
-import { publicProjectMenu } from './project-menu';
+import { PUBLIC_HELP_URL, publicProjectMenu } from './project-menu';
 import { publicGlyph } from './presentation';
 import { activityCounter, watchChatActivity } from './chat-activity';
 import { publicCommunityPanel } from './community-panel';
@@ -15,6 +15,7 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
   const header = element('header', 'public-header');
   const identity = element('a', 'public-brand');
   identity.href = '/';
+  identity.setAttribute('aria-label', 'Slopesmith library');
   identity.append(brand('Slopesmith'));
   const nav = element('nav', 'public-navigation');
   nav.setAttribute('aria-label', 'Primary');
@@ -23,8 +24,8 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
   const maps = element('a', 'public-nav', 'Library');
   maps.href = MAPS_PATH;
   const editor = element('a', 'public-nav', 'Editor');
-  const help = element('a', 'public-nav', 'Help');
-  help.href = 'https://slopesmith.net/guides/getting-started/';
+  const help = element('a', 'public-nav public-help', 'Help');
+  help.href = PUBLIC_HELP_URL;
   const map = element('a', 'public-nav public-map-tab');
   map.hidden = true;
   const mapLabel = element('span', '');
@@ -44,13 +45,16 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
   }
   (active === 'iso' ? iso : maps).setAttribute('aria-current', 'page');
   nav.append(maps, map, editor, help);
-  header.append(identity, nav, publicProjectMenu());
+  const projectMenu = publicProjectMenu();
+  projectMenu.setMap(lastMap);
+  header.append(identity, nav, projectMenu.el);
   const online = activityCounter('server');
   const users = element('button', 'public-users-toggle');
   users.type = 'button';
   users.setAttribute('aria-label', 'Online users');
   users.title = 'Online users and chat';
-  users.append(online.el);
+  const chatIcon = publicGlyph('chat'); chatIcon.classList.add('public-users-icon');
+  users.append(chatIcon, online.el);
   header.append(users);
   const community = publicCommunityPanel(account, users);
   watchChatActivity(activity => {
@@ -66,12 +70,6 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
         },
         openSettings: () => {
           location.href = editorAccountUrl('settings');
-        },
-        editorAction: {
-          label: 'Open editor',
-          onClick: () => {
-            location.href = editor.href;
-          },
         },
       }),
     );
@@ -97,6 +95,7 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
       const required = lastMap.requiredIsoCourses ?? (request?.source === 'iso' ? [request.name] : []);
       if (!required.some(course => !cached.includes(course))) return;
       lastMap = null;
+      projectMenu.setMap(null);
       forgetPublicMap();
       map.hidden = true;
       map.removeAttribute('href');
@@ -114,6 +113,7 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
       iso.removeAttribute('aria-current');
       editor.href = editorHref;
       lastMap = { name, href, editorHref, requiredIsoCourses };
+      projectMenu.setMap(lastMap);
       rememberPublicMap(name, href, editorHref, requiredIsoCourses);
     },
   };

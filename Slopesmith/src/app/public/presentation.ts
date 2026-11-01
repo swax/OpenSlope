@@ -1,14 +1,14 @@
-import { MODE_ICON, svg } from '../ui/components/icons';
+import { MODE_ICON, STORAGE_ICON_BODY, svg } from '../ui/components/icons';
 import { element } from './dom';
 
 const GLYPHS = {
   mountain: MODE_ICON.info,
   new: svg('<path d="M12 5v14M5 12h14"/>'),
   disc: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="m15 5 4 4M5 15l4 4"/>'),
-  server: svg(
-    '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6"/>',
-  ),
-  device: svg('<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+  server: svg(STORAGE_ICON_BODY.server),
+  device: svg(STORAGE_ICON_BODY.browser),
+  folder: svg(STORAGE_ICON_BODY.folder),
+  world: svg('<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>'),
   play: svg('<path d="m9 5 10 7-10 7Z" fill="currentColor" stroke="none"/>'),
   stop: svg('<rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/>'),
   vr: svg(
@@ -23,6 +23,7 @@ const GLYPHS = {
     '<path d="m8 4-4 2c-2 4-3 7-3 11l5 3 2-3m8-13 4 2c2 4 3 7 3 11l-5 3-2-3M7 6c3-1 7-1 10 0M6 16c4 2 8 2 12 0"/><circle cx="8" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
   ),
   about: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.01"/>'),
+  more: svg('<g fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></g>'),
   account: svg('<circle cx="12" cy="8" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/>'),
   rider: svg('<circle cx="14" cy="4.5" r="2"/><path d="m13 8-2 5m-3-3 8 1m-5 2-2 4m2-4 3 3M4 20l16-5"/>'),
   editor: MODE_ICON.edit,
@@ -46,22 +47,28 @@ export function mapHeading(name: string, kind: 'mountain' | 'disc' | 'new') {
   return heading;
 }
 
-export function mapAvailability(sources: { disc?: boolean; device?: boolean; server?: boolean }) {
+export function mapAvailability(sources: { disc?: boolean; device?: boolean; server?: boolean; folder?: string; public?: boolean }) {
   const availability = element('span', 'library-map-availability');
-  for (const kind of ['disc', 'device', 'server'] as const) {
+  for (const kind of ['disc', 'device', 'folder', 'server'] as const) {
     if (!sources[kind]) continue;
     const label =
       kind === 'disc'
         ? 'Available from disc or local import'
         : kind === 'server'
           ? 'Available on server'
-          : 'Available on this device';
+          : kind === 'folder'
+            ? `Linked folder: ${sources.folder}`
+            : 'Saved in this browser';
     const badge = element('span', 'library-source-icon');
     badge.dataset.source = kind;
     badge.setAttribute('role', 'img');
     badge.setAttribute('aria-label', label);
-    badge.title = label;
-    badge.append(publicGlyph(kind));
+    if (kind === 'server') {
+      badge.dataset.visibility = sources.public ? 'public' : 'private';
+      badge.setAttribute('aria-description', sources.public ? 'Public map' : 'Private server map');
+      badge.title = sources.public ? 'Public map on server' : 'Private map on server';
+    } else badge.title = label;
+    badge.append(publicGlyph(kind === 'server' && sources.public ? 'world' : kind));
     availability.append(badge);
   }
   return availability;

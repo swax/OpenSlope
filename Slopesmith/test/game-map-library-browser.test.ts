@@ -105,6 +105,18 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('slopesmith-ref-v1', JSON.stringify({ level: 'BANK_2_4' }));
+    const url = new URL(location.href);
+    if (url.pathname.startsWith('/editor')) {
+      url.searchParams.set('agent', '1');
+      history.replaceState(null, '', url);
+    }
+  });
+  const terrainReads: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/level') terrainReads.push(request.url());
+  });
   await page.goto(`${vite.resolvedUrls!.local[0]}editor/GAME_PICKERS?agent=1`);
   await page.waitForFunction(
     () => document.querySelector('#load-status')?.getAttribute('aria-busy') === 'false',
@@ -113,19 +125,18 @@ try {
   );
   const game = (context: string) => page!.getByRole('combobox', { name: `${context} game`, exact: true });
   const maps = (context: string) => page!.getByRole('combobox', { name: `${context} map`, exact: true });
-  const terrainReads: string[] = [];
-  page.on('request', request => {
-    if (new URL(request.url()).pathname === '/api/level') terrainReads.push(request.url());
-  });
   const storedReference = () =>
     page!.evaluate(async () => {
       const moduleUrl = '/src/app/state/storage.ts';
-      const { REF_KEY } = await import(/* @vite-ignore */ moduleUrl);
-      return JSON.parse(localStorage.getItem(REF_KEY) ?? 'null')?.level ?? null;
+      const { referenceStorageKey } = await import(/* @vite-ignore */ moduleUrl);
+      const key = referenceStorageKey();
+      return JSON.parse((key && localStorage.getItem(key)) ?? 'null')?.level ?? null;
     });
   assert.equal(await page.getByRole('combobox', { name: 'Reference source', exact: true }).isVisible(), false);
 
   await page.getByRole('button', { name: 'Scene', exact: true }).first().click();
+  assert.equal(await maps('Reference').inputValue(), '(none)', 'a new mountain ignores the legacy global reference');
+  assert.equal(terrainReads.length, 0, 'new mountains fetch no default reference terrain');
   await game('Reference').selectOption('ssx-3');
   assert.equal(await maps('Reference').locator('option').count(), 11);
   await maps('Reference').selectOption('BANK_2_4');
@@ -145,6 +156,71 @@ try {
   assert.equal(await game('Reference').inputValue(), 'ssx-3', 'restoring a reference restores its game too');
   assert.equal(await maps('Reference').inputValue(), 'BANK_2_4');
   await page.screenshot({ path: join(root, 'references.png') });
+
+  // Each mountain owns its reference and placement when opening maps through the main library.
+  const openMountain = async (name: string) => {
+    await page!.getByRole('link', { name: 'Slopesmith', exact: true }).click();
+    await page!
+      .getByRole('link', { name: `Edit ${name.replace(/[_-]/g, ' ')}`, exact: true })
+      .or(page!.getByRole('link', { name: `Edit ${name}`, exact: true }))
+      .first()
+      .click();
+    await page!.waitForFunction(expected => document.title === `${expected} - Slopesmith`, name);
+    await page!.locator('#load-status').waitFor({ state: 'hidden', timeout: 60_000 });
+    await page!.getByRole('button', { name: 'Scene', exact: true }).first().click();
+  };
+  await page.evaluate(async () => {
+    const path = '/src/app/state/storage.ts';
+    const { referenceStorageKey } = await import(/* @vite-ignore */ path);
+    localStorage.setItem(referenceStorageKey(), JSON.stringify({ level: 'BANK_2_4', offset: [120, 0, 30] }));
+  });
+  const readsBeforeCreate = terrainReads.length;
+  await page.getByRole('link', { name: 'Slopesmith', exact: true }).click();
+  await page.getByRole('button', { name: 'New map', exact: true }).click();
+  const newMountain = page.getByRole('dialog', { name: 'New map', exact: true });
+  await newMountain.getByLabel('Map name').fill('REFERENCE_EMPTY');
+  await newMountain.getByRole('button', { name: 'Create map', exact: true }).click();
+  await page.waitForFunction(() => document.title === 'REFERENCE_EMPTY - Slopesmith');
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Scene', exact: true }).first().click();
+  assert.equal(await storedReference(), null);
+  assert.equal(await maps('Reference').inputValue(), '(none)');
+  assert(await page.evaluate(() => !(window as any).slop.data.mesh), 'new mountain drops the actual reference mesh');
+  assert.equal(
+    terrainReads.length,
+    readsBeforeCreate,
+    'creating from the library never reloads the previous reference',
+  );
+  await game('Reference').selectOption('ssx');
+  await maps('Reference').selectOption('BANK_0_0');
+  await page.getByRole('button', { name: 'Load reference', exact: true }).click();
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 60_000 });
+  assert.equal(await storedReference(), 'server:BANK_0_0');
+  await openMountain('GAME_PICKERS');
+  assert.equal(await storedReference(), 'BANK_2_4');
+  assert.equal(await maps('Reference').inputValue(), 'BANK_2_4');
+  assert.deepEqual(
+    await page.evaluate(async () => {
+      const path = '/src/app/state/storage.ts';
+      const { referenceStorageKey } = await import(/* @vite-ignore */ path);
+      return JSON.parse(localStorage.getItem(referenceStorageKey())!).offset;
+    }),
+    [120, 0, 30],
+    'the restored viewport persists this mountain’s saved offset',
+  );
+  await openMountain('REFERENCE_EMPTY');
+  assert.equal(
+    await storedReference(),
+    'server:BANK_0_0',
+    'switching back restores the other mountain’s own reference',
+  );
+  await page.locator('.ref-clear-btn').click();
+  await page.reload();
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 60_000 });
+  assert.equal(await storedReference(), null, 'clearing remains empty on reload');
+  assert.equal(await maps('Reference').inputValue(), '(none)');
+  await openMountain('GAME_PICKERS');
+  assert.equal(await storedReference(), 'BANK_2_4', 'clearing the other mountain preserves this selection');
   await page.locator('.ref-clear-btn').click();
   assert.equal(await maps('Reference').inputValue(), '(none)');
   await game('Reference').selectOption('unknown');
@@ -400,7 +476,7 @@ try {
       .getByRole('button', { name: `Open ${context === 'Texture library' ? 'Texture' : 'Prop'} Library`, exact: true })
       .first();
     if (await toggle.isVisible()) await toggle.click();
-    for (const location of ['server', 'local', 'server']) {
+    for (const [selection, location] of ['server', 'local', 'server'].entries()) {
       await source(context).selectOption(location);
       await game(context).selectOption('ssx');
       await maps(context).selectOption(`${location}:BANK_0_0`);
@@ -416,7 +492,24 @@ try {
         await page
           .locator(`[data-ref="${location}:BANK_0_0/${location === 'local' ? 'local.png' : '0000.png'}"]`)
           .click();
-        const details = page.locator('.sc-details');
+        const info = page.locator('.sc-prev .sp-asset-source-info');
+        const details = info.locator('.sc-details');
+        if (selection === 0) {
+          assert.equal(await info.evaluate(el => (el as HTMLDetailsElement).open), false);
+          assert.equal(await details.isVisible(), false, 'texture provenance starts collapsed');
+          assert(await page.locator('.sc-prev > .sc-details [data-detail="size"]').isVisible());
+          await info.locator('summary').press('Enter');
+          await details.waitFor();
+          await info.locator('summary').press('Space');
+          assert.equal(await details.isVisible(), false, 'source info can be collapsed with the keyboard');
+          await info.locator('summary').click();
+        } else {
+          assert.equal(
+            await info.evaluate(el => (el as HTMLDetailsElement).open),
+            true,
+            'texture source info stays open across selection changes',
+          );
+        }
         await details
           .locator('[data-detail="source"] .sc-detail-value')
           .filter({ hasText: location === 'local' ? 'Local' : 'Server' })
@@ -428,7 +521,12 @@ try {
         );
       } else if (location === 'local') {
         await page.locator('#prop-library .pl-tile[data-source-level="local:BANK_0_0"][data-model="0"]').click();
+        const info = page.locator('.pp-card.on .sp-asset-source-info');
         const details = page.locator('.pp-card.on .pp-source');
+        assert.equal(await info.evaluate(el => (el as HTMLDetailsElement).open), false);
+        assert.equal(await details.isVisible(), false, 'prop provenance starts collapsed');
+        assert(await page.locator('.pp-card.on .pp-thumb').isVisible());
+        await info.locator('summary').click();
         await details.locator('[data-detail="source"] .pp-source-value').filter({ hasText: 'Local' }).waitFor();
         assert.equal(await details.locator('[data-detail="game"] .pp-source-value').textContent(), 'SSX');
         assert.equal(await details.locator('[data-detail="map"] .pp-source-value').textContent(), 'Local shared map');

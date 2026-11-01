@@ -7,10 +7,10 @@ The design rationale is [001](001-design.md); what the result is serialized into
 Code: `src/core/math/spine.ts` (centerline), `src/core/doc/mountain.ts` (generation — `buildMeshFromCourse`/`seatCourse`), `src/core/math/bezier.ts`
 (quilt + evaluation), `src/core/mesh/tessellation.ts` (viewport tessellation).
 
-The terrain generator (`buildMeshFromCourse`, behind New mountain and a reference's "new mountain from this
+The terrain generator (`buildMeshFromCourse`, behind New map and a reference's "new mountain from this
 course") is a separate topology-general path. Every authored course knot creates a primary
 random-height edge chain perpendicular to the course, with **width** meaning the full endpoint-to-endpoint edge
-length (300 m by default). The first edge seeds a height profile; each following edge carries forward the previous
+length (210 m by default). The first edge seeds a height profile; each following edge carries forward the previous
 edge vertex-by-vertex, adds the course elevation change, then progressively replaces the inherited relative profile
 with deterministic per-vertex variation (60% per primary edge at roughness 1). Thus neighbouring edges remain
 related while distant top/bottom profiles decorrelate. Each later vertex also has a roughness-scaled random chance
@@ -20,9 +20,10 @@ The whole edge also receives a smaller mean-reverting elevation offset (45% reta
 its rate of descent through pitches and benches instead of dropping uniformly. At tight turns, overlapping
 authored-knot edges are narrowed around their fixed course-centre vertices instead of being discarded; only
 synthetic runout edges are expendable. It then bridges the resulting rails with `applyLoft`. There is no generated floor and no concave/convex
-profile. Edge width defaults to 400 m. Roughness defaults to 0.5 and ranges to 3 for extreme relief. Every generation dialog starts with a
-fresh random numeric seed; re-entering a seed reproduces the same terrain. Both this generator and Bridge Builder
-insert intermediate loft rails when a span between primary edges exceeds the target patch size (50 m by default).
+profile. New mountains start with a 300 m vertical course extent and 210 m edge width. Roughness defaults to 0.5
+and ranges to 3 for extreme relief. Every generation dialog starts with a fresh random numeric seed; re-entering
+a seed reproduces the same terrain. Both this generator and Bridge Builder insert intermediate loft rails when
+a span between primary edges exceeds the target patch size (30 m by default for terrain generation).
 The course sections are emitted as one giant bridge with connection curve 1, so its inserted loops follow
 a continuous smooth path through every authored knot rail without the exaggerated overshoot that can fold a
 patch past its neighbour. The bridge keeps one ribbon winding throughout: adjacent patches inherit the same
@@ -37,21 +38,20 @@ Freshly generated terrain also receives a deterministic default surface pass. Th
 patches whose centres lie within 75 m overhead of the course are snow (`1`), and the rest are powder (`3`). A
 gentle far-field pocket at least 110 m from and 20 m below its nearest course point becomes slow powder (`4`).
 
-`New mountain` and `New mountain from this course` both use this one dialog and generator. There is no
-regenerate-in-place for the current run: once a mountain exists its terrain is edited, not re-lofted. Alongside edge width, roughness, target patch size and seed, the dialog exposes **height**: the
+**New map** on the main library page asks for a name and Local or Server storage, then creates a 300 m,
+ten-knot editable starter course and lofts it immediately through the generator above. The reference's
+**New mountain from this course** uses the same generator with a terrain dialog. Alongside edge width,
+roughness, target patch size and seed, that dialog exposes **height**: the
 course's maxY − minY vertical extent. A shorter height trims the course at an interpolated downhill crossing;
 a taller height extrapolates its final downhill direction. Reference lines are adjusted before their dense raw
 points are resampled, so leaving the displayed reference height unchanged is a geometry-preserving no-op rather
-than an accidental tail extension. A new mountain starts with a 1,500 m, ten-knot editable course and lofts it
-immediately, through the one generator above — there is no separate corridor/carved/open-slope authoring path.
+than an accidental tail extension.
 
-`New mountain` additionally picks a **terrain** shape. *Lofted course* is the starter above. *Blank — no
-terrain* runs no generator at all: `blankMountain` returns a document with an empty mesh — zero vertices, zero
+For programmatic empty mountains, `blankMountain` runs no generator: it returns a document with an empty mesh — zero vertices, zero
 quads — carrying only its name, its spacing and a straight fall-line guide run (`straightCourse`) descending at
-the chosen **slope**. Every surface is then drawn by hand with Edit ▸ create patch (`P`), which requires no
+the supplied slope. Every surface can then be drawn by hand with Edit ▸ create patch (`P`), which requires no
 existing geometry: `resolvePlacementEndpoint` falls back to a screen-facing construction plane through the view
-target, so the first patch has somewhere to land. The dialog hides edge width, roughness and seed, which only
-shape a loft.
+target, so the first patch has somewhere to land.
 
 An empty mesh is not a special case — it is the substrate a model session already edits
 (`createAuthoredModel`), and the consumers guard for it: `buildQuadMesh` accepts zero counts, `surfaceHeightAt`

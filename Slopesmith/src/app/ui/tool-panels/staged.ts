@@ -24,7 +24,7 @@ export function buildExtrudePlacementTools(ctx: ToolsContext) {
     const modes = segmented<'pull' | 'path'>(
       [
         { value: 'pull', label: 'Pull', title: 'Pull out the extrusion and set its segment length.' },
-        { value: 'path', label: 'Path', title: 'Extrude along a selected edge chain or an authored path.' },
+        { value: 'path', label: 'Path', title: 'Extrude along a selected edge chain or a custom path.' },
       ],
       () => viewport.edgeExtrusionMode,
       mode => viewport.setEdgeExtrusionMode(mode),
@@ -51,7 +51,7 @@ export function buildExtrudePlacementTools(ctx: ToolsContext) {
             viewport.setEdgeExtrusionPath(value);
             ctx.rebuildTools();
           }),
-        'Reuse a mesh-edge chain as the side of the new quads, or follow an authored spline.',
+        'Reuse a mesh-edge chain as the side of the new quads, or follow a custom spline.',
       );
     if (viewport.edgeExtrusionPath) {
       tip(
@@ -62,7 +62,7 @@ export function buildExtrudePlacementTools(ctx: ToolsContext) {
             viewport.setEdgeExtrusionReversePath(value);
             ctx.rebuildTools();
           }),
-        'Follow the authored path from its other end.',
+        'Follow the custom path from its other end.',
       );
       detail(placement, 'the path starts at the source edge centre · the edge turns with the path');
     } else {

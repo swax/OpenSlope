@@ -334,7 +334,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
       value: 'aiPaths',
       label: 'AI Paths',
       icon: '⌇',
-      title: 'Inspect authored and reference AI routes, properties and events.',
+      title: 'Inspect custom and reference AI routes, properties and events.',
     },
     {
       value: 'sound',
@@ -666,7 +666,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     );
     tip(
       environment.add(environmentState, 'volume', 0, 1, 0.01).name('volume').onChange(commitEnvironment),
-      'Map-authored gain for the off-board filler.',
+      'Map-specific gain for the off-board filler.',
     );
     environment
       .add(
@@ -688,7 +688,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     detail(intro, 'target course stems', 'source');
     note(
       intro,
-      'Owned by the target course chosen at pack time — not authored here.',
+      'Owned by the target course chosen at pack time — not edited here.',
       'Load that course as Reference to inspect and preview its actual stems.',
     );
     intro.close();
@@ -1035,7 +1035,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     };
     tip(
       coursePreviewFolder.add(view, 'course').name('show course').listen(),
-      'Show the authored Course guide and the loaded reference mountain’s SOP/AIP path.',
+      'Show the custom Course guide and the loaded reference mountain’s SOP/AIP path.',
     );
     tip(
       coursePreviewFolder.add(view, 'ai').name('show AI paths').listen(),
