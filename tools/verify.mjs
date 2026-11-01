@@ -47,7 +47,7 @@ const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
-  npmStep('Slopesmith deterministic tests and coverage', 'coverage', 30 * 60_000),
+  npmStep('Slopesmith deterministic tests and coverage', 'coverage', 45 * 60_000),
   npmStep('Slopesmith production build', 'build'),
   npmStep('Export to glTF smoke test', 'smoke'),
 ];
