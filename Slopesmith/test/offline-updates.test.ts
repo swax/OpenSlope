@@ -13,9 +13,16 @@ const root = await mkdtemp(join(tmpdir(), 'slopesmith-offline-updates-'));
 const dist = join(root, 'dist');
 await mkdir(join(dist, 'assets'), { recursive: true });
 let failPrecache = false;
+let blockWorkerUpdate = false;
+let stallNavigation = false;
 const server = createServer(async (request, response) => {
   const path = new URL(request.url!, 'http://localhost').pathname;
   response.setHeader('cache-control', 'no-store');
+  if (stallNavigation && path === '/maps') return;
+  if (blockWorkerUpdate && path === '/sw.js') {
+    response.writeHead(503).end();
+    return;
+  }
   if (failPrecache && path === '/stable.txt') {
     response.writeHead(503).end();
     return;
@@ -255,9 +262,63 @@ try {
   await context.setOffline(true);
   await old.reload();
   assert.equal(await old.locator('h1').innerText(), 'Release 2');
+
+  await context.setOffline(false);
+  failPrecache = false;
+  assert.equal(await publish(2), second);
+  await old.evaluate(async second => {
+    await (await caches.open(second)).delete('/index.html');
+  }, second);
+  await old.reload();
+  assert.equal(await old.locator('h1').innerText(), 'Release 2', 'a missing shell recovers from the network');
+  await old.waitForFunction(async second => !!(await (await caches.open(second)).match('/index.html')), second);
+  await context.setOffline(true);
+  await old.reload();
+  assert.equal(await old.locator('h1').innerText(), 'Release 2', 'network recovery restores the matching shell');
+
+  // A browser may evict the app shell independently of its service-worker registration.
+  await context.setOffline(false);
+  await old.evaluate(async second => {
+    await (await caches.open(second)).delete('/index.html');
+    localStorage.setItem('kept-map', 'saved mountain');
+  }, second);
+  stallNavigation = true;
+  const stalledNavigation = await old.goto(`${origin}/maps?project=kept-map`);
+  assert.equal(stalledNavigation!.status(), 503, 'a stalled server is bounded by the navigation deadline');
+  stallNavigation = false;
+  await context.setOffline(true);
+  const failedNavigation = await old.goto(`${origin}/maps?project=kept-map`);
+  assert.equal(failedNavigation!.status(), 503, 'a missing shell and failed network still produce a page');
+  await old.getByRole('heading', { name: 'Slopesmith couldn’t load' }).waitFor();
+  assert.equal(await old.evaluate(() => localStorage.getItem('kept-map')), 'saved mountain');
+  assert.equal(
+    await old.getByRole('link', { name: 'Try again' }).getAttribute('href'),
+    '',
+    'retry keeps the original map URL and query',
+  );
+
+  // The server may already be newer than the controlling worker when its cache is missing.
+  await context.setOffline(false);
+  failPrecache = false;
+  blockWorkerUpdate = true;
+  await publish(4);
+  await old.getByRole('link', { name: 'Try again' }).click();
+  assert.equal(await old.locator('h1').innerText(), 'Release 4');
+  assert.equal(new URL(old.url()).searchParams.get('project'), 'kept-map');
+  assert.equal(
+    await old.evaluate(async () => (await fetch('/stable.txt')).text()),
+    'stable asset 4',
+    'network recovery uses assets from the returned page, even before its worker can install',
+  );
+  assert.equal(
+    await fresh.evaluate(async () => (await fetch('/stable.txt')).text()),
+    'stable asset 2',
+    'recovery leaves an existing tab bound to its own release',
+  );
+  assert.equal(await old.evaluate(() => localStorage.getItem('kept-map')), 'saved mountain');
   assert.deepEqual(errors, []);
   console.log(
-    `OFFLINE UPDATES PASS: legacy migration, independent tabs, retained lazy/stable assets, worker restart, safe reload and failed downloads. Artifacts: ${root}`,
+    `OFFLINE UPDATES PASS: legacy migration, independent tabs, retained lazy/stable assets, worker restart, safe reload, failed downloads and missing-shell recovery. Artifacts: ${root}`,
   );
 } catch (error) {
   for (const page of context.pages())

@@ -96,19 +96,68 @@ function offlineWorker(cacheName, paths) {
       })(),
     );
   });
+  async function navigate(event) {
+    try {
+      await ready();
+      const state = await metadata();
+      if (event.resultingClientId) await state.put(clientKey(event.resultingClientId), new Response(cacheName));
+      const cached = await (await scope.caches.open(cacheName)).match('/index.html');
+      if (cached) return cached;
+    } catch {
+      // A cache read failure should still allow a network recovery attempt.
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      // Retry one transient rejection; both network attempts share the same deadline.
+      for (let attempt = 0; attempt < 2 && !controller.signal.aborted; attempt++) {
+        try {
+          const response = await fetch(event.request, { cache: 'reload', signal: controller.signal });
+          const html = await response.clone().text();
+          const release = /<meta name="slopesmith-app-cache" content="(slopesmith-app-[a-f0-9]{24})">/.exec(html)?.[1];
+          // The server may be newer than this worker. Never give its page this worker's stable WASM/assets.
+          if (release && event.resultingClientId) {
+            const state = await metadata();
+            await state.put(clientKey(event.resultingClientId), new Response(release));
+          }
+          if (response.ok && release === cacheName) {
+            const copy = response.clone();
+            event.waitUntil(
+              scope.caches
+                .open(cacheName)
+                .then(cache => cache.put('/index.html', copy))
+                .catch(() => {}),
+            );
+          }
+          return response;
+        } catch {
+          // A navigation must resolve to a Response even if both cache and network are unavailable.
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+    return new Response(
+      '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Slopesmith</title></head><body><main><h1>Slopesmith couldn’t load</h1><p>Check your connection and try again.</p><a href="">Try again</a></main></body></html>',
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } },
+    );
+  }
   scope.addEventListener('fetch', event => {
     const request = event.request;
     const url = new URL(request.url);
     if (request.method !== 'GET' || url.origin !== scope.location.origin || url.pathname.startsWith('/api/')) return;
     const navigation =
       request.mode === 'navigate' && /^\/(?:$|maps\/?$|isos\/?$|(?:editor|play)(?:\/|$))/.test(url.pathname);
-    const path = navigation ? '/index.html' : url.pathname;
+    if (navigation) {
+      event.respondWith(navigate(event));
+      return;
+    }
     event.respondWith(
       (async () => {
         await ready();
         const state = await metadata();
         let release = cacheName;
-        if (!navigation && event.clientId) {
+        if (event.clientId) {
           const binding = await state.match(clientKey(event.clientId));
           if (binding) release = await binding.text();
         }
@@ -116,7 +165,7 @@ function offlineWorker(cacheName, paths) {
         if (event.resultingClientId) await state.put(clientKey(event.resultingClientId), new Response(release));
         // Only build-time static files are stored. Even stable WASM URLs stay bound to the page's release.
         const cache = await scope.caches.open(release);
-        return (await cache.match(path)) ?? fetch(request);
+        return (await cache.match(url.pathname)) ?? fetch(request);
       })(),
     );
   });

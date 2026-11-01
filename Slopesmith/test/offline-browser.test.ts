@@ -14,6 +14,7 @@ import { defaultMountain } from '../src/core/doc/mountain';
 import { createMountainArchive, readMountainArchive } from '../src/app/mountain/archive';
 import type { ProjectBundle } from '../src/core/project/transfer';
 import { encodePng } from '../src/server/routes/png';
+import { writeOfflineWorker } from '../tools/offline.mjs';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-offline-'));
 const dist = join(root, 'dist');
@@ -278,10 +279,27 @@ try {
   // A failed download must leave the current release and all local work usable.
   await context!.setOffline(false);
   const originalWorker = readFileSync(join(dist, 'sw.js'), 'utf8');
+  const originalIndex = readFileSync(join(dist, 'index.html'), 'utf8');
   failPrecache = true;
-  writeFileSync(join(dist, 'sw.js'), originalWorker.replace(/slopesmith-app-([a-f0-9]+)/g, 'slopesmith-app-broken-$1'));
+  writeFileSync(join(dist, 'index.html'), originalIndex.replace('</head>', '<!-- failed update --></head>'));
+  await writeOfflineWorker(dist);
   await page!.evaluate(async () => {
-    await (await navigator.serviceWorker.getRegistration())!.update();
+    const registration = (await navigator.serviceWorker.getRegistration())!;
+    const failed = new Promise<void>((resolve, reject) => {
+      registration.addEventListener(
+        'updatefound',
+        () => {
+          const worker = registration.installing!;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'redundant') resolve();
+            else if (worker.state === 'activated') reject(new Error('An incomplete release became active'));
+          });
+        },
+        { once: true },
+      );
+    });
+    await registration.update();
+    await failed;
   });
   await page!.waitForFunction(
     async () =>
@@ -293,6 +311,7 @@ try {
   await editorReady();
   // A new tab must not retry the deliberately broken worker after downloads are enabled again.
   writeFileSync(join(dist, 'sw.js'), originalWorker);
+  writeFileSync(join(dist, 'index.html'), originalIndex);
   failPrecache = false;
 
   // A complete release becomes available to new visits while existing editors keep their own assets.
@@ -300,19 +319,20 @@ try {
   const sibling = await context!.newPage();
   await sibling.goto(`${origin}/maps`);
   await sibling.getByRole('link', { name: 'Play OFFLINE_SAVED', exact: true }).waitFor();
-  const originalIndex = readFileSync(join(dist, 'index.html'), 'utf8');
-  const worker = originalWorker.replace(/slopesmith-app-([a-f0-9]+)/g, 'slopesmith-app-update-$1');
-  writeFileSync(
-    join(dist, 'index.html'),
-    originalIndex.replace(/slopesmith-app-([a-f0-9]+)/g, 'slopesmith-app-update-$1'),
-  );
-  writeFileSync(join(dist, 'sw.js'), worker);
+  writeFileSync(join(dist, 'index.html'), originalIndex.replace('</head>', '<!-- complete update --></head>'));
+  await writeOfflineWorker(dist);
   await page!.evaluate(async () => {
     await (await navigator.serviceWorker.getRegistration())!.update();
   });
   const updateNotice = page!.getByRole('region', { name: 'App update', exact: true });
   await updateNotice.waitFor();
   assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
+  // Navigation can retry a previously failed installation; let that installation finish cleaning up too.
+  await page!.waitForFunction(
+    async () =>
+      !(await navigator.serviceWorker.getRegistration())?.installing &&
+      (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length === 2,
+  );
   const updateCaches = await page!.evaluate(async () =>
     (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
   );
