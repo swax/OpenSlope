@@ -1,6 +1,6 @@
 import type { Reconciliation, SyncStatus } from '../net/register-sync';
 import type { ProjectSaveState } from './project-sync';
-import { svg } from '../ui/components/icons';
+import { STORAGE_ICON_BODY, svg } from '../ui/components/icons';
 import { tooltip } from '../ui/components/tooltip';
 import { closeMenu, panelMenu } from '../ui/components/controls';
 import { isLocalWorkspace } from '../net/workspace';
@@ -180,11 +180,7 @@ export function createSyncStatus(deps: {
     const shape =
       destination === 'none'
         ? '<path d="M2 12Q12-2 22 12Q12 26 2 12Z"/><circle cx="12" cy="12" r="3"/>'
-        : destination === 'browser'
-          ? '<rect x="3" y="3" width="18" height="17" rx="2"/><path d="M3 8h18M6 5.5h.01M9 5.5h.01"/>'
-          : destination === 'folder'
-            ? '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>'
-            : '<path d="M6 18a4 4 0 0 1-1-7.9A7 7 0 0 1 18.5 8a5 5 0 0 1-.5 10H6Z"/>';
+        : STORAGE_ICON_BODY[destination];
     const icon = `${destination}:${state}`;
     // Transport status refreshes must not recreate the SVG and restart its finite pulse.
     if (icon !== indicatorIcon) {

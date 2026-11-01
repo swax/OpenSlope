@@ -43,6 +43,21 @@ export async function mountainFileHash(file: Blob): Promise<string> {
     .join('');
 }
 
+/** Compare editable content independently of archive timestamps and project revision counters. */
+export function mountainBundleHash(bundle: ProjectBundle): Promise<string> {
+  return mountainFileHash(
+    new Blob([
+      JSON.stringify({
+        document: bundle.document,
+        assets: bundle.assets,
+        blobs: bundle.blobs ?? {},
+        isoAliases: bundle.isoAliases ?? {},
+        missing: bundle.missing ?? [],
+      }),
+    ]),
+  );
+}
+
 export async function readMountainFolder(handle: MountainDirectory) {
   const file = await mountainFolderFile(handle);
   if (!file) throw new Error(`Choose a folder containing ${MOUNTAIN_FOLDER_FILE}.`);

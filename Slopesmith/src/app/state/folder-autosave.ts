@@ -1,11 +1,19 @@
 import type { ProjectBundle } from '../../core/project/transfer';
-import { folderPermission, mountainFolderFile, writeMountainFolder, type MountainDirectory } from '../mountain/folder';
+import {
+  folderPermission,
+  mountainBundleHash,
+  mountainFolderFile,
+  readMountainFolder,
+  writeMountainFolder,
+  type MountainDirectory,
+} from '../mountain/folder';
 
 interface FolderBinding {
   projectId: string;
   handle: MountainDirectory;
   hash: string | null;
   savedAt?: string;
+  browserHash?: string;
 }
 export interface FolderSaveStatus {
   state: 'none' | 'saving' | 'saved' | 'permission' | 'error';
@@ -86,6 +94,13 @@ export function queueMountainFolderSave(id: string, bundle: ProjectBundle): Prom
       notify(id, entry, 'permission', 'Folder autosave is paused. Resume it to allow access.');
       return;
     }
+    const unchanged = entry.binding.browserHash === (await mountainBundleHash(bundle));
+    if (entry.pending !== bundle) return;
+    if (unchanged && !entry.running) {
+      entry.pending = undefined;
+      notify(id, entry, 'saved');
+      return;
+    }
     notify(id, entry, 'saving');
     clearTimeout(entry.timer);
     entry.timer = setTimeout(() => {
@@ -131,6 +146,7 @@ async function flushEntry(id: string, entry: Entry): Promise<void> {
       throw new Error('Folder autosave was disconnected in another tab.');
     binding.hash = await writeMountainFolder(binding.handle, bundle, binding.hash);
     binding.savedAt = bundle.takenAt;
+    binding.browserHash = await mountainBundleHash(bundle);
     await bindings('readwrite', store => store.put(binding));
     notify(id, entry, entry.pending ? 'saving' : 'saved');
   };
@@ -209,9 +225,88 @@ export async function disconnectMountainFolder(id: string) {
   notify(id, entry, 'none');
 }
 
-export async function projectForMountainFolder(handle: MountainDirectory, hash: string): Promise<string | null> {
+export async function projectForMountainFolder(handle: MountainDirectory): Promise<string | null> {
   const all = await bindings<FolderBinding[]>('readonly', store => store.getAll());
-  for (const binding of all)
-    if (binding.hash === hash && (await binding.handle.isSameEntry(handle))) return binding.projectId;
+  for (const binding of all) if (await binding.handle.isSameEntry(handle)) return binding.projectId;
   return null;
+}
+
+/** Listing linked folders never requests permission or reads their map files. */
+export async function listMountainFolders(): Promise<Map<string, string>> {
+  const all = await bindings<FolderBinding[]>('readonly', store => store.getAll());
+  return new Map(all.map(binding => [binding.projectId, binding.handle.name]));
+}
+
+/** Ask near the click, before loading potentially large browser projects can consume user activation. */
+export async function requestMountainFolderAccess(id: string): Promise<void> {
+  const entry = await entryFor(id);
+  if (!entry.binding || (await folderPermission(entry.binding.handle, true))) return;
+  const detail = 'Folder access was not allowed. Your browser copy is still available.';
+  notify(id, entry, 'permission', detail);
+  throw new Error(detail);
+}
+
+/** Remember an existing disk copy without rewriting it or starting editor autosave. */
+export async function linkMountainFolder(id: string, handle: MountainDirectory, bundle: ProjectBundle, hash: string) {
+  const entry = await entryFor(id);
+  clearTimeout(entry.timer);
+  await entry.running;
+  const all = await bindings<FolderBinding[]>('readonly', store => store.getAll());
+  for (const other of all) {
+    if (other.projectId !== id && (await other.handle.isSameEntry(handle)))
+      await disconnectMountainFolder(other.projectId);
+  }
+  const binding: FolderBinding = {
+    projectId: id,
+    handle,
+    hash,
+    savedAt: bundle.takenAt,
+    browserHash: await mountainBundleHash(bundle),
+  };
+  await bindings('readwrite', store => store.put(binding));
+  entry.binding = binding;
+  entry.pending = undefined;
+  entry.stopped = false;
+  notify(id, entry, 'saved');
+}
+
+/** Check disk before activating a browser replica. An unchanged folder leaves browser recovery intact. */
+export async function readLinkedMountainFolder(id: string, current: ProjectBundle, ask = false) {
+  const entry = await entryFor(id);
+  if (!entry.binding) return null;
+  await flushEntry(id, entry);
+  const binding = entry.binding;
+  try {
+    if (!(await folderPermission(binding.handle, ask))) {
+      const detail = 'Folder autosave is paused. Resume it to allow access.';
+      notify(id, entry, 'permission', detail);
+      if (ask) throw new Error('Folder access was not allowed. Your browser copy is still available.');
+      return null;
+    }
+    const source = await readMountainFolder(binding.handle);
+    if (source.hash === binding.hash) {
+      notify(id, entry, 'saved');
+      return null;
+    }
+    // Older links have no content baseline. Keep a recovery copy rather than relying on timestamps.
+    const browserChanged = !binding.browserHash || binding.browserHash !== (await mountainBundleHash(current));
+    return { ...source, browserChanged };
+  } catch (error) {
+    if (entry.status.state !== 'permission')
+      notify(id, entry, 'error', error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+}
+
+/** Advance the disk baseline only after its complete bundle has been stored in the browser. */
+export async function acceptMountainFolderSnapshot(id: string, bundle: ProjectBundle, hash: string, backup?: string) {
+  const entry = await entryFor(id);
+  if (!entry.binding) throw new Error('The folder connection was removed. Link the folder again.');
+  clearTimeout(entry.timer);
+  entry.pending = undefined;
+  entry.binding.hash = hash;
+  entry.binding.browserHash = await mountainBundleHash(bundle);
+  entry.binding.savedAt = bundle.takenAt;
+  await bindings('readwrite', store => store.put(entry.binding!));
+  notify(id, entry, 'saved', backup ? `Folder changes loaded. Browser edits were kept in ${backup}.` : undefined);
 }

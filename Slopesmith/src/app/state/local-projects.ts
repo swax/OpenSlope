@@ -2,7 +2,12 @@ import { migrateMountain, defaultMountain } from '../../core/doc/mountain';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { ProjectBundle } from '../../core/project/transfer';
 import type { ClientProject } from './project-sync';
-import { disconnectMountainFolder, queueMountainFolderSave } from './folder-autosave';
+import {
+  acceptMountainFolderSnapshot,
+  disconnectMountainFolder,
+  queueMountainFolderSave,
+  readLinkedMountainFolder,
+} from './folder-autosave';
 
 interface LocalProject {
   project: ClientProject;
@@ -62,7 +67,6 @@ export async function openLocalProjects() {
     } catch {
       /* optional */
     }
-    void queueMountainFolderSave(row.project.id, row.bundle).catch(console.error);
     return snapshot(row);
   }
   function makeRow(document: EditDoc, bundle?: ProjectBundle, source?: string, isoAliases?: Record<string, string>) {
@@ -98,11 +102,12 @@ export async function openLocalProjects() {
     bundle?: ProjectBundle,
     source?: string,
     isoAliases?: Record<string, string>,
+    select = true,
   ) {
     const row = makeRow(document, bundle, source, isoAliases);
     await store(row);
     void navigator.storage?.persist?.().catch(() => false);
-    return activate(row);
+    return select ? activate(row) : snapshot(row);
   }
   async function createNew() {
     const document = defaultMountain();
@@ -193,7 +198,7 @@ export async function openLocalProjects() {
         })
       : {};
     if (path === '/api/projects/current')
-      return active ? Response.json(snapshot(active)) : new Response(null, { status: 204 });
+      return active ? Response.json(await activateSaved(active)) : new Response(null, { status: 204 });
     if (path === '/api/projects') {
       if (method === 'GET') return Response.json({ projects: [...projects.values()].map(row => row.project) });
       if (method === 'POST') return Response.json(await create(migrateMountain(body.document ?? defaultMountain())));
@@ -206,7 +211,7 @@ export async function openLocalProjects() {
     const [, id, operation] = /^\/api\/projects\/([^/]+)(?:\/([^/]+))?$/.exec(path) ?? [];
     const row = projects.get(id);
     if (!row) return Response.json({ error: 'Local mountain not found.' }, { status: 404 });
-    if (operation === 'activate' && method === 'POST') return Response.json(activate(row));
+    if (operation === 'activate' && method === 'POST') return Response.json(await activateSaved(row));
     if (operation === 'document' && method === 'PUT' && body.document) {
       const document = migrateMountain(body.document);
       // Another tab may have deleted or saved this map since this workspace opened. Check and write
@@ -282,7 +287,7 @@ export async function openLocalProjects() {
     activate(row);
     return true;
   }
-  async function restore(bundle: ProjectBundle) {
+  async function restore(bundle: ProjectBundle, select = true) {
     const document = migrateMountain(bundle.document);
     const names = new Set([...projects.values()].map(row => row.project.name.toLowerCase()));
     const base = document.name;
@@ -291,7 +296,69 @@ export async function openLocalProjects() {
       const suffix = `_${++number}`;
       document.name = `${base.slice(0, 64 - suffix.length)}${suffix}`;
     }
-    return create(document, bundle);
+    return create(document, bundle, undefined, undefined, select);
+  }
+
+  /** Disk updates replace the same local identity. Unsaved browser changes get their own recovery map. */
+  async function refreshFolder(id: string, ask = false): Promise<void> {
+    const row = projects.get(id);
+    if (!row) throw new Error('This local mountain is no longer saved on this device.');
+    const source = await readLinkedMountainFolder(id, row.bundle, ask);
+    if (!source) return;
+    let backup: string | undefined;
+    if (source.browserChanged) {
+      const bundle = structuredClone(row.bundle);
+      bundle.document.name = `${bundle.document.name.slice(0, 47)}_browser_recovery`;
+      backup = (await restore(bundle, false)).project.name;
+    }
+    const document = migrateMountain(source.bundle.document);
+    const next: LocalProject = {
+      ...row,
+      project: {
+        ...row.project,
+        name: document.name,
+        revision: row.project.revision + 1,
+        updatedAt: new Date().toISOString(),
+      },
+      bundle: { ...structuredClone(source.bundle), document },
+      isoAliases: source.bundle.isoAliases,
+    };
+    next.bundle.revision = next.project.revision;
+    next.bundle.name = document.name;
+    // A second editor may have saved while the folder was being read. Preserve its revision too.
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('projects', 'readwrite');
+      const store = tx.objectStore('projects');
+      const read = store.get(id);
+      let conflict = false;
+      read.onsuccess = () => {
+        if ((read.result as LocalProject | undefined)?.project.revision !== row.project.revision) {
+          conflict = true;
+          tx.abort();
+        } else store.put(next);
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () =>
+        reject(
+          conflict ? new Error('This map changed in another editor. Open it again to load the latest copy.') : tx.error,
+        );
+    });
+    projects.set(id, next);
+    if (active?.project.id === id) active = next;
+    try {
+      localStorage.setItem(`slopesmith.localRecovery:${id}`, JSON.stringify(document));
+    } catch {
+      /* the complete copy is already stored in IndexedDB */
+    }
+    await acceptMountainFolderSnapshot(id, next.bundle, source.hash, backup);
+  }
+
+  async function activateSaved(row: LocalProject) {
+    // Unavailable folders leave the recovery copy usable, with folder autosave visibly paused.
+    await refreshFolder(row.project.id).catch(() => {});
+    const current = projects.get(row.project.id)!;
+    void queueMountainFolderSave(current.project.id, current.bundle).catch(console.error);
+    return activate(current);
   }
   return {
     request,
@@ -302,6 +369,7 @@ export async function openLocalProjects() {
     copyPublic,
     remove,
     restore,
+    refreshFolder,
     list: () => [...projects.values()].map(row => row.project).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     activeProject: () => active?.project,
     current: () => active?.bundle,
@@ -325,6 +393,7 @@ export async function listLocalProjects(): Promise<ClientProject[]> {
 export async function readLocalProject(id: string): Promise<ProjectBundle | null> {
   const projects = await openLocalProjects();
   try {
+    if (projects.bundle(id)) await projects.refreshFolder(id);
     return structuredClone(projects.bundle(id) ?? null);
   } finally {
     projects.close();

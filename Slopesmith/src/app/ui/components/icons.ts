@@ -25,6 +25,13 @@ import type { Mode } from '../../viewport/types';
 export const svg = (body: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 
+/** Storage destinations shared by the library and the editor's save indicator. */
+export const STORAGE_ICON_BODY = {
+  browser: '<rect x="3" y="3" width="18" height="17" rx="2"/><path d="M3 8h18M6 5.5h.01M9 5.5h.01"/>',
+  folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
+  server: '<path d="M6 18a4 4 0 0 1-1-7.9A7 7 0 0 1 18.5 8a5 5 0 0 1-.5 10H6Z"/>',
+} as const;
+
 export const withPlus = (body: string) => `<g transform="scale(0.78)">${body}</g><path d="M18 15v6M15 18h6"/>`;
 
 /** Shared box glyph for Props mode, the Props visibility control, and the armed-placement cursor. */
