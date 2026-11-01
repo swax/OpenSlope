@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import type { NativeSkyPayload } from '../../../shared/map-sky';
+import { imageAssetUrl } from '../../net/asset-images';
 
 /** Original imported dome, sharing the editor and Play camera/visibility lifecycle. */
 export async function createNativeSkyBackdrop(payload: NativeSkyPayload, loader: THREE.TextureLoader) {
   const group = new THREE.Group();
   group.renderOrder = -10_000;
   const urls = [...new Set(payload.parts.flatMap(part => (part.texture ? [part.texture] : [])))];
-  const results = await Promise.allSettled(urls.map(url => loader.loadAsync(url)));
+  const results = await Promise.allSettled(urls.map(async url => loader.loadAsync(await imageAssetUrl(url))));
   const textures = new Map<string, THREE.Texture>();
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') textures.set(urls[index], result.value);

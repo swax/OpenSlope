@@ -11,7 +11,7 @@ import type { ProjectBundle, BundleAssetKind } from '../../core/project/transfer
 import type { PublicCourse } from '../../core/session/public-courses';
 import { openLocalProjects } from '../state/local-projects';
 import { cachedIsoCourses } from './iso-cache';
-import { localMapData } from './local-map-data';
+import { lazyLocalMapData as localMapData } from './lazy-local-map-data';
 import * as levels from '../../shared/map-levels';
 import { buildLevelPropsUncached, nativeArtSource, readMaterialTables } from '../../shared/map-props';
 import { readReferenceEffects } from '../../shared/map-effects';
@@ -204,7 +204,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
       return canReadServer
         ? fetch(url, init)
         : json({ error: 'Server maps are unavailable offline.' }, { status: 403 });
-    if (q.get('mapSource') === 'local' && !knownLevel(level))
+    if (q.get('mapSource') === 'local' && level && !knownLevel(level))
       return json({ error: 'This local map is not available on this device.' }, { status: 404 });
     if (path === '/api/map-asset-version' && knownLevel(level)) {
       let value = localVersions.get(level);
@@ -388,8 +388,9 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
       return json(await pending);
     }
     if (localOnly && path === '/api/groups') return json({ groups: [] });
-    const resolved = resolve(url.href);
-    return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:application/json')
+    const asset = await local.resolveRequest(url.href);
+    const resolved = asset !== url.href ? asset : resolve(url.href);
+    return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:')
       ? fetch(resolved)
       : null;
   });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { loadAssetTexture } from '../../net/asset-images';
 import { renderLoadingManager } from '../render-assets';
 import type { Rgba } from '../../../core/paint/ground-textures';
 import { AUTHORING_SKY_GEOMETRY, skyBackdrop, type SkyMeshData, type SkyRing } from '../../../core/sky/ring';
@@ -199,7 +200,7 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
       meshes[index].geometry = geom(data);
     });
 
-    loader.load(view.panorama, tex => {
+    loadAssetTexture(loader, view.panorama, tex => {
       if (mine !== token) {
         tex.dispose();
         return;
@@ -227,7 +228,7 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
 
     dispose(groundMat);
     groundMat.color = new THREE.Color(0xffffff);
-    loader.load(view.ground, tex => {
+    loadAssetTexture(loader, view.ground, tex => {
       if (mine !== token) {
         tex.dispose();
         return;

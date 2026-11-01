@@ -19,7 +19,7 @@ try {
   await page.goto(`${origin}/audit.html`);
   const result = await page.evaluate(async pixels => {
     const cacheUrl = '/src/app/public/iso-cache.ts';
-    const localUrl = '/src/app/public/local-map-data.ts';
+    const localUrl = '/src/app/public/lazy-local-map-data.ts';
     const apiUrl = '/src/app/public/local-asset-api.ts';
     const workspaceUrl = '/src/app/net/workspace.ts';
     const pinsUrl = '/src/app/net/asset-versions.ts';
@@ -28,7 +28,7 @@ try {
     const propsUrl = '/src/shared/map-props.ts';
     const publicUrl = '/src/app/public/course-assets.ts';
     const { openIsoCache, cacheTransaction, isoCourseCacheVersion } = await import(cacheUrl);
-    const { localMapData } = await import(localUrl);
+    const { lazyLocalMapData: localMapData } = await import(localUrl);
     const { installLocalAssetApi } = await import(apiUrl);
     const { workspaceFetch } = await import(workspaceUrl);
     const { pinDocumentAssets } = await import(pinsUrl);
@@ -79,7 +79,9 @@ try {
     const propResponse = await workspaceFetch('/api/props?level=local:GARI');
     const props = await propResponse.json();
     const texture = local.resolveAsset('/api/texture?level=local:GARI&name=tile.png');
-    const textureBytes = Array.from(new Uint8Array(await (await fetch(texture)).arrayBuffer()));
+    const textureBytes = Array.from(
+      new Uint8Array(await (await fetch(await local.resolveRequest(texture))).arrayBuffer()),
+    );
     const physics = await local.source.readJsonOr('GARI/Physics.json', null);
     const visible = publicMountainDocument(document, ['local:TRICKY_GARI']);
     const explicitServer = publicMountainDocument(

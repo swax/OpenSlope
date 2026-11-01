@@ -10,9 +10,19 @@ export function versionedAssetUrl(url: string): boolean {
   return !!parseAssetVersion(value.searchParams.get('level') ?? '');
 }
 
-/** Versioned images go through the same content-checked local/server transport as JSON and exports. */
+function workspaceImage(url: string): boolean {
+  if (versionedAssetUrl(url)) return true;
+  const value = new URL(url, globalThis.location?.origin ?? 'http://localhost');
+  return (
+    value.origin === globalThis.location?.origin &&
+    value.pathname.startsWith('/api/') &&
+    (value.searchParams.get('mapSource') === 'local' || /^local:/i.test(value.searchParams.get('level') ?? ''))
+  );
+}
+
+/** Local and versioned images use the workspace transport; local files can be read only when requested. */
 export function imageAssetUrl(url: string): Promise<string> {
-  if (!versionedAssetUrl(url)) return Promise.resolve(url);
+  if (!workspaceImage(url)) return Promise.resolve(url);
   let pending = urls.get(url);
   if (!pending) {
     pending = (async () => {
@@ -60,7 +70,7 @@ export function setImageAsset(image: HTMLImageElement, url: string): void {
   image.addEventListener('load', loaded);
   image.addEventListener('error', missing);
   reportTextureLoad(url, 'loading');
-  if (!versionedAssetUrl(url)) image.src = url;
+  if (!workspaceImage(url)) image.src = url;
   else
     void imageAssetUrl(url)
       .then(value => {
@@ -98,10 +108,10 @@ export function loadAssetTexture(
     reportTextureLoad(url, 'missing');
     onError?.(error, texture);
   };
-  const texture: THREE.Texture<CanvasImageSource> = versionedAssetUrl(url)
+  const texture: THREE.Texture<CanvasImageSource> = workspaceImage(url)
     ? new THREE.Texture<CanvasImageSource>()
     : loader.load(url, loaded, onProgress, missing);
-  if (!versionedAssetUrl(url)) return texture;
+  if (!workspaceImage(url)) return texture;
   const image = new Image();
   loader.manager.itemStart(url);
   image.onload = () => {

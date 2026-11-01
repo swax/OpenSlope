@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolveAssetUrl } from '../net/asset-paths';
+import { imageAssetUrl } from '../net/asset-images';
 import type { RideGear } from './gear';
 import { groundRestDepth, surfaceFor } from './physics-math';
 import type { WalkGroundQuery } from './xr/walk';
@@ -376,7 +377,11 @@ function createBoardParticleAtlas(): BoardParticleAtlas {
         );
         texture.needsUpdate = true;
       };
-      image.src = resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png`);
+      void imageAssetUrl(resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png`))
+        .then(url => {
+          image.src = url;
+        })
+        .catch(() => {}); // Missing disc sprites retain the procedural snow atlas.
     });
   return { texture };
 }

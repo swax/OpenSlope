@@ -5,7 +5,7 @@ import { listLevelOrigins } from '../../shared/map-levels';
 import { readAssetVersion } from '../../shared/map-asset-version';
 import { buildLevelPropsUncached, readMaterialTables } from '../../shared/map-props';
 import { readLevelGroups } from '../../shared/map-groups';
-import type { localMapData } from './local-map-data';
+import type { lazyLocalMapData as localMapData } from './lazy-local-map-data';
 
 /** The public player resolves the same versioned dependencies, without starting editor/project writes. */
 export function installLocalAssetApi(
@@ -34,10 +34,15 @@ export function installLocalAssetApi(
       const maps = [...localMaps, ...serverMaps];
       return Response.json({ levels: maps.map(map => map.name), maps });
     }
-    if (source !== 'local')
+    if (source !== 'local') {
+      if (source !== 'server' && (local.hasLevel(level) || (!level && courses.length))) {
+        const resolved = await local.resolveRequest(url.href);
+        if (resolved !== url.href) return fetch(resolved);
+      }
       return allowServer
         ? null
         : Response.json({ error: 'Load the matching disc assets on this device.' }, { status: 404 });
+    }
     if (url.pathname === '/api/map-asset-version') {
       let value = versions.get(level);
       if (!value) {
@@ -50,7 +55,7 @@ export function installLocalAssetApi(
     if (url.pathname === '/api/groups') return Response.json(await readLevelGroups(local.source, level));
     if (url.pathname === '/api/props/materials')
       return Response.json({ tables: Object.fromEntries(await readMaterialTables(local.source)) });
-    const resolved = local.resolveAsset(url.href);
+    const resolved = await local.resolveRequest(url.href);
     return resolved !== url.href
       ? fetch(resolved)
       : Response.json({ error: 'The matching local asset is unavailable.' }, { status: 404 });

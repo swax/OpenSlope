@@ -2,9 +2,12 @@ import GUI from 'lil-gui';
 import * as THREE from 'three';
 import { browserExportProvider } from '../src/app/export/provider';
 import { clientFetch } from '../src/app/net/client';
+import { imageAssetUrl } from '../src/app/net/asset-images';
 import { cachedIsoCourses, cacheTransaction, isoCourseCacheVersion, openIsoCache } from '../src/app/public/iso-cache';
 import { prepareEditorWorkspace } from '../src/app/public/local-editor';
 import { localMapData } from '../src/app/public/local-map-data';
+import { lazyLocalMapData } from '../src/app/public/lazy-local-map-data';
+import { installLocalAssetApi } from '../src/app/public/local-asset-api';
 import { installLocalSky, installServerSky } from '../src/app/public/sky';
 import { createSkybox } from '../src/app/sky/session';
 import { createStore } from '../src/app/state/store';
@@ -69,13 +72,48 @@ async function run() {
     await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: 7, files: files.size }));
   }
   check((await cachedIsoCourses()).join() === day, 'Keep revision-7 day imports; request a fresh empty night import');
+  await cacheTransaction(db, 'files', 'readwrite', store => {
+    for (const course of [day, night])
+      store.put({
+        key: `${course}/textures/part.png`,
+        course,
+        path: 'Textures/part.png',
+        blob: sourceFiles.get(course)!.get('Skybox/Textures/sky.png')!,
+      });
+  });
   await cacheTransaction(db, 'courses', 'readwrite', store =>
     store.put({ course: night, version: isoCourseCacheVersion(night), files: 4 }),
   );
+  // A large cache may include unrelated music graphs; none belongs on the editor's startup path.
+  for (let index = 0; index < 40; index++) {
+    const course = `UNUSED_${index}`;
+    await cacheTransaction(db, 'files', 'readwrite', store => {
+      for (const [path, text] of [
+        ['Audio/Music/playlist.json', '["unused"]'],
+        ['Audio/Music/unused/Graph.json', 'not JSON: unrelated music must stay unread'],
+      ])
+        store.put({ key: `${course}/${path.toLowerCase()}`, course, path, blob: new Blob([text]) });
+    });
+    await cacheTransaction(db, 'courses', 'readwrite', store =>
+      store.put({ course, version: isoCourseCacheVersion(course), files: 2 }),
+    );
+  }
   db.close();
+  let bulkCourseReads = 0;
+  const originalGetAll = IDBObjectStore.prototype.getAll;
+  IDBObjectStore.prototype.getAll = function (...args) {
+    if (this.name === 'files') bulkCourseReads++;
+    return originalGetAll.apply(this, args);
+  };
   history.replaceState(null, '', `/editor/Test?local=new&reference=${day}`);
   await prepareEditorWorkspace({ accounts: 'required' });
   const catalogue = await (await clientFetch('/api/skybox')).json();
+  check(
+    (await clientFetch('/api/board-audio')).ok,
+    'Global local-audio requests remain available with deferred course data',
+  );
+  check(bulkCourseReads === 0, 'Editor startup and sky catalogue never bulk-read cached course files');
+  IDBObjectStore.prototype.getAll = originalGetAll;
   check(catalogue.levels.length === 0, 'Native skies need no measured panorama ring');
   check(
     catalogue.nativeLevels.includes(`local:${day}`) && catalogue.nativeLevels.includes(`local:${night}`),
@@ -86,7 +124,9 @@ async function run() {
   const daySky = await payload(day),
     nightSky = await payload(night);
   check(
-    daySky.parts.length === 1 && nightSky.parts.length === 1 && nightSky.parts[0].texture?.startsWith('blob:'),
+    daySky.parts.length === 1 &&
+      nightSky.parts.length === 1 &&
+      nightSky.parts[0].texture?.includes('/api/local-map-file?'),
     `Local sky API resolves original mesh and browser-local textures: ${JSON.stringify({ daySky, nightSky })}`,
   );
 
@@ -334,6 +374,32 @@ async function run() {
   } finally {
     window.fetch = originalFetch;
   }
+  bulkCourseReads = 0;
+  IDBObjectStore.prototype.getAll = function (...args) {
+    if (this.name === 'files') bulkCourseReads++;
+    return originalGetAll.apply(this, args);
+  };
+  const playerCourses = await cachedIsoCourses();
+  const playerData = await lazyLocalMapData(playerCourses);
+  installLocalAssetApi(playerData, playerCourses, false);
+  check(bulkCourseReads === 0, 'Play asset setup never bulk-reads the available course library');
+  await installLocalSky(viewport, playerData.source, night, playerData.fileUrl);
+  sky.setVisible(true);
+  await waitFor(() => sky.loaded);
+  check(pixel() === colors[night], 'Play reads and renders only the requested local sky');
+  check(bulkCourseReads === 0, 'Playing a cached sky never loads unrelated maps or music');
+  const particle = await imageAssetUrl(playerData.resolveAsset('/api/particle-texture?name=part.png'));
+  check((await (await fetch(particle)).blob()).size > 0, 'Default riding sprites use deferred local image reads');
+  IDBObjectStore.prototype.getAll = originalGetAll;
+  playerData.dispose();
+  const emptyData = await lazyLocalMapData([]);
+  installLocalAssetApi(emptyData, [], false);
+  const missingParticle = await imageAssetUrl(emptyData.resolveAsset('/api/particle-texture?name=part.png'));
+  check(
+    (await (await fetch(missingParticle)).blob()).size === 0,
+    'Missing default sprites remain local without an ISO',
+  );
+  emptyData.dispose();
   check(logs.length === 0, logs.join('\n'));
   local.dispose();
   gui.destroy();

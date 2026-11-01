@@ -15,7 +15,7 @@ import { sharedAudioBuffer } from '../audio/runtime';
 import { setClientProjectId } from '../net/client';
 import type { SessionChannel } from '../net/session-channel';
 import type { PeerMarks } from '../viewport/scene/peers';
-import { localMapData } from './local-map-data';
+import { lazyLocalMapData as localMapData } from './lazy-local-map-data';
 import * as levels from '../../shared/map-levels';
 import { readReferenceEffects } from '../../shared/map-effects';
 import { buildLevelPropsUncached, nativeArtSource } from '../../shared/map-props';
@@ -94,14 +94,23 @@ export async function preparePublicPlayer(
   const serverOnlyLevel = (level: string) => findMapChoice(copies, level)?.source === 'server';
   const availableLevels = copies.map(map => map.name);
   const local = await localMapData(availableCourses, aliases, cached);
-  installLocalAssetApi(local, availableCourses, !!course.private);
+  const serverReference = course.kind === 'reference' && !course.retailData;
+  installLocalAssetApi(local, availableCourses, !!course.private || serverReference);
   setAssetUrlResolver(path => {
     const resolved = custom?.resolve(path) ?? path;
     if (resolved !== path) return resolved;
-    const level = new URL(path, location.origin).searchParams.get('level');
+    if (serverReference) return path;
+    const url = new URL(path, location.origin);
+    const level = url.searchParams.get('level');
     if (level && !course.private && splitMapSource(level).source === 'server') return 'data:image/png;base64,';
     if (level && serverOnlyLevel(level)) return path;
-    return local.resolveAsset(path);
+    const asset = local.resolveAsset(path);
+    if (asset !== path) return asset;
+    const customTexture = url.pathname === '/api/texture' && level?.toLowerCase() === 'custom';
+    if (!course.private && !customTexture &&
+        url.origin === location.origin && ['/api/texture', '/api/lightmap', '/api/particle-texture'].includes(url.pathname))
+      return 'data:image/png;base64,';
+    return path;
   });
   setClientProjectId(course.kind === 'project' && !bundle ? course.id : null);
   const store = createStore({ mdoc: defaultMountain(), currentMode: 'play', storedUi: {} });
@@ -269,7 +278,7 @@ export async function preparePublicPlayer(
         : await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`);
       viewport.syncLiveModels(decodeProps(publicPropPayload(props, availableLevels, true)));
     }
-    if (availableCourses.length) {
+    if (availableCourses.length && (document.rails?.length || document.gems?.length)) {
       const art = await nativeArtSource(local.source);
       for (const donor of new Set([art.gemLevel].filter(Boolean))) {
         await installDonor(donor);

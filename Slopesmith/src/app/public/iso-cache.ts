@@ -219,6 +219,49 @@ export async function readCachedCourse(course: string): Promise<Map<string, Blob
   }
 }
 
+/** Individual reads keep catalogue/startup work independent of the size of an extracted course. */
+export async function readCachedCourseFile(course: string, path: string): Promise<Blob | null> {
+  const db = await openIsoCache();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction('files').objectStore('files').get(`${course}/${path.toLowerCase()}`);
+      request.onsuccess = () => resolve((request.result as CachedFile | undefined)?.blob ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Read names without structured-cloning every Blob (including music and source sidecars). */
+export async function cachedCoursePaths(course: string, folder = ''): Promise<string[]> {
+  const db = await openIsoCache();
+  try {
+    return await new Promise((resolve, reject) => {
+      const prefix = `${course}/${folder.toLowerCase()}`;
+      const request = db.transaction('files').objectStore('files').getAllKeys(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
+      request.onsuccess = () => resolve(request.result.map(key => String(key).slice(course.length + 1)));
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function cachedCourseHasFiles(course: string, folder: string): Promise<boolean> {
+  const db = await openIsoCache();
+  try {
+    return await new Promise((resolve, reject) => {
+      const prefix = `${course}/${folder.toLowerCase()}`;
+      const request = db.transaction('files').objectStore('files').count(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
+      request.onsuccess = () => resolve(request.result > 0);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /** Upload the original portable filenames, rather than the lowercase lookup keys used by playback. */
 export async function cachedCourseFiles(course: string): Promise<Array<{ path: string; blob: Blob }>> {
   const db = await openIsoCache();
@@ -244,11 +287,11 @@ export async function cachedCourseFiles(course: string): Promise<Array<{ path: s
   }
 }
 /** Optional riding donors need only audio files, never another course's terrain or textures. */
-export async function readCachedAudio(course: string): Promise<Map<string, Blob>> {
+export async function readCachedAudio(course: string, ridingOnly = false): Promise<Map<string, Blob>> {
   const db = await openIsoCache();
   try {
     const files = await new Promise<CachedFile[]>((resolve, reject) => {
-      const prefix = `${course}/audio/`;
+      const prefix = `${course}/audio/${ridingOnly ? 'sfx/' : ''}`;
       const request = db
         .transaction('files')
         .objectStore('files')
@@ -256,7 +299,14 @@ export async function readCachedAudio(course: string): Promise<Map<string, Blob>
       request.onsuccess = () => resolve(request.result as CachedFile[]);
       request.onerror = () => reject(request.error);
     });
-    return new Map(files.map(row => [row.path.toLowerCase(), row.blob]));
+    const result = new Map(files.map(row => [row.path.toLowerCase(), row.blob]));
+    if (ridingOnly) {
+      for (const path of ['Audio/SoundIndex.json', 'Audio/BoardSoundIndex.json', 'Audio/RidingImport.json']) {
+        const file = await readCachedCourseFile(course, path);
+        if (file) result.set(path.toLowerCase(), file);
+      }
+    }
+    return result;
   } finally {
     db.close();
   }

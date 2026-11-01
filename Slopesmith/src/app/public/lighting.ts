@@ -1,12 +1,13 @@
 import { applyReferenceLightmaps, referenceLightmapIds, type RawPatch, type ReferenceMesh } from '../../core/reference/terrain';
 import { decodeReferenceLightmap, referenceLightmapEncoding } from '../../core/reference/lightmap';
 import type { LightmapSet } from '../../core/lighting/lightmap';
+import { clientFetch } from '../net/client';
 
 /** Match the editor's extracted-lightmap decode while sourcing PNGs from local Blobs or original map files. */
 export async function lightPublicReference(mesh: ReferenceMesh, patches: RawPatch[], url: (id: number) => string): Promise<void> {
   const maps: LightmapSet = new Map();
   for (const id of referenceLightmapIds(patches)) {
-    const response = await fetch(url(id));
+    const response = await clientFetch(url(id));
     if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) continue;
     const image = await createImageBitmap(await response.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
     const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;

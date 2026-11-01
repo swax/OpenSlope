@@ -1,5 +1,5 @@
 import type { MapDataSource } from '../../shared/map-data';
-import { readCachedAudio, readCachedCourse } from './iso-cache';
+import { readCachedAudio, readCachedCourse, readCachedCourseFile } from './iso-cache';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import type { ReferenceMusicGraph, ReferenceMusicIndex, ReferenceMusicSummary } from '../../core/reference/music';
 import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
@@ -9,9 +9,16 @@ import { compareBoardAudioSources } from '../../core/audio/board-sources';
 import { normalizeMapGame } from '../../core/reference/map-game';
 
 /** Read the same portable map files as the server, with browser-local Blobs replacing filesystem reads. */
-export async function localMapData(courses: string[], aliases: Record<string, string> = {}, audioDonors: string[] = []) {
+export async function localMapData(courses: string[], aliases: Record<string, string> = {}, audioDonors: string[] = [], mode: 'all' | 'audio' | 'riding' = 'all') {
   const all = new Map<string, Map<string, Blob>>();
-  for (const course of courses) all.set(course.toLowerCase(), await readCachedCourse(course));
+  for (const course of courses) {
+    const files = await (mode === 'all' ? readCachedCourse(course) : readCachedAudio(course, mode === 'riding'));
+    if (mode !== 'all') for (const name of ['Origin.json', 'Import.json']) {
+      const file = await readCachedCourseFile(course, name);
+      if (file) files.set(name.toLowerCase(), file);
+    }
+    all.set(course.toLowerCase(), files);
+  }
   const mapName = (name: string): string => {
     const key = name.toLowerCase();
     if (all.has(key)) return key;
@@ -30,7 +37,7 @@ export async function localMapData(courses: string[], aliases: Record<string, st
   if (fallbackRequested.some(Boolean)) {
     for (const course of [...audioDonors].sort()) {
       if (all.has(course.toLowerCase())) continue;
-      const files = await readCachedAudio(course);
+      const files = await readCachedAudio(course, true);
       const file = files.get('audio/soundindex.json');
       const index = file && JSON.parse(await file.text()) as CollisionSoundIndex;
       if (index && (index.Banks['1']?.toLowerCase() === BOARD_BANK || index.Banks['0']?.toLowerCase() === BOOST_BANK)) {

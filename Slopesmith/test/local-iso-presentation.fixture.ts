@@ -17,7 +17,9 @@ import { registerCollisionSoundIndex, resolveCollisionSound } from '../src/core/
 import type { CollisionSoundIndex } from '../src/core/effects/collision-sound';
 import type { MapDataSource } from '../src/shared/map-data';
 import type { Viewport } from '../src/app/viewport/viewport';
-import { localMapData } from '../src/app/public/local-map-data';
+import { lazyLocalMapData as localMapData } from '../src/app/public/lazy-local-map-data';
+import { installLocalAssetApi } from '../src/app/public/local-asset-api';
+import { workspaceFetch } from '../src/app/net/workspace';
 
 function check(ok: unknown, message: string): asserts ok {
   if (!ok) throw new Error(message);
@@ -179,9 +181,9 @@ async function run() {
       }
     });
     const audioOnly = await localMapData(['MADTRIX_AUDIO'], {}, ['GARI_AUDIO']);
-    const sample = (bank: string, slot: number, loop = false) =>
+    const sample = async (bank: string, slot: number, loop = false) =>
       fetch(
-        audioOnly.resolveAsset(
+        await audioOnly.resolveRequest(
           `/api/board-sound?level=MADTRIX_AUDIO&bank=${bank}&slot=${slot}${loop ? '&loop=1' : ''}`,
         ),
       ).then(r => r.text());
@@ -215,6 +217,8 @@ async function run() {
           }),
           'audio/ridingimport.json': JSON.stringify({ Game: game }),
           'audio/boardsoundindex.json': JSON.stringify({ SurfaceGroups: [group] }),
+          'audio/music/playlist.json': '["unrequested"]',
+          'audio/music/unrequested/graph.json': 'unrequested music must not be parsed for boarding sounds',
           [`audio/sfx/${board}/004.loop.wav`]: `${game}-glide`,
           [`audio/sfx/${boost}/120.loop.wav`]: `${game}-boost`,
           ...(group === 5 ? { [`audio/sfx/${board}/099.wav`]: 'gba-only' } : {}),
@@ -223,6 +227,7 @@ async function run() {
           store.put({ key: `${course}/${path}`, course, path, blob: new Blob([text]) });
       });
     });
+    let previousAudioUrl = '';
     for (let i = 0; i < preferredAudio.length; i++) {
       const local = await localMapData(
         preferredAudio
@@ -230,34 +235,39 @@ async function run() {
           .map(([course]) => course)
           .reverse(),
       );
+      installLocalAssetApi(
+        local,
+        preferredAudio.slice(i).map(([course]) => course),
+        false,
+      );
+      const sample = (url: string) => workspaceFetch(local.resolveAsset(url));
+      const audioUrl = local.resolveAsset('/api/board-audio');
+      check(new URL(audioUrl).searchParams.has('localAssets'), 'default audio caches are scoped to the workspace');
+      check(audioUrl !== previousAudioUrl, 'switching available games cannot reuse the preceding audio cache');
+      previousAudioUrl = audioUrl;
       const [course, game] = preferredAudio[i];
-      const metadata = await (await fetch(local.resolveAsset('/api/board-audio'))).json();
+      const metadata = await (await workspaceFetch(audioUrl)).json();
       check(metadata.surfaceGroups?.[0] === i, 'automatic surface routing follows the preferred local game');
       check(
-        (await (await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=4&loop=1'))).text()) ===
-          `${game}-glide`,
+        (await (await sample('/api/board-sound?bank=zboard&slot=4&loop=1')).text()) === `${game}-glide`,
         `local default chooses ${game} before the remaining games`,
       );
       check(
-        (await (await fetch(local.resolveAsset('/api/board-sound?bank=zbxsfx&slot=120&loop=1'))).text()) ===
-          `${game}-boost`,
+        (await (await sample('/api/board-sound?bank=zbxsfx&slot=120&loop=1')).text()) === `${game}-boost`,
         `local rider cues choose ${game} too`,
       );
       check(
-        (await (
-          await fetch(local.resolveAsset(`/api/board-sound?level=${course}&bank=zboard&slot=4&loop=1`))
-        ).text()) === `${game}-glide`,
+        (await (await sample(`/api/board-sound?level=${course}&bank=zboard&slot=4&loop=1`)).text()) === `${game}-glide`,
         'explicit reference sound stays map-local',
       );
       if (i === 0) {
         check(
-          (await (await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=99'))).text()) === '',
+          (await (await sample('/api/board-sound?bank=zboard&slot=99')).text()) === '',
           'a missing local clip stays silent instead of mixing game banks',
         );
         check(
-          (await (
-            await fetch(local.resolveAsset('/api/board-sound?level=SSXGBA_PRIORITY&bank=zboard&slot=4&loop=1'))
-          ).text()) === 'ssx-tricky-gba-glide',
+          (await (await sample('/api/board-sound?level=SSXGBA_PRIORITY&bank=zboard&slot=4&loop=1')).text()) ===
+            'ssx-tricky-gba-glide',
           'a lower-priority explicit reference retains its own game',
         );
       }
