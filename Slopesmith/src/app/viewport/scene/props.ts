@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { propLoadState, watchAssetLoads } from '../../state/asset-loads';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import type { AuthoredLight, PlacedProp, V3 } from '../../../core/doc/types';
@@ -143,6 +144,29 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     side: THREE.DoubleSide,
   });
   const placeholderEdgeGeo = new LineSegmentsGeometry().fromEdgesGeometry(new THREE.EdgesGeometry(placeholderGeo));
+  const missingPropMat = new THREE.MeshBasicMaterial({
+    color: 0xff00ff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  let loadSignature = '';
+  const propLoadSignature = (props: PlacedProp[]) =>
+    props
+      .map(prop =>
+        assets
+          .membersOf(prop.level, prop.model, prop.name, prop.group)
+          .map(member => propLoadState(prop.level, member.model))
+          .join(','),
+      )
+      .join(';');
+  const stopAssetWatching = watchAssetLoads(() => {
+    if (!lastPlacedArgs || propLoadSignature(lastPlacedArgs.props) === loadSignature) return;
+    const { props, selIdx, multiSel, effects, hiddenIndices } = lastPlacedArgs;
+    setPlacedProps(props, selIdx, multiSel, effects, hiddenIndices);
+  });
   // Effects-authored trigger volumes are real generated box geometry (unlike the surfaceless-model stand-in):
   // the viewport uses it for selection and Test-mode contact, and export bakes the same centred unit box at
   // the authored size. Purple keeps it in the Effects visual language while the packed instance stays hidden.
@@ -875,9 +899,11 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       }
       if (child.children.length) decoration.add(child);
     }
-    if (root.userData.propPlaceholder) {
+    for (const placeholder of root.children.filter(child => child.userData.propPlaceholder)) {
       // a surfaceless model has no mesh edges to outline — the amber selection edge rides its stand-in box
       const line = new LineSegments2(placeholderEdgeGeo, assets.propOutlineMat);
+      line.position.copy(placeholder.position);
+      line.quaternion.copy(placeholder.quaternion);
       line.raycast = () => {
         /* clicks resolve on the box mesh, never its outline */
       };
@@ -973,6 +999,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     clearSelectionVisuals();
     lastPlacedProps = props;
     lastPlacedArgs = { props, selIdx, multiSel, effects, hiddenIndices };
+    loadSignature = propLoadSignature(props);
     disposePropShade(placedPropGroup);
     for (const m of placedPropMeshes) if (m) placedPropGroup.remove(m);
     placedPropMeshes = [];
@@ -1049,7 +1076,19 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       for (const m of isEffectTriggerProp(pp) ? [] : members) {
         const modelKey = `${pp.level}:${m.model}`;
         const subs = assets.propGeom.get(modelKey);
-        if (!subs) continue;
+        if (!subs) {
+          const box = new THREE.Mesh(
+            placeholderGeo,
+            propLoadState(pp.level, m.model) === 'missing' ? missingPropMat : placeholderMat,
+          );
+          box.position.fromArray(m.relPos);
+          box.rotation.y = (m.relYaw * Math.PI) / 180;
+          box.userData.propIndex = i;
+          box.userData.propPlaceholder = true;
+          if (pp.group) box.userData.propMember = m.model;
+          group.add(box);
+          continue;
+        }
         const clip = assets.propClips.get(modelKey);
         const child = new THREE.Group();
         child.matrixAutoUpdate = false;
@@ -1149,7 +1188,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         group.add(child);
       }
       if (!group.children.length) continue; // geometry not cached yet — the host re-renders once it lands
-      if (!tris) {
+      if (!tris && !group.children.some(child => child.userData.propPlaceholder)) {
         // the model IS registered but has no surfaces — the stand-in box keeps the placement present:
         // visible, pickable (propIndex rides the mesh), flashable, and focusable like any other prop
         const box = new THREE.Mesh(placeholderGeo, placeholderMat);
@@ -1833,6 +1872,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   }
 
   return {
+    stopAssetWatching,
     showTriggerProps,
     /** Point props at the terrain's baked ground light (null to put them back on the studio rig). */
     setGroundLightSource(fn: ((p: V3) => number | null) | null): void {

@@ -44,7 +44,7 @@ import { bakeSunShadow, bakeAO } from '../../core/lighting/occlusion';
 import { DEFAULT_GODRAY_COURSE, normalizeGodRayCourse, type GodRayCourse } from '../../core/lighting/god-rays';
 import type { Viewport } from '../viewport/viewport';
 import type { Store } from '../state/store';
-import { REF_KEY, loadStored, type StoredRef } from '../state/storage';
+import { referenceStorageKey, loadStored, type StoredRef } from '../state/storage';
 import { clearGui, note, tip } from '../ui/components/gui';
 import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
@@ -181,6 +181,8 @@ export function createReference(deps: ReferenceDeps) {
     shadow: false,
     ao: false,
   };
+  let referenceStarted = false;
+  let refStorageKey: string | null = null;
   let refCourse: RefCourse | null = null; // the loaded reference's recovered main course line (SOP/AIP)
   let refGlare: GodRayCourse | null = null; // the loaded reference's own glare, from its World.json
   /** The glare panel's own primitives (lil-gui binds plain values; colours are hex strings). Declared with
@@ -364,12 +366,12 @@ export function createReference(deps: ReferenceDeps) {
       const game = mapGame(map);
       return `${game === 'unknown' ? 'Unknown source' : mapGameLabel(game)} extract${map.course ? ` · ${map.course}` : ''}`;
     }
-    if (!map.retailData) return 'authored in Slopesmith · no retail data';
-    if (map.reasons.includes(UNCLASSIFIED_EXPORT_REASON)) return 'authored in Slopesmith · unclassified legacy export';
+    if (!map.retailData) return 'Custom map · no retail data';
+    if (map.reasons.includes(UNCLASSIFIED_EXPORT_REASON)) return 'Custom map · unclassified legacy export';
     const borrowed = map.reasons
       .filter(reason => reason.startsWith('retail-'))
       .map(reason => reason.slice('retail-'.length));
-    return `authored in Slopesmith · borrows retail ${borrowed.join(', ') || 'art'}`;
+    return `Custom map · borrows retail ${borrowed.join(', ') || 'art'}`;
   }
 
   function buildOriginRow(): void {
@@ -379,8 +381,8 @@ export function createReference(deps: ReferenceDeps) {
     tip(
       controller,
       'Where this map folder came from, read from its producer’s Origin.json.',
-      'An SSX Tricky, SSX 3 or SSX On Tour extract is a course converted locally from a user-supplied disc. “Authored in ' +
-        'Slopesmith” is an export, followed by whether its classification found borrowed retail art and in ' +
+      'An SSX Tricky, SSX 3 or SSX On Tour extract is a course converted locally from a user-supplied disc. A custom map ' +
+        'is exported from Slopesmith, followed by whether its classification found borrowed retail art and in ' +
         'which channels. A folder nothing identifies is read as retail rather than as clean.',
     );
   }
@@ -421,7 +423,7 @@ export function createReference(deps: ReferenceDeps) {
       'triangles',
       'Baked triangles drawn, then the distinct art behind them.',
       'Baked = placements × per-copy geometry. Retail earns the gap between the two by instancing; a Slopesmith ' +
-        'export bakes one mesh per placement, so an authored map is read against retail’s distinct column.',
+        'export bakes one mesh per placement, so a custom map is read against retail’s distinct column.',
     );
     costRow(
       'textures',
@@ -519,6 +521,11 @@ export function createReference(deps: ReferenceDeps) {
   }
 
   async function initReference({ restore = true }: { restore?: boolean } = {}) {
+    referenceStarted = true;
+    const key = referenceStorageKey();
+    const generation = refGeneration;
+    const storedRef = restore && key ? loadStored<StoredRef>(key) : null;
+    refStorageKey = key;
     let opts: string[] = ['(dev server only)'];
     try {
       const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[]; localLevels?: string[] }>(
@@ -530,8 +537,8 @@ export function createReference(deps: ReferenceDeps) {
     } catch {
       /* static build / server down - leave the placeholder */
     }
-    // re-load the reference that was open last session (if its level is still available)
-    const storedRef = loadStored<StoredRef>(REF_KEY);
+    if (generation !== refGeneration || key !== referenceStorageKey()) return;
+    // Restore only the reference saved for this mountain, if that level is still available.
     const restoredMap = storedRef && findMapChoice([...mapOrigins.values()], storedRef.level);
     const restoreRef =
       restore && storedRef && (restoredMap || opts.includes(storedRef.level))
@@ -623,7 +630,7 @@ export function createReference(deps: ReferenceDeps) {
       'Seconds a showoff run on this course starts with.',
       'The game holds one number per course in its own executable — Garibaldi 120, most courses 90, Alaska ' +
         '135 — and ends the run at zero; checkpoints add time. Nothing in the level files says it, which is ' +
-        'why an authored mountain carries its number in the export instead.',
+        'why a custom mountain carries its number in the export instead.',
     );
     tip(
       refCourseFolder
@@ -637,7 +644,7 @@ export function createReference(deps: ReferenceDeps) {
       // load without stealing the restored camera view (frame:false) and without changing the current
       // selection (select:false); then re-apply the saved placement offset.
       await loadReference({ frame: false, select: false });
-      if (refMesh) {
+      if (refMesh && refStorageKey === key && refState.level === restoreRef.level) {
         // where a previous session put it (an all-zero offset is the pre-fixed-offset era's overlay default,
         // not a drag — let those fall through to the fixed load offset)
         if (restoreRef.offset && restoreRef.offset.some(v => v !== 0)) viewport.setReferenceOffset(restoreRef.offset);
@@ -646,9 +653,20 @@ export function createReference(deps: ReferenceDeps) {
     }
   }
 
-  function clearReference() {
+  /** A document replacement in the same project keeps its view; a different project gets its own reference. */
+  async function syncProjectReference(): Promise<void> {
+    if (!referenceStarted || refStorageKey === referenceStorageKey()) return;
+    // Teardown must not erase either project's saved selection, including callbacks caused by clearing the view.
+    refStorageKey = null;
+    clearReference({ persist: false });
+    await initReference();
+  }
+
+  function clearReference({ persist = true }: { persist?: boolean } = {}) {
     refGeneration++;
     refPickerLoading = false;
+    refState.level = neutralLevel;
+    levelCtl?.updateDisplay();
     updateRefPickerLoad();
     refDocument = null;
     if (refLoadStatusToken !== null) {
@@ -702,7 +720,7 @@ export function createReference(deps: ReferenceDeps) {
     applyGodRays(); // ...and no course sun or stale readout
     rebuildOutliner(); // the reference row falls back to "(none loaded)"
     applySceneSelection(); // hide the (now empty) lighting study
-    persistRef(); // refMesh is null now -> forget the stored reference
+    if (persist) persistRef(); // refMesh is null now -> forget this project's stored reference
     focusActive();
     log('');
   }
@@ -1813,7 +1831,7 @@ export function createReference(deps: ReferenceDeps) {
     );
     tip(
       lightFolder.add({ use: () => useReferenceLight() }, 'use').name('⟶ use for my map'),
-      'Copy this level’s sun into the authored Lighting settings.',
+      'Copy this level’s sun into your custom map’s Lighting settings.',
       'Uses its own light records (Lights.json, the true HDR sun/sky) when it ships them, else the sun ' +
         'recovered from the baked lightmap. Records seed the exported light; the study sets the bake exposure ' +
         'so the terrain lightmap matches this level.',
@@ -2254,7 +2272,7 @@ export function createReference(deps: ReferenceDeps) {
         .add(glareUi, 'spriteIntensity', 0, 2, 0.001)
         .name('sprite intensity')
         .onChange(() => applyGlare(true)),
-      'Per-course strength of the authored-radius soft corona sprite.',
+      'Per-course strength of the soft corona sprite.',
     );
     tip(
       folder
@@ -2363,6 +2381,8 @@ export function createReference(deps: ReferenceDeps) {
 
   return {
     initReference,
+    syncProjectReference,
+    getRefStorageKey: () => refStorageKey,
     initSunLight,
     syncSunFromDoc,
     applySunLight,

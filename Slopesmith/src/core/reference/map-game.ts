@@ -5,7 +5,7 @@ export { normalizeMapDisplayName } from './disc-courses';
 
 /** Stable source identities shared by map catalogues and their Game → Map pickers. */
 const GAME_LABELS: Readonly<Record<string, string>> = {
-  slopesmith: 'Custom / Authored',
+  slopesmith: 'Custom',
   ssx: 'SSX',
   'ssx-tricky': 'SSX Tricky',
   'ssx-tricky-gba': 'SSX Tricky (GBA)',

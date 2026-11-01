@@ -14,6 +14,8 @@ import type { BoardSoundIndex } from '../../core/audio/board-sound';
 import { validEnvironmentDocument, type EnvironmentAudioDocument } from '../../core/audio/environment';
 import { safeDataName } from './safe-name';
 import { resolveServerMapName } from '../reference-map-paths';
+import { compareBoardAudioSources } from '../../core/audio/board-sources';
+import { normalizeMapGame } from '../../core/reference/map-game';
 
 /** Read the user-generated map sidecar Snowknife wrote from this map's source disc. */
 export async function readSoundIndex(level: string): Promise<CollisionSoundIndex | null> {
@@ -177,15 +179,22 @@ export async function listSoundBankLevels(): Promise<string[]> {
 /** The shared banks the board ride reads: the Board bank's family×mode loop matrix and the main SFX bank the
  * held-boost roar lives in [Trailmap: 190-audio-data, 420-audio-runtime]. */
 const BOARD_BANKS = new Set(['zboard', 'zbxsfx']);
+type BoardSource = { level: string; dir: string; bank: string; game?: string };
+const pendingBoardSources = new Map<string, Promise<BoardSource[]>>();
 
-/** Which extracted level supplies a shared board bank. The banks are level-INDEPENDENT — every level's
- * `snowknife import` writes the same zboard/zbxsfx WAVs beneath its own Audio/SFX — so the first level carrying
- * the folder serves the whole editor, and an authored mountain that has never had a reference loaded still
- * gets a board bed. Null when nothing has been extracted yet. */
-async function boardSoundSources(
-  bank: string,
-  level?: string,
-): Promise<{ level: string; dir: string; bank: string }[]> {
+/** Share a discovery pass across concurrent clip requests without retaining stale results after ref changes. */
+function boardSoundSources(bank: string, level?: string): Promise<BoardSource[]> {
+  const key = JSON.stringify([mapsRoot(), bank, level]);
+  let pending = pendingBoardSources.get(key);
+  if (!pending) {
+    pending = findBoardSoundSources(bank, level).finally(() => pendingBoardSources.delete(key));
+    pendingBoardSources.set(key, pending);
+  }
+  return pending;
+}
+
+/** Explicit reference rides keep their bank; custom mountains prefer games in the shared fallback order. */
+async function findBoardSoundSources(bank: string, level?: string): Promise<BoardSource[]> {
   const wanted = bank.trim().toLowerCase();
   if (!BOARD_BANKS.has(wanted)) return [];
   if (level) level = await resolveServerMapName(level);
@@ -200,7 +209,7 @@ async function boardSoundSources(
       if (index?.Banks[wanted === 'zboard' ? '1' : '0']?.toLowerCase() === wanted) candidates.push(donor);
     }
   }
-  const sources = [];
+  const sources: BoardSource[] = [];
   for (const candidate of candidates) {
     const index = await readSoundIndex(candidate);
     const actual = index?.Banks[wanted === 'zboard' ? '1' : '0'] ?? wanted;
@@ -209,11 +218,34 @@ async function boardSoundSources(
     const name = (await listSubdirectories(root)).find(name => name.toLowerCase() === actual.toLowerCase());
     const dir = name ? join(root, name) : null;
     if (dir && name && (await isDirectory(dir))) {
-      sources.push({ level: candidate, dir, bank: name });
-      if (!fallback) return sources;
+      if (level) {
+        sources.push({ level: candidate, dir, bank: name });
+        if (!fallback) return sources;
+      } else {
+        const folder = join(mapsRoot(), candidate);
+        const [riding, origin, imported] = await Promise.all([
+          readJsonOr<{ Game?: unknown } | null>(join(folder, 'Audio', 'RidingImport.json'), null),
+          readJsonOr<{ Game?: unknown } | null>(join(folder, 'Origin.json'), null),
+          readJsonOr<{ Game?: unknown } | null>(join(folder, 'Import.json'), null),
+        ]);
+        sources.push({
+          level: candidate,
+          dir,
+          bank: name,
+          game: normalizeMapGame(riding?.Game) ?? normalizeMapGame(origin?.Game) ?? normalizeMapGame(imported?.Game),
+        });
+      }
     }
   }
-  return sources;
+  if (level) return sources;
+  return sources
+    .sort((a, b) =>
+      compareBoardAudioSources(
+        { name: a.level, game: a.game, bank: a.bank },
+        { name: b.level, game: b.game, bank: b.bank },
+      ),
+    )
+    .slice(0, 1);
 }
 
 export async function boardSoundSource(

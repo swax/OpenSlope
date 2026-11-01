@@ -4,7 +4,11 @@ import type { V3 } from '../../core/doc/types';
 import { placementQuat } from '../../core/props/pose';
 import { ThumbRenderer, THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION, type ThumbEntry } from './thumb-renderer';
 import { installStyles } from '../ui/components/styles';
+import { assetSourceInfo } from '../ui/components/asset-source-info';
 import { mapSourceDetails, watchMapSources } from '../state/map-sources';
+import { propLoadState, textureLoadState, watchAssetLoads } from '../state/asset-loads';
+import { resolvePropTex, makeTexRef } from '../../core/paint/textures';
+import { textureRefUrl } from '../net/asset-paths';
 
 /**
  * The Prop Tools preview: a live 3/4 view of the prop you're holding (picked from the library or the reference
@@ -51,7 +55,7 @@ const css = `
 .pp-card { display: none; flex-direction: column; align-items: center; gap: 6px; margin: 2px 0 10px; padding: 10px;
   background: #10202e; border: 1px solid #21384c; border-radius: 8px; }
 .pp-card.on { display: flex; }
-.pp-thumb { width: 148px; height: 148px; background: #0b141d; border-radius: 6px; overflow: hidden;
+.pp-thumb { position: relative; width: 148px; height: 148px; background: #0b141d; border-radius: 6px; overflow: hidden;
   touch-action: none; user-select: none; }
 .pp-thumb canvas { display: block; width: 148px; height: 148px; }
 .pp-card.orbit .pp-thumb { cursor: grab; }
@@ -69,6 +73,9 @@ const css = `
 .pp-source-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 6px; }
 .pp-source-label { color: #6f8398; }
 .pp-source-value { color: #9fb3c8; overflow-wrap: anywhere; }
+.pp-missing { display: none; position: absolute; inset: 30px; border: 2px solid #ff00ff;
+  color: #ff73ff; font: 11px system-ui, sans-serif; text-align: center; }
+.pp-thumb[data-missing="true"] .pp-missing { display: grid; place-items: center; }
 .pp-members { display: none; flex-direction: column; gap: 2px; align-self: stretch; margin-top: 2px;
   padding-top: 6px; border-top: 1px solid #21384c; }
 .pp-members.on { display: flex; }
@@ -92,7 +99,10 @@ export class PropPreview {
   private instanceEl = document.createElement('div');
   private statsEl = document.createElement('div');
   private sourceEl = document.createElement('div');
+  private sourceInfo = assetSourceInfo(this.sourceEl);
   private sourceLevels: readonly string[] = [];
+  private sourceModels: Array<{ level: string; model: number }> = [];
+  private sourceTextures: string[] = [];
   private membersEl = document.createElement('div');
   private thumb = new ThumbRenderer(148);
   private token = 0; // guards against an out-of-order async prepare clobbering a newer one
@@ -106,6 +116,7 @@ export class PropPreview {
 
   constructor() {
     watchMapSources(() => this.updateSourceDetails());
+    watchAssetLoads(() => this.updateSourceDetails());
     installStyles('prop-preview', css);
     this.el.className = 'pp-card';
     this.thumbEl.className = 'pp-thumb';
@@ -119,13 +130,17 @@ export class PropPreview {
     this.statsEl.className = 'pp-stats';
     this.membersEl.className = 'pp-members';
     this.thumbEl.append(this.thumb.canvas);
+    const missing = document.createElement('div');
+    missing.className = 'pp-missing';
+    missing.textContent = 'Missing prop';
+    this.thumbEl.append(missing);
     this.el.append(
       this.nameEl,
       this.modelEl,
       this.instanceEl,
       this.thumbEl,
       this.statsEl,
-      this.sourceEl,
+      this.sourceInfo,
       this.membersEl,
     );
     this.wireOrbit();
@@ -194,6 +209,8 @@ export class PropPreview {
     instance?: string | null,
   ) {
     this.sourceLevels = [level];
+    this.sourceModels = (group?.props ?? [{ model }]).map(member => ({ level, model: member.model }));
+    this.sourceTextures = this.modelTextures(level, model, props, group);
     this.updateSourceDetails();
     this.el.classList.add('on');
     this.nameEl.textContent = name;
@@ -248,6 +265,8 @@ export class PropPreview {
     instance?: string | null,
   ) {
     this.sourceLevels = members.length ? members.map(member => member.level) : ['@models'];
+    this.sourceModels = members.map(member => ({ level: member.level, model: member.model }));
+    this.sourceTextures = members.flatMap(member => this.modelTextures(member.level, member.model, member.props));
     this.updateSourceDetails();
     this.el.classList.add('on');
     this.nameEl.textContent = name;
@@ -299,8 +318,32 @@ export class PropPreview {
   private updateSourceDetails() {
     this.sourceEl.replaceChildren();
     const sources = this.sourceLevels.map(mapSourceDetails);
+    const missing = this.sourceModels.filter(ref => propLoadState(ref.level, ref.model) === 'missing');
+    const missingTextures = [
+      ...new Set(this.sourceTextures.filter(ref => textureLoadState(textureRefUrl(ref)) === 'missing')),
+    ];
+    this.thumbEl.dataset.missing = String(missing.length > 0);
+    const facts: Record<string, string> = {};
     for (const key of ['source', 'game', 'map', 'version'] as const) {
       if (key === 'version' && !sources.some(source => source.version)) continue;
+      facts[key] = [...new Set(sources.map(source => source[key]))].join(', ');
+    }
+    if (this.sourceModels.length) {
+      facts.status = missing.length
+        ? 'Missing prop'
+        : missingTextures.length
+          ? 'Missing texture'
+          : this.sourceModels.every(ref => propLoadState(ref.level, ref.model) === 'ready') &&
+              this.sourceTextures.every(ref => textureLoadState(textureRefUrl(ref)) === 'ready')
+            ? 'Ready'
+            : 'Loading…';
+      facts.reference = this.sourceModels.map(ref => `${ref.level}/model/${ref.model}`).join(', ');
+    }
+    if (missing.length || missingTextures.length)
+      facts['missing reference'] = [...missing.map(ref => `${ref.level}/model/${ref.model}`), ...missingTextures].join(
+        ', ',
+      );
+    for (const [key, text] of Object.entries(facts)) {
       const row = document.createElement('div');
       row.className = 'pp-source-row';
       row.dataset.detail = key;
@@ -309,11 +352,21 @@ export class PropPreview {
       label.textContent = key;
       const value = document.createElement('span');
       value.className = 'pp-source-value';
-      value.textContent = [...new Set(sources.map(source => source[key]))].join(', ');
+      value.textContent = text;
       value.title = value.textContent;
       row.append(label, value);
       this.sourceEl.appendChild(row);
     }
+  }
+
+  private modelTextures(level: string, model: number, props?: LevelProps, group?: GroupDef | null): string[] {
+    return (group?.props ?? [{ model }]).flatMap(member =>
+      (props?.models.find(entry => entry.id === member.model)?.subs ?? []).flatMap(sub => {
+        const material = props?.materials.get(sub.mat);
+        const tile = resolvePropTex(level, material?.tex);
+        return tile.name ? [tile.name, ...(material?.frames ?? [])].map(name => makeTexRef(tile.level, name)) : [];
+      }),
+    );
   }
 
   private memberRow(marker: HTMLElement, text: string) {
@@ -366,6 +419,8 @@ export class PropPreview {
 
   hide() {
     this.sourceLevels = [];
+    this.sourceModels = [];
+    this.sourceTextures = [];
     this.sourceEl.replaceChildren();
     this.el.classList.remove('on', 'orbit');
     this.token++;

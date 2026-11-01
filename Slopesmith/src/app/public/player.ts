@@ -35,6 +35,7 @@ import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
 import { findMapChoice, mapSourceId, splitMapSource } from '../../core/reference/map-source';
 import { discContainsCourse } from '../../core/reference/disc-courses';
+import { beginPropLoad } from '../state/asset-loads';
 
 const yieldFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 async function json<T>(url: string): Promise<T> {
@@ -98,6 +99,7 @@ export async function preparePublicPlayer(
     const resolved = custom?.resolve(path) ?? path;
     if (resolved !== path) return resolved;
     const level = new URL(path, location.origin).searchParams.get('level');
+    if (level && !course.private && splitMapSource(level).source === 'server') return 'data:image/png;base64,';
     if (level && serverOnlyLevel(level)) return path;
     return local.resolveAsset(path);
   });
@@ -211,7 +213,7 @@ export async function preparePublicPlayer(
       bundle ??
       privateSnapshot ??
       (await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`));
-    const document = publicMountainDocument(snapshot.document, availableLevels);
+    const document = publicMountainDocument(snapshot.document, availableLevels, true);
     // Decode owned cues while the terrain loads, before the first riding event can fire.
     const courseSounds = Promise.all(
       Object.values(document.boardSound?.clips ?? {})
@@ -242,23 +244,29 @@ export async function preparePublicPlayer(
       installed.add(level);
     };
     const missing = new Set<string>();
+    for (const prop of document.props ?? []) {
+      if (!prop.level.startsWith('@') && !donors.has(prop.level)) {
+        beginPropLoad(prop.level)();
+        missing.add(prop.level);
+      }
+    }
     for (const level of donors) {
+      const failed = beginPropLoad(level);
       try {
         await installDonor(level);
-      } catch (error) {
-        if (!parseAssetVersion(level)) throw error;
+      } catch {
+        failed();
         missing.add(level);
       }
     }
     if (missing.size) {
-      document.props = document.props?.filter(prop => !missing.has(prop.level));
       toast('Some prop versions are unavailable. Load the matching game assets to see those props.', 'warn', 8000);
     }
     if (document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)) {
       const props = bundle
         ? bundleProps(bundle)
         : await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`);
-      viewport.syncLiveModels(decodeProps(publicPropPayload(props, availableLevels)));
+      viewport.syncLiveModels(decodeProps(publicPropPayload(props, availableLevels, true)));
     }
     if (availableCourses.length) {
       const art = await nativeArtSource(local.source);
@@ -362,6 +370,7 @@ export async function preparePublicPlayer(
     },
     rideEvent: viewport.applyRideEvent.bind(viewport),
     dispose() {
+      viewport.stopAssetWatching();
       stopUpdateGuard();
       clearInterval(publish);
       local.dispose();

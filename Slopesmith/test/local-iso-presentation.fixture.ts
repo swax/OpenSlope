@@ -193,6 +193,76 @@ async function run() {
       'audio fallback never loads another course’s terrain',
     );
     audioOnly.dispose();
+
+    const preferredAudio = [
+      ['RENAMED_TRICKY', 'ssx-tricky'],
+      ['SSX3_PRIORITY', 'ssx-3'],
+      ['SSXOT_PRIORITY', 'ssx-on-tour'],
+      ['MADTRIX_PRIORITY', 'jonny-moseley-mad-trix'],
+      ['AVALANCHE_PRIORITY', '1080-avalanche'],
+      ['SSXGBA_PRIORITY', 'ssx-tricky-gba'],
+    ] as const;
+    await cacheTransaction(db, 'files', 'readwrite', store => {
+      preferredAudio.forEach(([course, game], group) => {
+        const board = group === 0 ? 'zboard' : 'openslope_board';
+        const boost = group === 0 ? 'zbxsfx' : 'openslope_main';
+        const files = {
+          'audio/soundindex.json': JSON.stringify({
+            Schema: 'openslope-sound-index/v1',
+            Level: course,
+            Banks: { '1': board, '0': boost },
+            CollisionEvents: {},
+          }),
+          'audio/ridingimport.json': JSON.stringify({ Game: game }),
+          'audio/boardsoundindex.json': JSON.stringify({ SurfaceGroups: [group] }),
+          [`audio/sfx/${board}/004.loop.wav`]: `${game}-glide`,
+          [`audio/sfx/${boost}/120.loop.wav`]: `${game}-boost`,
+          ...(group === 5 ? { [`audio/sfx/${board}/099.wav`]: 'gba-only' } : {}),
+        };
+        for (const [path, text] of Object.entries(files))
+          store.put({ key: `${course}/${path}`, course, path, blob: new Blob([text]) });
+      });
+    });
+    for (let i = 0; i < preferredAudio.length; i++) {
+      const local = await localMapData(
+        preferredAudio
+          .slice(i)
+          .map(([course]) => course)
+          .reverse(),
+      );
+      const [course, game] = preferredAudio[i];
+      const metadata = await (await fetch(local.resolveAsset('/api/board-audio'))).json();
+      check(metadata.surfaceGroups?.[0] === i, 'automatic surface routing follows the preferred local game');
+      check(
+        (await (await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=4&loop=1'))).text()) ===
+          `${game}-glide`,
+        `local default chooses ${game} before the remaining games`,
+      );
+      check(
+        (await (await fetch(local.resolveAsset('/api/board-sound?bank=zbxsfx&slot=120&loop=1'))).text()) ===
+          `${game}-boost`,
+        `local rider cues choose ${game} too`,
+      );
+      check(
+        (await (
+          await fetch(local.resolveAsset(`/api/board-sound?level=${course}&bank=zboard&slot=4&loop=1`))
+        ).text()) === `${game}-glide`,
+        'explicit reference sound stays map-local',
+      );
+      if (i === 0) {
+        check(
+          (await (await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=99'))).text()) === '',
+          'a missing local clip stays silent instead of mixing game banks',
+        );
+        check(
+          (await (
+            await fetch(local.resolveAsset('/api/board-sound?level=SSXGBA_PRIORITY&bank=zboard&slot=4&loop=1'))
+          ).text()) === 'ssx-tricky-gba-glide',
+          'a lower-priority explicit reference retains its own game',
+        );
+      }
+      local.dispose();
+    }
   } finally {
     db.close();
   }

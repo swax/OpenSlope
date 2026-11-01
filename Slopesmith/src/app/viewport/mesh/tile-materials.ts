@@ -43,7 +43,7 @@ export function createTileMaterials(onLoaded: () => void) {
   const texMatsLit = new Map<string, THREE.MeshBasicMaterial>();
   let projectGeneration = 0;
 
-  /** Get a loaded tile texture, or kick off its download (returns null until ready, then fires onLoaded). */
+  /** Start a tile download: pending stays neutral; a settled failure returns the shared checkerboard. */
   function ensure(ref: TexRef): THREE.Texture | null {
     const cached = texCache.get(ref);
     if (cached) return cached;
@@ -80,7 +80,7 @@ export function createTileMaterials(onLoaded: () => void) {
           onLoaded(); // fold the now-loaded tile into whatever the caller is drawing (terrain / reference / ghost)
         },
         undefined,
-        () => {
+        (_error, texture) => {
           if (
             generation !== projectGeneration &&
             parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
@@ -90,7 +90,11 @@ export function createTileMaterials(onLoaded: () => void) {
           // A reference rebuild runs after every successful sibling tile. Remember this failure for the
           // session so nine absent pages do not turn into hundreds of identical 404s. Reloading retries.
           texMissing.add(ref);
-          alphaCache.set(ref, { kind: 'unknown', glow: false });
+          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.flipY = false;
+          texCache.set(ref, texture);
+          alphaCache.set(ref, { kind: 'opaque-alpha', glow: false });
           // A failure settles this page as surely as a success does, and the array bank below only builds
           // once NOTHING is outstanding. Without this notification a bank whose last page 404s would wait
           // for a completion that is never coming.
@@ -229,28 +233,29 @@ export function createTileMaterials(onLoaded: () => void) {
     invalidateTextureAlphaLevel(CUSTOM_TEX_LEVEL);
     disposeBank(); // packed copies of the old project's pages; the next reference build repacks
     const authored = (ref: string) => parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase();
+    const reset = (ref: string) => authored(ref) || texMissing.has(ref);
     for (const [ref, texture] of texCache)
-      if (authored(ref)) {
+      if (reset(ref)) {
         texture.dispose();
         texCache.delete(ref);
       }
-    for (const ref of [...alphaCache.keys()]) if (authored(ref)) alphaCache.delete(ref);
+    for (const ref of [...alphaCache.keys()]) if (reset(ref)) alphaCache.delete(ref);
     for (const ref of [...texPending]) if (authored(ref)) texPending.delete(ref);
     // A failure is not immutable asset state. In particular, a recovery document can ask for retail pages
     // before a fresh tab has chosen its project; those requests used to receive 409 and poison the reference
     // bank until a full page refresh. A project rebind is the retry boundary, while successfully decoded
     // reference pages above remain warm.
-    texMissing.clear();
     for (const [ref, material] of texMats)
-      if (authored(ref)) {
+      if (reset(ref)) {
         material.dispose();
         texMats.delete(ref);
       }
     for (const [ref, material] of texMatsLit)
-      if (authored(ref)) {
+      if (reset(ref)) {
         material.dispose();
         texMatsLit.delete(ref);
       }
+    texMissing.clear();
   }
 
   return { ensure, material, materialLit, ensureBank, disposeBank, invalidateProjectAssets };

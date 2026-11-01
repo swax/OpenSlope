@@ -927,6 +927,7 @@ const persistence = createPersistence({
     reference.hasReference() && reference.getRefLevel() && !reference.getRefLevel().startsWith('(')
       ? { level: reference.getRefLevel(), offset: viewport.referenceOffset() }
       : null,
+  getRefKey: () => reference.getRefStorageKey(),
 });
 const { persistDoc, persistView, persistUi, persistRef } = persistence;
 
@@ -3328,6 +3329,7 @@ function refreshSyncedDocumentUi() {
 }
 
 async function loadMountain() {
+  await reference.syncProjectReference();
   await pinDocumentAssets(store.mdoc);
   surfaceEdits.reset();
   syncDocumentPending = false;

@@ -256,7 +256,7 @@ function transparentOwner(object: THREE.Object3D): string {
   let nearestName = object.name || object.type;
   for (let current: THREE.Object3D | null = object; current; current = current.parent) {
     if (current.userData.riderVisual !== undefined || current.name.startsWith('rider.')) return 'riders';
-    if (current.userData.railIndex !== undefined) return 'authored rails';
+    if (current.userData.railIndex !== undefined) return 'custom rails';
     if (current.userData.propWireframePass) return 'prop wire passes';
     if (current.userData.particleVolumeSource !== undefined) return 'ambient particles';
     if (current.userData.screenPanel || current.userData.screenInspection) return 'screens';
@@ -5061,6 +5061,9 @@ export class Viewport {
   }
   hasPropGeom(level: string, model: number): boolean {
     return this.assets.hasPropGeom(level, model);
+  }
+  stopAssetWatching(): void {
+    this.props.stopAssetWatching();
   }
 
   /**

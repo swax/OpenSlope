@@ -15,9 +15,9 @@ assert.equal(
   'legacy IDs match the same local-first resolution as loading',
 );
 assert.deepEqual(mapSourceDetails('server:TRICKY_GARI'), { source: 'Server', game: 'SSX Tricky', map: 'Garibaldi' });
-assert.deepEqual(mapSourceDetails('@models'), { source: 'Server', game: 'Custom / Authored', map: 'My Mountain' });
+assert.deepEqual(mapSourceDetails('@models'), { source: 'Server', game: 'Custom', map: 'My Mountain' });
 configureWorkspace(true, async () => null);
-assert.deepEqual(mapSourceDetails('@import'), { source: 'Local', game: 'Custom / Authored', map: 'My Mountain' });
+assert.deepEqual(mapSourceDetails('@import'), { source: 'Local', game: 'Custom', map: 'My Mountain' });
 let notifications = 0;
 const unwatch = watchMapSources(() => notifications++);
 registerMapSources('details', [{ name: 'Custom', game: 'slopesmith', label: 'Renamed Mountain' }]);
@@ -26,4 +26,4 @@ assert.equal(mapSourceDetails('Custom').map, 'Renamed Mountain');
 unwatch();
 registerMapSources('details', []);
 assert.equal(notifications, 1);
-console.log('Asset details retain source, game, disc titles, legacy identity and authored mountain names PASS');
+console.log('Asset details retain source, game, disc titles, legacy identity and custom mountain names PASS');

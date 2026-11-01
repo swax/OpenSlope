@@ -18,17 +18,17 @@ function availableAssets(availableLevels: readonly string[]) {
 }
 
 /** Keep authored geometry playable even when some of its disc art is absent from this device. */
-export function publicMountainDocument(document: EditDoc, availableLevels: readonly string[]): EditDoc {
+export function publicMountainDocument(document: EditDoc, availableLevels: readonly string[], placeholders = false): EditDoc {
   const { hasLevel, hasTexture } = availableAssets(availableLevels);
   return {
     ...document,
-    quadTex: Object.fromEntries(Object.entries(document.quadTex ?? {}).filter(([, ref]) => hasTexture(ref))),
+    quadTex: Object.fromEntries(Object.entries(document.quadTex ?? {}).filter(([, ref]) => placeholders || hasTexture(ref))),
     models: document.models?.map(model => ({
       ...model,
-      texture: model.texture && hasTexture(model.texture) ? model.texture : undefined,
-      frames: model.frames?.filter(hasTexture),
+      texture: model.texture && (placeholders || hasTexture(model.texture)) ? model.texture : undefined,
+      frames: model.frames?.filter(ref => placeholders || hasTexture(ref)),
     })),
-    props: document.props?.filter(prop => hasLevel(prop.level)),
+    props: document.props?.filter(prop => placeholders || hasLevel(prop.level)),
     particleVolumes: document.particleVolumes?.filter(volume => !volume.texture || hasTexture(volume.texture)),
     skybox:
       document.skybox?.source.kind === 'level' && !hasLevel(document.skybox.source.level) ? undefined : document.skybox,
@@ -36,14 +36,14 @@ export function publicMountainDocument(document: EditDoc, availableLevels: reado
 }
 
 /** Imported geometry is custom, but its material slots may have been repainted with game textures. */
-export function publicPropPayload(payload: PropsPayload, availableLevels: readonly string[]): PropsPayload {
+export function publicPropPayload(payload: PropsPayload, availableLevels: readonly string[], placeholders = false): PropsPayload {
   const { hasTexture } = availableAssets(availableLevels);
   return {
     ...payload,
     materials: payload.materials.map(material => ({
       ...material,
-      tex: material.tex && hasTexture(material.tex) ? material.tex : null,
-      frames: material.frames?.filter(hasTexture),
+      tex: material.tex && (placeholders || hasTexture(material.tex)) ? material.tex : null,
+      frames: material.frames?.filter(ref => placeholders || hasTexture(ref)),
     })),
   };
 }

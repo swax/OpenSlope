@@ -36,6 +36,12 @@ main SFX bank, including big-air wind 032 and the boost roar) are staged by `sno
 layout, so an authored mountain does not need map-specific audio metadata. With no extracted shared banks, a
 test ride is simply silent and the Sound panel says so.
 
+Custom mountains prefer available banks in this order: **SSX Tricky → SSX 3 → On Tour → Mad Trix →
+1080° Avalanche → Tricky GBA**, followed by other or unidentified sources. Source-game metadata takes precedence
+over folder names; legacy shared Tricky banks remain usable. Equal-priority sources use map-name order.
+Each board/rider bank stays consistent across its clips, and surface routing comes from the selected board bank.
+Explicit reference rides retain their own banks and any map-declared Tricky fallback.
+
 - `GET /api/board-audio` → `{board, boost}`, naming the levels that supply each bank (`null` = not extracted).
 - `GET /api/board-sound?slot=4[&bank=zboard|zbxsfx][&loop=1]` → that slot's WAV. `loop=1` prefers the sibling
   `NNN.loop.wav` Snowknife emits from the BNKl loop region — the clean sustain a continuously performed layer

@@ -5,6 +5,8 @@ import type { ReferenceMusicGraph, ReferenceMusicIndex, ReferenceMusicSummary } 
 import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
 import { legacyTrickyMapName } from '../../core/reference/map-source';
 import { mapSourceRequest } from '../net/map-source';
+import { compareBoardAudioSources } from '../../core/audio/board-sources';
+import { normalizeMapGame } from '../../core/reference/map-game';
 
 /** Read the same portable map files as the server, with browser-local Blobs replacing filesystem reads. */
 export async function localMapData(courses: string[], aliases: Record<string, string> = {}, audioDonors: string[] = []) {
@@ -42,10 +44,16 @@ export async function localMapData(courses: string[], aliases: Record<string, st
   const musicIndexes = new Map<string, ReferenceMusicIndex>();
   const musicGraphs = new Map<string, ReferenceMusicGraph>();
   const boardGroups = new Map<string, number[]>();
+  const audioGames = new Map<string, string>();
   const introFolders = new Map<string, string>();
   const ridingSheets = new Map<string, string>();
   const ridingPuffs = new Map<string, string>();
   for (const [level, files] of all) {
+    for (const path of ['audio/ridingimport.json', 'origin.json', 'import.json']) {
+      const file = files.get(path);
+      const game = file && normalizeMapGame((JSON.parse(await file.text()) as { Game?: unknown }).Game);
+      if (game) { audioGames.set(level, game); break; }
+    }
     const ridingFile = files.get('ridingeffects.json');
     if (ridingFile) {
       const riding = JSON.parse(await ridingFile.text()) as { Schema?: string; Enabled?: boolean; Sheet?: string; Puff?: string };
@@ -90,6 +98,16 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     }
     musicIndexes.set(level, { level, songs, intro, environment: null });
   }
+  const ridingBank = (course: string, bank: string) =>
+    soundIndexes.get(course.toLowerCase())?.Banks[bank === BOARD_BANK ? '1' : '0'] ?? bank;
+  const hasRidingBank = (course: string, bank: string) => {
+    const prefix = `audio/sfx/${ridingBank(course, bank).toLowerCase()}/`;
+    return [...(all.get(course.toLowerCase())?.keys() ?? [])].some(path => path.startsWith(prefix) && path.endsWith('.wav'));
+  };
+  const automaticRidingSources = new Map([BOARD_BANK, BOOST_BANK].map(bank => [bank, [...all.keys()]
+    .filter(course => hasRidingBank(course, bank))
+    .map(name => ({ name, game: audioGames.get(name), bank: ridingBank(name, bank) }))
+    .sort(compareBoardAudioSources).slice(0, 1).map(source => source.name)]));
   const fallbackSprite = document.createElement('canvas'); fallbackSprite.width = fallbackSprite.height = 32;
   const context = fallbackSprite.getContext('2d')!;
   const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
@@ -132,8 +150,8 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     if (selectedSource === 'server') return path;
     const level = mapName(q.get('level') || courses[0] || '');
     const data = (value: unknown) => `data:application/json,${encodeURIComponent(JSON.stringify(value))}`;
-    const ridingSources = () => {
-      if (!q.has('level')) return courses;
+    const ridingSources = (bank = BOARD_BANK) => {
+      if (!q.has('level')) return automaticRidingSources.get(bank) ?? [];
       const index = soundIndexes.get(level.toLowerCase());
       if (index?.RidingFallback !== 'ssx-tricky') return [level];
       const donors = [...soundIndexes].filter(([name, index]) => name !== level.toLowerCase()
@@ -142,13 +160,12 @@ export async function localMapData(courses: string[], aliases: Record<string, st
       return [level, ...donors];
     };
     if (url.pathname === '/api/board-audio') {
-      const selected = ridingSources();
-      const boardLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['1']);
-      const boostLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['0']);
-      return data({ board: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
-        boost: boostLevel ? soundIndexes.get(boostLevel.toLowerCase())!.Banks['0'] : null,
-        boardBank: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
-        boostBank: boostLevel ? soundIndexes.get(boostLevel.toLowerCase())!.Banks['0'] : null,
+      const boardLevel = ridingSources(BOARD_BANK).find(course => hasRidingBank(course, BOARD_BANK));
+      const boostLevel = ridingSources(BOOST_BANK).find(course => hasRidingBank(course, BOOST_BANK));
+      return data({ board: boardLevel ? ridingBank(boardLevel, BOARD_BANK) : null,
+        boost: boostLevel ? ridingBank(boostLevel, BOOST_BANK) : null,
+        boardBank: boardLevel ? ridingBank(boardLevel, BOARD_BANK) : null,
+        boostBank: boostLevel ? ridingBank(boostLevel, BOOST_BANK) : null,
         surfaceGroups: boardLevel ? boardGroups.get(boardLevel.toLowerCase()) ?? null : null });
     }
     if (url.pathname === '/api/announcer-audio') return data({});
@@ -168,7 +185,10 @@ export async function localMapData(courses: string[], aliases: Record<string, st
         ? fileUrl(`${level}/${introFolders.get(level.toLowerCase())}${stem}`) : 'data:audio/wav;base64,';
     }
     if (level.toLowerCase() === 'custom' || q.has('project')) return path;
-    if (url.pathname === '/api/texture') return fileUrl(`${level}/Textures/${q.get('name')}`);
+    if (url.pathname === '/api/texture') {
+      const path = `${level}/Textures/${q.get('name')}`;
+      return blob(path) ? fileUrl(path) : 'data:image/png;base64,';
+    }
     if (url.pathname === '/api/lightmap') return fileUrl(`${level}/Lightmaps/${(q.get('id') ?? '0').padStart(4, '0')}.png`);
     if (url.pathname === '/api/particle-texture') {
       const name = q.get('name');
@@ -189,7 +209,7 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     // Missing optional disc channels remain local too; a guest never falls back to server retail bytes.
     if (url.pathname === '/api/board-sound' || url.pathname === '/api/environment-sound') {
       const bank = q.get('bank')?.toLowerCase(), slot = (q.get('slot') ?? '0').padStart(3, '0');
-      const selected = url.pathname === '/api/board-sound' ? ridingSources() : courses;
+      const selected = url.pathname === '/api/board-sound' ? ridingSources(bank) : courses;
       for (const course of selected) {
         const index = soundIndexes.get(course.toLowerCase());
         const actualBank = bank === BOARD_BANK ? index?.Banks['1'] ?? bank : bank === BOOST_BANK ? index?.Banks['0'] ?? bank : bank;

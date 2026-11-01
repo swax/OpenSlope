@@ -1,4 +1,5 @@
 import { workspaceFetch } from './workspace';
+import { setAssetLoadScope } from '../state/asset-loads';
 
 /** Stable identity for this browser tab. It scopes both project revisions and project-owned asset requests. */
 const CLIENT_ID_KEY = 'slopesmith.clientId';
@@ -22,6 +23,7 @@ export const clientProjectId = (): string => activeProjectId;
 /** Project sync calls this before rendering a snapshot, making immutable asset URLs project-specific too. */
 export function setClientProjectId(id: string | null | undefined): void {
   activeProjectId = id?.trim() ?? '';
+  setAssetLoadScope(activeProjectId);
 }
 
 /** Fetch an API resource as this tab. JSON and upload requests can carry the identity as a header. */

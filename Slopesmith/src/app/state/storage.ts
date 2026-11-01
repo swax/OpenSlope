@@ -25,7 +25,7 @@ import { clientProjectId } from '../net/client';
 const prefix = isLocalWorkspace() ? 'slopesmith-local' : 'slopesmith';
 export const MOUNTAIN_KEY = `${prefix}-mountain-v1`;
 export const VIEW_KEY = `${prefix}-view-v1`; // camera framing, restored on reload so a refresh keeps the current view
-export const REF_KEY = `${prefix}-ref-v1`; // the loaded reference level (+ its placement offset), re-loaded on reload
+export const REF_KEY = `${prefix}-ref-v1`; // base for project-specific reference keys; the old unscoped slot is ignored
 export const UI_KEY = `${prefix}-ui-v1`; // editor mode + view toggles (shading, cage, XYZ grid), restored on reload
 export const PINS_KEY = 'slopesmith-mountain-pins-v1'; // mountains pinned to the top of the stats comparison
 
@@ -85,6 +85,11 @@ export interface StoredRef {
   level: string;
   offset?: V3;
 }
+
+/** Reference views belong to one mountain in this browser. A new project never inherits the old global slot. */
+export function referenceStorageKey(projectId = clientProjectId()): string | null {
+  return projectId ? `${REF_KEY}:${projectId}` : null;
+}
 /** Which mountains the stats comparison floats to the top. An object rather than a bare array so the entry can
  *  grow a field without every older browser's copy reading as corrupt. */
 export interface StoredPins {
@@ -132,6 +137,7 @@ export function createPersistence(deps: {
   getView: () => ViewState;
   getUi: () => StoredUi;
   getRef: () => StoredRef | null;
+  getRefKey: () => string | null;
 }) {
   /** Persist the live doc (incl. its sun + bake-exposure/ambient overrides) to the recovery copy. The sun is
    *  mutated OUTSIDE the geometry-rebuild path (applySunLight / useReferenceLight), so it writes here
@@ -168,14 +174,17 @@ export function createPersistence(deps: {
     }
   }
 
-  /** Remember (or, with no loaded reference, forget) which reference level is loaded, so a reload re-loads it.
+  /** Remember (or, with no loaded reference, forget) this mountain's loaded reference, so a reload re-loads it.
    *  The level name + the reference's placement offset are stored (the mesh itself is re-fetched from the
    *  dev server), so a refresh restores where the reference was moved to. */
   function persistRef() {
+    // The reference session owns this key: a project may already have switched while its old view is unloading.
+    const key = deps.getRefKey();
+    if (!key) return;
     const ref = deps.getRef();
     try {
-      if (ref) localStorage.setItem(REF_KEY, JSON.stringify(ref));
-      else localStorage.removeItem(REF_KEY);
+      if (ref) localStorage.setItem(key, JSON.stringify(ref));
+      else localStorage.removeItem(key);
     } catch {
       /* storage full / disabled */
     }

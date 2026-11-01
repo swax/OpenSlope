@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { parseAssetVersion } from '../../core/reference/asset-version';
 import { workspaceFetch } from './workspace';
+import { reportTextureLoad } from '../state/asset-loads';
+import { missingTextureCanvas, missingTextureUrl } from '../viewport/missing-texture';
 
 const urls = new Map<string, Promise<string>>();
 export function versionedAssetUrl(url: string): boolean {
@@ -29,54 +31,94 @@ export function imageAssetUrl(url: string): Promise<string> {
   return pending;
 }
 
+const imageRequests = new WeakMap<HTMLImageElement, () => void>();
 export function setImageAsset(image: HTMLImageElement, url: string): void {
-  if (!versionedAssetUrl(url)) {
-    image.src = url;
-    return;
-  }
-  void imageAssetUrl(url)
-    .then(value => {
-      image.src = value;
-    })
-    .catch(() => image.dispatchEvent(new Event('error')));
+  imageRequests.get(image)?.();
+  let active = true,
+    failed = false;
+  const cleanup = () => {
+    active = false;
+    image.removeEventListener('load', loaded);
+    image.removeEventListener('error', missing);
+  };
+  const loaded = () => {
+    if (!failed) reportTextureLoad(url, 'ready');
+    cleanup();
+  };
+  const missing = () => {
+    if (failed) {
+      cleanup();
+      return;
+    }
+    failed = true;
+    reportTextureLoad(url, 'missing');
+    image.dataset.missingAsset = 'true';
+    image.src = missingTextureUrl();
+  };
+  imageRequests.set(image, cleanup);
+  delete image.dataset.missingAsset;
+  image.addEventListener('load', loaded);
+  image.addEventListener('error', missing);
+  reportTextureLoad(url, 'loading');
+  if (!versionedAssetUrl(url)) image.src = url;
+  else
+    void imageAssetUrl(url)
+      .then(value => {
+        if (active) image.src = value;
+      })
+      .catch(() => {
+        if (active) image.dispatchEvent(new Event('error'));
+      });
 }
 
 export function setAssetBackground(element: HTMLElement, url: string): void {
-  if (!versionedAssetUrl(url)) {
-    element.style.backgroundImage = `url(${url})`;
-    return;
-  }
-  void imageAssetUrl(url)
-    .then(value => {
-      element.style.backgroundImage = `url(${value})`;
-    })
-    .catch(() => {
-      element.style.backgroundImage = '';
-    });
+  const image = new Image();
+  image.onload = () => {
+    element.style.backgroundImage = `url("${image.src}")`;
+  };
+  setImageAsset(image, url);
 }
 
 export function loadAssetTexture(
   loader: THREE.TextureLoader,
   url: string,
-  onLoad?: (texture: THREE.Texture<HTMLImageElement>) => void,
+  onLoad?: (texture: THREE.Texture<CanvasImageSource>) => void,
   onProgress?: (event: ProgressEvent) => void,
-  onError?: (error: unknown) => void,
-): THREE.Texture<HTMLImageElement> {
-  if (!versionedAssetUrl(url)) return loader.load(url, onLoad, onProgress, onError);
-  const texture = new THREE.Texture<HTMLImageElement>();
+  onError?: (error: unknown, texture: THREE.Texture<CanvasImageSource>) => void,
+): THREE.Texture<CanvasImageSource> {
+  reportTextureLoad(url, 'loading');
+  const loaded = (texture: THREE.Texture<CanvasImageSource>) => {
+    reportTextureLoad(url, 'ready');
+    onLoad?.(texture);
+  };
+  const missing = (error: unknown) => {
+    texture.image = missingTextureCanvas();
+    texture.userData.missingAsset = true;
+    texture.needsUpdate = true;
+    reportTextureLoad(url, 'missing');
+    onError?.(error, texture);
+  };
+  const texture: THREE.Texture<CanvasImageSource> = versionedAssetUrl(url)
+    ? new THREE.Texture<CanvasImageSource>()
+    : loader.load(url, loaded, onProgress, missing);
+  if (!versionedAssetUrl(url)) return texture;
   const image = new Image();
   loader.manager.itemStart(url);
   image.onload = () => {
     texture.image = image;
     texture.needsUpdate = true;
-    onLoad?.(texture);
+    loaded(texture);
     loader.manager.itemEnd(url);
   };
   image.onerror = error => {
-    onError?.(error);
+    missing(error);
     loader.manager.itemError(url);
     loader.manager.itemEnd(url);
   };
-  setImageAsset(image, url);
+  void imageAssetUrl(url)
+    .then(value => {
+      image.src = value;
+    })
+    .catch(() => image.dispatchEvent(new Event('error')));
   return texture;
 }

@@ -1,6 +1,7 @@
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
 import { fetchText, type DownloadProgress } from '../net/fetch-json';
 import { runDiagnosticPhase } from '../net/diagnostics';
+import { beginPropLoad, reportPropModels } from '../state/asset-loads';
 
 export type PropLoadProgress =
   | ({ phase: 'download' } & DownloadProgress)
@@ -55,6 +56,10 @@ export function createPropLevelLoader(deps: {
   function ensure(level: string, options: PropLoadOptions = {}): Promise<LevelProps> {
     const cached = deps.levels.get(level);
     if (cached) {
+      reportPropModels(
+        level,
+        cached.models.map(model => model.id),
+      );
       runDiagnosticPhase('props', `${level}:register-models-cached`, () => deps.register(cached, true));
       options.onProgress?.({ phase: 'ready', models: cached.models.length, instances: cached.instances.length });
       return Promise.resolve(cached);
@@ -66,6 +71,7 @@ export function createPropLevelLoader(deps: {
       listener(entry.progress);
     }
     if (!entry.load) {
+      const failed = beginPropLoad(level);
       entry.load = (async () => {
         const text = await entry.text;
         publish(entry, { phase: 'decode' });
@@ -80,11 +86,20 @@ export function createPropLevelLoader(deps: {
         await options.afterPaint?.();
         runDiagnosticPhase('props', `${level}:register-models`, () => deps.register(props, false), detail);
         deps.levels.set(level, props);
+        reportPropModels(
+          level,
+          props.models.map(model => model.id),
+        );
         publish(entry, { phase: 'ready', ...counts });
         return props;
-      })().finally(() => {
-        if (downloads.get(level) === entry) downloads.delete(level);
-      });
+      })()
+        .catch(error => {
+          failed();
+          throw error;
+        })
+        .finally(() => {
+          if (downloads.get(level) === entry) downloads.delete(level);
+        });
     }
     return entry.load.finally(() => {
       if (listener) entry.listeners.delete(listener);

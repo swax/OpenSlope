@@ -258,6 +258,13 @@ document.props = ['GARI', 'SNOW', '@import', '@model'].map((level, index) => ({
 document.skybox = { on: true, source: { kind: 'level', level: 'GARI' }, topColor: '#ffffff' };
 const original = JSON.stringify(document);
 const bare = publicMountainDocument(document, []);
+const placeholders = publicMountainDocument(document, [], true);
+assert.deepEqual(placeholders.quadTex, document.quadTex, 'missing-texture markers retain the original references');
+assert.deepEqual(
+  placeholders.props,
+  document.props,
+  'missing-prop markers retain placements without editing the saved map',
+);
 assert.deepEqual(
   bare.quadTex,
   { 1: 'Custom/snow.png' },

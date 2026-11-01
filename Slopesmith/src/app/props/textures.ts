@@ -816,8 +816,8 @@ export class PropTextureCache {
           settle();
         },
         undefined,
-        () => {
-          this.recordAlpha(level, file);
+        (_error, texture) => {
+          this.recordAlpha(level, file, texture.image);
           settle();
         },
       );

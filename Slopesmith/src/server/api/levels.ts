@@ -324,11 +324,11 @@ export const levelRoutes: Record<string, ApiHandler> = {
     try {
       const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level') || undefined;
       await responseCache.json(req, res, `board-audio:${level ?? ''}`, async () => {
-        const [board, boost, index] = await Promise.all([
+        const [board, boost] = await Promise.all([
           boardSoundSource('zboard', level),
           boardSoundSource('zbxsfx', level),
-          readBoardSoundIndex(level),
         ]);
+        const index = await readBoardSoundIndex(level ?? board?.level);
         return {
           board: board?.level ?? null,
           boost: boost?.level ?? null,

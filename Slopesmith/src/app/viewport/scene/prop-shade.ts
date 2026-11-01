@@ -396,7 +396,7 @@ export function disposePropShade(root: THREE.Object3D): void {
 export function applyPropShade(root: THREE.Object3D, mode: ShadeMode): void {
   root.traverse(object => {
     const mesh = object as THREE.Mesh & { isLineSegments2?: boolean };
-    if (!mesh.isMesh || mesh.isLineSegments2 || mesh.userData[WIREFRAME_PASS]) return;
+    if (!mesh.isMesh || mesh.isLineSegments2 || mesh.userData[WIREFRAME_PASS] || mesh.userData.propPlaceholder) return;
     const original = (mesh.userData.texturedMaterial ?? mesh.material) as THREE.Material | THREE.Material[];
     const passes =
       mode === 'none' ? ensureWireframePasses(mesh) : (mesh.userData[WIREFRAME_PASSES] as THREE.Mesh[] | undefined);

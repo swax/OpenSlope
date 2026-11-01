@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { reportPropModels } from '../../state/asset-loads';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import type { V3 } from '../../../core/doc/types';
@@ -103,6 +104,10 @@ export function createPropAssets() {
       const clip = m.animation ?? m.rotation;
       if (clip) propClips.set(key, clip);
     }
+    reportPropModels(
+      props.level,
+      props.models.map(model => model.id),
+    );
   }
 
   /** Whether a placement's model geometry is cached (so the host knows to fetch its level first). */
@@ -206,6 +211,10 @@ export function createPropAssets() {
       const clip = m.animation ?? m.rotation;
       if (clip) propClips.set(key, clip);
     }
+    reportPropModels(
+      props.level,
+      props.models.map(model => model.id),
+    );
   }
 
   /** Register a level's mined group defs so placements referencing them can resolve their members. */

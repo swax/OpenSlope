@@ -37,7 +37,9 @@ import { drawFGlyph, F_OVERLAY_CSS } from './glyph';
 import { tooltip } from '../ui/components/tooltip';
 import { infoBadge } from '../ui/components/info';
 import { installStyles } from '../ui/components/styles';
+import { assetSourceInfo } from '../ui/components/asset-source-info';
 import { mapSourceDetails, watchMapSources } from '../state/map-sources';
+import { textureLoadState, watchAssetLoads } from '../state/asset-loads';
 import { textureRefUrl } from '../net/asset-paths';
 import { alphaClassLabel, classifyTextureAlpha, type AlphaClass } from '../props/texture-alpha';
 import {
@@ -254,6 +256,8 @@ export class Palette {
   private prev = document.createElement('div');
   private prevCanvas = document.createElement('canvas'); // big preview: selected cell + its grid-adjacent neighbours
   private libBtn = document.createElement('button'); // show / hide the Texture Library above the preview
+  private sourceDetails = document.createElement('div');
+  private sourceInfo = assetSourceInfo(this.sourceDetails);
   private showF = false; // the top-bar F toggle: draw the pink art F on the preview + every pad cell
   private seg = document.createElement('div');
   private padSel = document.createElement('select'); // which of the PADS stored pads the grid is showing
@@ -287,10 +291,12 @@ export class Palette {
 
   constructor(private cb: PaletteCallbacks) {
     watchMapSources(() => this.syncPreviewDetails());
+    watchAssetLoads(() => this.syncPreviewDetails());
     installStyles('paint-palette', css);
 
     this.el.className = 'sc-pad';
     this.prev.className = 'sc-prev';
+    this.sourceDetails.className = 'sc-details';
     this.prevCanvas.className = 'sc-pvcanvas';
     // the preview fills the panel width; redraw the tiling whenever the dock (hence its width) resizes
     new ResizeObserver(() => this.drawPreviewCanvas()).observe(this.prevCanvas);
@@ -866,11 +872,17 @@ export class Palette {
     const ref = this.previewRef(c);
     for (const [key, value] of Object.entries(mapSourceDetails(parseTexRef(ref).level))) this.setDetail(key, value);
     const image = this.imageFor(ref);
+    const state = image.dataset.missingAsset ? 'missing' : textureLoadState(textureRefUrl(ref));
+    this.setDetail('status', state === 'missing' ? 'Missing texture' : state === 'ready' ? 'Ready' : 'Loading…');
     this.setDetail('filepath', ref);
-    this.setDetail('type', c.appearance ?? this.textureType(ref));
+    this.setDetail('type', state === 'missing' ? 'missing texture' : (c.appearance ?? this.textureType(ref)));
     this.setDetail(
       'size',
-      image.complete && image.naturalWidth ? `${image.naturalWidth} × ${image.naturalHeight} px` : 'loading…',
+      state === 'missing'
+        ? 'unavailable'
+        : image.complete && image.naturalWidth
+          ? `${image.naturalWidth} × ${image.naturalHeight} px`
+          : 'loading…',
     );
   }
 
@@ -943,9 +955,11 @@ export class Palette {
       const image = this.imageFor(shownRef);
       const details = document.createElement('div');
       details.className = 'sc-details';
+      this.sourceDetails.replaceChildren();
       for (const [key, value] of Object.entries(mapSourceDetails(parseTexRef(shownRef).level)))
-        details.append(this.detailRow(key, value));
-      details.append(this.detailRow('filepath', shownRef));
+        this.sourceDetails.append(this.detailRow(key, value));
+      this.sourceDetails.append(this.detailRow('status', 'Loading…'));
+      this.sourceDetails.append(this.detailRow('filepath', shownRef));
       details.append(this.detailRow('type', c.appearance ?? this.textureType(shownRef)));
       details.append(
         this.detailRow(
@@ -969,7 +983,8 @@ export class Palette {
       }
       if (c.scroll) details.append(this.detailRow('mapping', 'UV scroll'));
       if (c.priority) details.append(this.detailRow('draw priority', 'enabled · z-fight tiebreaker'));
-      this.prev.appendChild(details);
+      this.prev.append(details, this.sourceInfo);
+      this.syncPreviewDetails();
     } else {
       const empty = document.createElement('div');
       empty.className = 'sc-empty';

@@ -20,8 +20,13 @@ type LoadCall = {
 
 const calls: LoadCall[] = [];
 const originalLoad = THREE.TextureLoader.prototype.load;
+const originalDocument = globalThis.document;
 
 try {
+  // Only placeholder allocation needs a canvas here; actual pixels and GPU uploads have browser coverage.
+  globalThis.document = {
+    createElement: () => ({ width: 0, height: 0, getContext: () => ({ fillStyle: '', fillRect() {} }) }),
+  } as unknown as Document;
   THREE.TextureLoader.prototype.load = function (url, onLoad, _onProgress, onError) {
     calls.push({ url: String(url), loaded: onLoad, failed: onError });
     return new THREE.Texture<HTMLImageElement>();
@@ -38,7 +43,7 @@ try {
   calls[0].failed?.(new Error('409 Conflict'));
   assert.equal(settled, 1, 'a failed page settles the pending bank build');
 
-  assert.equal(tiles.ensure(ref), null);
+  assert.equal(tiles.ensure(ref)?.userData.missingAsset, true, 'a settled failure uses the visible marker');
   assert.equal(calls.length, 1, 'ordinary rebuilds remember a failed page and do not request-loop');
 
   tiles.invalidateProjectAssets();
@@ -57,6 +62,7 @@ try {
   );
   assert.equal(calls.length, 2, 'a successful retail page is not downloaded again on project switch');
 } finally {
+  globalThis.document = originalDocument;
   THREE.TextureLoader.prototype.load = originalLoad;
 }
 

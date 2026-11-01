@@ -103,10 +103,16 @@ export class ThumbRenderer {
           resolve(tex);
         },
         undefined,
-        () => {
-          this.alphaCache.set(k, { kind: 'unknown', glow: false });
-          this.texCache.set(k, null);
-          resolve(null);
+        (_error, tex) => {
+          if (generation !== this.projectGeneration && level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) {
+            resolve(null);
+            return;
+          }
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+          this.alphaCache.set(k, { kind: 'opaque-alpha', glow: false });
+          this.texCache.set(k, tex);
+          resolve(tex);
         },
       );
     });
