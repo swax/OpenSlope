@@ -133,14 +133,11 @@ try {
   await page.getByRole('button', { name: 'All maps', exact: true }).click();
   await page.locator('.library-catalogue').getByRole('article', { name: 'Disc Village', exact: true }).waitFor();
   await page
-    .getByRole('region', { name: 'Disc game support' })
+    .getByRole('region', { name: 'References' })
     .getByRole('button', { name: '1080° Avalanche', exact: true })
     .click();
   await page.locator('.public-iso-map').getByRole('heading', { name: 'Tenderfoot Pass', exact: true }).waitFor();
-  await page
-    .getByRole('region', { name: 'Disc game support' })
-    .getByRole('button', { name: 'SSX 3', exact: true })
-    .click();
+  await page.getByRole('region', { name: 'References' }).getByRole('button', { name: 'SSX 3', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true }).check();
   await gameActions.click();
   await page.getByRole('button', { name: 'Remove image…', exact: true }).click();

@@ -331,15 +331,20 @@ try {
       };
       await cacheTransaction(db, 'files', 'readwrite', (store: IDBObjectStore) => {
         for (const [path, value] of Object.entries(files))
-          store.put({ key: `BANK_0_0/${path}`, course: 'BANK_0_0', path, blob: new Blob([JSON.stringify(value)]) });
+          store.put({
+            key: `BANK_0_0/${path.toLowerCase()}`,
+            course: 'BANK_0_0',
+            path,
+            blob: new Blob([JSON.stringify(value)]),
+          });
         store.put({
-          key: 'BANK_0_0/Meshes/triangle.obj',
+          key: 'BANK_0_0/meshes/triangle.obj',
           course: 'BANK_0_0',
           path: 'Meshes/triangle.obj',
           blob: new Blob(['v 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n']),
         });
         store.put({
-          key: 'BANK_0_0/Textures/local.png',
+          key: 'BANK_0_0/textures/local.png',
           course: 'BANK_0_0',
           path: 'Textures/local.png',
           blob: new Blob([new Uint8Array(png)]),
@@ -364,9 +369,14 @@ try {
         'Instances.json': { Instances: [] },
         'Import.json': { Game: 'ssx', DisplayName: 'Matching local copy' },
       }))
-        store.put({ key: `BANK_0_1/${path}`, course: 'BANK_0_1', path, blob: new Blob([JSON.stringify(value)]) });
+        store.put({
+          key: `BANK_0_1/${path.toLowerCase()}`,
+          course: 'BANK_0_1',
+          path,
+          blob: new Blob([JSON.stringify(value)]),
+        });
       store.put({
-        key: 'BANK_0_1/Textures/0000.png',
+        key: 'BANK_0_1/textures/0000.png',
         course: 'BANK_0_1',
         path: 'Textures/0000.png',
         blob: new Blob([new Uint8Array(png)]),

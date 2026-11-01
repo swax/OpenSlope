@@ -88,7 +88,7 @@ try {
       invalidLightmapRequests.push(request.url());
   });
   await page.goto(`${origin}/isos`);
-  const games = page.getByRole('region', { name: 'Disc game support', exact: true });
+  const games = page.getByRole('region', { name: 'References', exact: true });
   const trickyGame = games.getByRole('button', { name: 'SSX Tricky', exact: true });
   const ssxGame = games.getByRole('button', { name: 'SSX', exact: true });
   const madtrixGame = games.getByRole('button', { name: 'Jonny Moseley Mad Trix', exact: true });
@@ -389,7 +389,7 @@ try {
   await page.screenshot({ path: join(root, 'saved-disc-library-mobile.png') });
   const secondTab = await context.newPage();
   await secondTab.goto(`${origin}/isos`);
-  const otherGames = secondTab.getByRole('region', { name: 'Disc game support', exact: true });
+  const otherGames = secondTab.getByRole('region', { name: 'References', exact: true });
   assert(await otherGames.getByRole('button', { name: 'SSX Tricky', exact: true }).isEnabled());
   assert(await otherGames.getByRole('button', { name: 'Jonny Moseley Mad Trix', exact: true }).isEnabled());
   assert(
@@ -401,13 +401,13 @@ try {
   await page.goto(`${origin}/isos?reference=GARI&source=iso`);
   await page.getByRole('button', { name: 'Load required maps', exact: true }).click();
   await page
-    .locator('.public-iso-map[data-course="GARI"]')
+    .locator('.public-iso-map[data-course="TRICKY_GARI"]')
     .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
     .waitFor({ state: 'attached' });
   assert.equal(
-    await page.locator('.public-iso-map[data-course="TRICKY_GARI"]').count(),
+    await page.locator('.public-iso-map[data-course="GARI"]').count(),
     0,
-    'the required legacy map does not offer a duplicate namespaced import',
+    'the required legacy map shares the existing namespaced row',
   );
   await page.goto(`${origin}/isos`);
   await page

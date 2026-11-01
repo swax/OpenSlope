@@ -29,7 +29,7 @@ import { confirmAction } from '../ui/components/prompts';
 import { EDITOR_PATH } from '../navigation';
 import type { Account } from '../net/account';
 import { beforeAppUpdate } from '../offline';
-import { referenceForCourse, removeReference } from './reference-upload';
+import { removeReference } from './reference-upload';
 import { createReferenceLibrary, type ReferenceLibrary } from './reference-library';
 import {
   ISO_GAMES,
@@ -634,7 +634,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         inspect.setAttribute('aria-label', `Inspect ${name}`);
       }
       const loaded = entry.loaded;
-      const installed = entry.reference ?? referenceForCourse(referenceLibrary.maps, slot);
+      const installed = entry.reference;
       card.setReference(installed);
       const otherReference = entry.game === 'other';
       const origin = row.querySelector('.library-map-origin')!;

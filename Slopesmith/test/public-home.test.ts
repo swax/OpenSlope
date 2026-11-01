@@ -1872,7 +1872,7 @@ try {
   await guest.locator('#public-iso').setInputFiles(fixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load required maps', exact: true }).click();
-  await guest.locator('.public-iso-map[data-course="FIXTURE"][data-state="loaded"]').waitFor();
+  await guest.locator('.public-iso-map[data-course="TRICKY_FIXTURE"][data-state="loaded"]').waitFor();
   assert(await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).isDisabled());
   assert.equal(await guest.getByRole('button', { name: 'Cards', exact: true }).count(), 0);
   const isoTileBoxes = await guest

@@ -776,6 +776,16 @@ try {
     0,
     'authored names do not imply a game',
   );
+  installedOther = installedOther.filter(map => map.name !== 'TRICKY_GARI');
+  await page.reload();
+  const localGari = page.getByRole('article', { name: 'Garibaldi', exact: true });
+  await localGari.waitFor();
+  await localGari.getByRole('button', { name: 'Map actions for Garibaldi', exact: true }).click();
+  assert(
+    await localGari.getByRole('button', { name: 'Upload as reference', exact: true }).isVisible(),
+    'a same-name authored reference is not the installed reference for a local game map',
+  );
+  assert.equal(await localGari.getByRole('button', { name: 'Remove reference from server', exact: true }).count(), 0);
   await otherView.click();
   await page.reload();
   await training.waitFor();
