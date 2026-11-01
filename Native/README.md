@@ -18,6 +18,10 @@ including textured terrain, scenery, collision, grind paths, recovered horizons,
 riding audio and music. Select a `.gba` in the browser or native image picker;
 the game has its own **SSX Tricky (GBA)** group. See [GBA support and limits](docs/ssx-gba-import.md).
 
+Build 0.90 adds SSX Tricky GBA import, source course names and game-grouped libraries,
+reusable import sessions and music, Avalanche music and lighting, and compressed
+Opus music playback. See [build notes](releases/0.90.0.md).
+
 Build 0.89 adds preliminary Jonny Moseley Mad Trix USA PS2 import, with eleven
 courses, source baked colored lighting, supported animated signs and waterfalls,
 grind rails, riding sounds and twelve music tracks. See [build notes](releases/0.89.0.md).
