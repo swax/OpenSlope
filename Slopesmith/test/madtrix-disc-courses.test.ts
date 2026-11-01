@@ -23,6 +23,7 @@ assert.deepEqual(
   {
     id: 'madtrix',
     name: 'Jonny Moseley Mad Trix',
+    system: 'PS2',
     support: '11 courses · Preliminary support',
   },
 );
