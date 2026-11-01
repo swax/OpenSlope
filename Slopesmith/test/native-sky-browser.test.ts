@@ -73,7 +73,7 @@ try {
     error: (window as any).nativeSkyError,
   }));
   assert.equal(result.error, undefined);
-  assert.deepEqual(result.result.catalogue, ['SSXOT_ER4_DAY', 'SSXOT_ER4_NIGHT']);
+  assert.deepEqual(result.result.catalogue, ['local:SSXOT_ER4_DAY', 'local:SSXOT_ER4_NIGHT']);
   assert.deepEqual(escaped, [], 'Cached course skies never request a server asset');
   assert.deepEqual(errors, []);
   console.log(`PASS: native course sky ${result.result.checks}`);

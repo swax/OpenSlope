@@ -5,7 +5,7 @@ import { clientFetch } from '../src/app/net/client';
 import { cachedIsoCourses, cacheTransaction, isoCourseCacheVersion, openIsoCache } from '../src/app/public/iso-cache';
 import { prepareEditorWorkspace } from '../src/app/public/local-editor';
 import { localMapData } from '../src/app/public/local-map-data';
-import { installLocalSky } from '../src/app/public/sky';
+import { installLocalSky, installServerSky } from '../src/app/public/sky';
 import { createSkybox } from '../src/app/sky/session';
 import { createStore } from '../src/app/state/store';
 import { createSky } from '../src/app/viewport/scene/sky';
@@ -78,8 +78,8 @@ async function run() {
   const catalogue = await (await clientFetch('/api/skybox')).json();
   check(catalogue.levels.length === 0, 'Native skies need no measured panorama ring');
   check(
-    catalogue.nativeLevels.includes(day) && catalogue.nativeLevels.includes(night),
-    'Local editor catalogue includes both original skies with canonical names',
+    catalogue.nativeLevels.includes(`local:${day}`) && catalogue.nativeLevels.includes(`local:${night}`),
+    'Local editor catalogue includes both original skies with explicit sources',
   );
   const payload = async (level: string): Promise<NativeSkyPayload> =>
     (await clientFetch(`/api/skybox/native?level=${level}`)).json();
@@ -155,7 +155,7 @@ async function run() {
   check(adopt, 'Native reference offers adoption');
   (adopt as HTMLButtonElement).click();
   check(
-    store.mdoc.skybox?.source.kind === 'level' && store.mdoc.skybox.source.level === night,
+    store.mdoc.skybox?.source.kind === 'level' && store.mdoc.skybox.source.level === `local:${night}`,
     'Adoption stores a portable level sky',
   );
   const exported = await browserExportProvider({ folderName: 'sky-test', existingFile: async () => false }).skybox(
@@ -172,7 +172,21 @@ async function run() {
   const skyDoc = JSON.parse(
     new TextDecoder().decode(exported.files.find(file => file.path === 'Skybox/Sky.json')!.bytes),
   );
-  check(skyDoc.Level === night && skyDoc.Source === 'level', 'Export identifies the original course sky');
+  check(
+    skyDoc.Level === `local:${night}` && skyDoc.Source === 'level',
+    'Export identifies the original course sky and source',
+  );
+  const legacyExport = await browserExportProvider({
+    folderName: 'legacy-sky',
+    existingFile: async () => false,
+  }).skybox({
+    source: { kind: 'level', level: night },
+    on: true,
+  });
+  check(
+    legacyExport.files.some(file => file.path === 'Skybox/Meshes/sky.obj'),
+    'Legacy unqualified native skies still export their original meshes',
+  );
 
   const local = await localMapData([day, night]);
   const playerSky = await installLocalSky(viewport, local.source, night, local.fileUrl);
@@ -272,6 +286,54 @@ async function run() {
   check(pixel() === colors[day], 'Existing panorama skies still render after switching from an original dome');
   sky.setSky(null);
   check(!sky.loaded && scene.background === background, 'Clearing a sky releases the active backdrop');
+
+  // A signed-in local mountain can choose either copy without losing its source or native sky type.
+  const originalFetch = window.fetch;
+  const requests: string[] = [];
+  const serverSky = structuredClone(daySky);
+  const serverColor = '#cc3366';
+  const serverCanvas = document.createElement('canvas');
+  serverCanvas.width = serverCanvas.height = 4;
+  const serverContext = serverCanvas.getContext('2d')!;
+  serverContext.fillStyle = serverColor;
+  serverContext.fillRect(0, 0, 4, 4);
+  serverSky.parts[0].texture = serverCanvas.toDataURL();
+  window.fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
+    if (url.pathname === '/api/skybox') return Response.json({ levels: [], nativeLevels: [day, night], skies: [] });
+    if (url.pathname === '/api/skybox/native') {
+      requests.push(url.href);
+      return Response.json(serverSky);
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    await prepareEditorWorkspace({ accounts: 'open' });
+    await session.initSky();
+    session.setupRefSkyUi(`server:${day}`);
+    await waitFor(() => sky.loaded);
+    check(pixel() === serverColor, 'Source-qualified server reference renders its uploaded native sky');
+    check(
+      new URL(requests.at(-1)!).searchParams.get('mapSource') === 'server',
+      'Server sky request preserves the selected source',
+    );
+    session.setupRefSkyUi(`local:${day}`);
+    await waitFor(() => sky.loaded);
+    check(pixel() === colors[day], 'Switching to the local copy keeps its own original textures');
+    store.mdoc.skybox = { source: { kind: 'level', level: `server:${night}` }, on: true };
+    store.currentMode = 'play';
+    store.playTarget = 'authored';
+    viewport.riding = true;
+    session.syncSkyFromDoc();
+    await waitFor(() => sky.loaded);
+    check(pixel() === serverColor, 'A saved server sky uses native geometry when testing a custom mountain');
+    await installServerSky(viewport, day);
+    sky.setVisible(true);
+    await waitFor(() => sky.loaded);
+    check(pixel() === serverColor, 'Server-reference Play installs the uploaded dome');
+  } finally {
+    window.fetch = originalFetch;
+  }
   check(logs.length === 0, logs.join('\n'));
   local.dispose();
   gui.destroy();
@@ -280,7 +342,7 @@ async function run() {
   return {
     catalogue: catalogue.nativeLevels,
     checks:
-      'cache → local API → editor session → WebGL → adoption/export → Play → opaque/alpha sky occlusion → visibility/load lifecycle',
+      'cache → local/server catalogues → editor session → WebGL → adoption/export → Play → opaque/alpha sky occlusion → visibility/load lifecycle',
   };
 }
 void run()

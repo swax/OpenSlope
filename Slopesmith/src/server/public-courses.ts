@@ -178,6 +178,7 @@ export async function forgetReferencePublication(id: string): Promise<void> {
 }
 
 const LEVEL_READS = new Set([
+  '/api/skybox',
   '/api/level',
   '/api/props',
   '/api/effects',
@@ -200,8 +201,9 @@ const PROJECT_READS = new Set([
 export async function publicAssetRequest(mount: string, mounted: string, method: string): Promise<boolean> {
   if (method !== 'GET' && method !== 'HEAD') return false;
   const url = new URL(mounted, 'http://localhost');
-  // Byte-route exceptions apply only to the leaf route, never its catalogues or future sub-routes.
-  if (url.pathname !== '/') return false;
+  // Only the original sky payload joins the leaf reads; catalogues and export bundles stay authenticated.
+  const nativeSky = mount === '/api/skybox' && url.pathname === '/native' && url.searchParams.get('files') !== '1';
+  if (mount === '/api/skybox' ? !nativeSky : url.pathname !== '/') return false;
   const query = url.searchParams;
   const project = query.get('project');
   const level = query.get('level');

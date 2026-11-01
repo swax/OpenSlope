@@ -21,6 +21,7 @@ import {
   textureUrl,
 } from '../net/asset-paths';
 import { fetchJson } from '../net/fetch-json';
+import { findSkyLevel, type SkyCatalogue } from '../../core/sky/catalogue';
 import { decodePng, encodePng } from './png';
 import { stageRaceMusic } from './music';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
@@ -173,10 +174,11 @@ const b64ToBytes = (b64: string): Uint8Array => {
 async function browserSkyboxFiles(sky: SkyboxDoc): Promise<{ files: ExportFile[]; log: string[] }> {
   const preferred = sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? '');
   if (sky.source.kind === 'level') {
-    const catalog = await fetchJson<{ nativeLevels?: string[] }>('/api/skybox');
-    if (catalog.nativeLevels?.some(level => level.toLowerCase() === preferred.toLowerCase())) {
+    const catalog = await fetchJson<SkyCatalogue>('/api/skybox');
+    const resolved = findSkyLevel([...(catalog.levels ?? []), ...(catalog.nativeLevels ?? [])], preferred);
+    if (resolved && catalog.nativeLevels?.includes(resolved)) {
       const native = await fetchJson<{ files: { path: string; bytes: string }[] }>(
-        `/api/skybox/native?level=${encodeURIComponent(preferred)}&files=1`,
+        `/api/skybox/native?level=${encodeURIComponent(resolved)}&files=1`,
       );
       const files = native.files.map(file => ({ path: file.path, bytes: b64ToBytes(file.bytes) }));
       files.push({

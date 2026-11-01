@@ -11,6 +11,9 @@ import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
 import { customSkyUrl, referenceSkyUrl, registerReferenceSkyRevisions } from '../net/asset-paths';
 import { clientFetch } from '../net/client';
+import { findSkyLevel, type SkyCatalogue } from '../../core/sky/catalogue';
+import { mapDisplayName, mapGame, mapGameLabel } from '../../core/reference/map-game';
+import { splitMapSource } from '../../core/reference/map-source';
 import { openSkyGenDialog } from './sky-gen';
 import {
   activeSkyboxWorld,
@@ -75,12 +78,14 @@ export function skyUrls(sky: SkyboxDoc): { panorama: string; ground: string } {
 }
 
 export function skyLabel(sky: SkyboxDoc): string {
-  return sky.source.kind === 'level' ? `${sky.source.level}’s sky` : `${sky.source.name} (your panorama)`;
+  return sky.source.kind === 'level'
+    ? `${mapDisplayName({ name: sky.source.level })}’s sky`
+    : `${sky.source.name} (your panorama)`;
 }
 
 /** The bare name a sky saves out under. */
 function skyFileName(sky: SkyboxDoc): string {
-  return sky.source.kind === 'level' ? sky.source.level : sky.source.name;
+  return sky.source.kind === 'level' ? splitMapSource(sky.source.level).name : sky.source.name;
 }
 
 export function createSkybox(deps: SkyDeps) {
@@ -117,13 +122,7 @@ export function createSkybox(deps: SkyDeps) {
 
   async function initSky() {
     try {
-      const body = await fetchJson<{
-        levels?: string[];
-        nativeLevels?: string[];
-        skies?: string[];
-        rings?: Record<string, SkyRing>;
-        versions?: Record<string, { panorama?: string; ground?: string }>;
-      }>('/api/skybox');
+      const body = await fetchJson<SkyCatalogue>('/api/skybox');
       shippedSkies = [...new Set([...(body.levels ?? []), ...(body.nativeLevels ?? [])])];
       nativeSkies = new Set((body.nativeLevels ?? []).map(level => level.toLowerCase()));
       customSkies = body.skies ?? [];
@@ -145,17 +144,20 @@ export function createSkybox(deps: SkyDeps) {
   }
   const customKey = (name: string) => `★ ${name}`;
   const isCustomKey = (key: string) => key.startsWith('★ ');
+  const skyLevel = (level: string) => findSkyLevel(shippedSkies, level);
+  const hasNativeSky = (level: string) => nativeSkies.has((skyLevel(level) ?? '').toLowerCase());
+  const ringLevel = (level: string) => findSkyLevel(Object.keys(rings), level);
 
   /** Turn a picker entry back into the doc's source record. */
   function sourceOf(key: string): SkyboxDoc['source'] | null {
     if (key === NONE) return null;
-    return isCustomKey(key) ? { kind: 'custom', name: key.slice(2) } : { kind: 'level', level: key };
+    return isCustomKey(key) ? { kind: 'custom', name: key.slice(2) } : { kind: 'level', level: skyLevel(key) ?? key };
   }
 
   /** The picker entry a doc's sky shows as. */
   function keyOf(sky: SkyboxDoc | undefined): string {
     if (!sky) return NONE;
-    return sky.source.kind === 'level' ? sky.source.level : customKey(sky.source.name);
+    return sky.source.kind === 'level' ? (skyLevel(sky.source.level) ?? sky.source.level) : customKey(sky.source.name);
   }
 
   const refSky = (level: string): SkyboxDoc => ({ source: { kind: 'level', level }, on: true });
@@ -165,14 +167,14 @@ export function createSkybox(deps: SkyDeps) {
    *  it ships one, else the first level in the catalogue that does. Undefined only before the catalogue has
    *  loaded, and the export then picks the first shipped ring itself. */
   function customSkyRing(current: SkyboxDoc | undefined): string | undefined {
-    if (current?.ring && rings[current.ring]) return current.ring;
-    if (refLevel && rings[refLevel]) return refLevel;
+    if (current?.ring && ringLevel(current.ring)) return ringLevel(current.ring);
+    if (refLevel && ringLevel(refLevel)) return ringLevel(refLevel);
     return shippedSkies.find(level => !!rings[level]);
   }
 
   function measuredRing(sky: SkyboxDoc): SkyRing | undefined {
     const level = sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? shippedSkies[0]);
-    return level ? rings[level] : undefined;
+    return level ? rings[ringLevel(level) ?? level] : undefined;
   }
 
   /** The global backdrop follows the nearest mountain, except that the dedicated Scene preview keeps its
@@ -224,9 +226,10 @@ export function createSkybox(deps: SkyDeps) {
     if (reload || loadedSkyKey !== desired.key) {
       loadedSkyKey = desired.key;
       const generation = ++skyLoadGeneration;
-      if (desired.sky.source.kind === 'level' && nativeSkies.has(desired.sky.source.level.toLowerCase())) {
+      if (desired.sky.source.kind === 'level' && hasNativeSky(desired.sky.source.level)) {
         viewport.setSky(null);
-        void fetchJson<NativeSkyPayload>(`/api/skybox/native?level=${encodeURIComponent(desired.sky.source.level)}`)
+        const level = skyLevel(desired.sky.source.level)!;
+        void fetchJson<NativeSkyPayload>(`/api/skybox/native?level=${encodeURIComponent(level)}`)
           .then(native => {
             if (generation !== skyLoadGeneration) return;
             viewport.setSky({ native, topColor: desired.sky.topColor });
@@ -293,7 +296,7 @@ export function createSkybox(deps: SkyDeps) {
             label: 'Reference',
             title: () =>
               refLevel
-                ? `Preview ${refLevel}’s skybox and sun glare.`
+                ? `Preview ${mapDisplayName({ name: refLevel })}’s skybox and sun glare.`
                 : 'Load a reference mountain to preview its skybox or sun glare.',
           },
         ],
@@ -351,7 +354,9 @@ export function createSkybox(deps: SkyDeps) {
     clearGui(skyFolder);
     const sky = store.mdoc.skybox;
 
-    if (sky) skyPreview(skyFolder, skyUrls(sky).panorama, skyLabel(sky));
+    if (sky && !(sky.source.kind === 'level' && hasNativeSky(sky.source.level)))
+      skyPreview(skyFolder, skyUrls(sky).panorama, skyLabel(sky));
+    else if (sky) note(skyFolder, skyLabel(sky));
     else
       note(
         skyFolder,
@@ -360,7 +365,21 @@ export function createSkybox(deps: SkyDeps) {
       );
 
     tip(
-      skyFolder.add(pick, 'sky', skyOptions()).name('skybox').onChange(applySky),
+      skyFolder
+        .add(
+          pick,
+          'sky',
+          Object.fromEntries(
+            skyOptions().map(key => {
+              if (key === NONE || isCustomKey(key)) return [key, key];
+              const map = { name: key },
+                source = splitMapSource(key).source;
+              return [`${mapGameLabel(mapGame(map))} · ${mapDisplayName(map)}${source ? ` (${source})` : ''}`, key];
+            }),
+          ),
+        )
+        .name('skybox')
+        .onChange(applySky),
       'The backdrop your mountain ships with; ★ entries are panoramas you loaded.',
       'Compatible extracted skies can be adopted directly. Ring layout comes from each map’s generated metadata.',
     );
@@ -381,7 +400,7 @@ export function createSkybox(deps: SkyDeps) {
     );
 
     if (!sky) return;
-    if (sky.source.kind === 'level' && nativeSkies.has(sky.source.level.toLowerCase())) {
+    if (sky.source.kind === 'level' && hasNativeSky(sky.source.level)) {
       note(
         skyFolder,
         'Using this course’s original sky mesh and textures. Panorama image editing applies to panorama skies.',
@@ -570,7 +589,7 @@ export function createSkybox(deps: SkyDeps) {
   function setupRefSkyUi(level: string | null) {
     clearGui(refSkyFolder);
     refLevel = level;
-    refHasSky = !!level && shippedSkies.some(name => name.toLowerCase() === level.toLowerCase());
+    refHasSky = !!level && !!skyLevel(level);
     if (!level) {
       buildPreviewPanel();
       syncSkyVisibility();
@@ -582,7 +601,7 @@ export function createSkybox(deps: SkyDeps) {
       syncSkyVisibility();
       return;
     }
-    if (nativeSkies.has(level.toLowerCase())) {
+    if (hasNativeSky(level)) {
       note(refSkyFolder, 'Original course sky mesh and textures.');
       refSkyFolder.add({ use: () => useReferenceSky(level) }, 'use').name('⟶ use for my map');
       refSkyFolder.open();
@@ -591,7 +610,7 @@ export function createSkybox(deps: SkyDeps) {
       return;
     }
     const panorama = referenceSkyUrl(level, 'panorama');
-    skyPreview(refSkyFolder, panorama, `${level} — horizon`);
+    skyPreview(refSkyFolder, panorama, `${mapDisplayName({ name: level })} — horizon`);
     skyPreview(refSkyFolder, referenceSkyUrl(level, 'ground'), 'ground below the horizon');
     tip(
       refSkyFolder.add({ use: () => useReferenceSky(level) }, 'use').name('⟶ use for my map'),
@@ -600,8 +619,10 @@ export function createSkybox(deps: SkyDeps) {
         'so it arrives byte-for-byte with nothing re-encoded.',
     );
     tip(
-      refSkyFolder.add({ save: () => savePanorama(panorama, `${level}-sky.png`) }, 'save').name('⤓ save panorama…'),
-      `Save ${level}’s horizon as a PNG — the starting point for a sky of your own.`,
+      refSkyFolder
+        .add({ save: () => savePanorama(panorama, `${splitMapSource(level).name}-sky.png`) }, 'save')
+        .name('⤓ save panorama…'),
+      `Save ${mapDisplayName({ name: level })}’s horizon as a PNG — the starting point for a sky of your own.`,
       `Repaint it (or build a new one at the size on the preview), then “load image…” under Skybox ▸ ` +
         `${store.mdoc.name || 'Mountain'} to ship it instead.`,
     );
@@ -614,7 +635,7 @@ export function createSkybox(deps: SkyDeps) {
     pick.sky = level;
     previewTarget = 'authored';
     applySky();
-    toast(`${level}’s sky is now your mountain’s.`, 'ok');
+    toast(`${mapDisplayName({ name: level })}’s sky is now your mountain’s.`, 'ok');
   }
 
   return {

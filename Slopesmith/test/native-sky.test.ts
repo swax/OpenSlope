@@ -5,10 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { levelsWithMeshSky, readNativeLevelSky, skyboxFiles } from '../src/server/routes/skybox';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
+import { publicAssetRequest, setPublished } from '../src/server/public-courses';
 
 const root = await mkdtemp(join(tmpdir(), 'slopesmith-native-sky-'));
 const before = process.env.SLOPESMITH_MAPS_ROOT;
+const beforeWorkspace = process.env.SLOPESMITH_WORKSPACE_ROOT;
 process.env.SLOPESMITH_MAPS_ROOT = root;
+process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
 forgetWorkspaceConfig();
 try {
   const files = new Map<string, string | Uint8Array>([
@@ -78,6 +81,33 @@ try {
     { Source: 'level', Level: 'SSXOT_ER4_NIGHT', TopColor: '#112233' },
   );
   assert.equal(await readNativeLevelSky('Empty'), null);
+  for (const [level, retail] of [
+    ['Measured', false],
+    ['SSXOT_ER4_NIGHT', true],
+  ] as const) {
+    await writeFile(join(root, level, 'Patches.json'), '{"Patches":[]}');
+    await writeFile(
+      join(root, level, 'Origin.json'),
+      JSON.stringify({
+        Schema: 'openslope-origin/v1',
+        Origin: retail ? 'retail' : 'slopesmith',
+        RetailData: retail,
+        Reasons: retail ? ['retail-extract'] : [],
+        ...(retail ? { Course: level } : {}),
+      }),
+    );
+    await setPublished('reference', level, true, { id: 'test', role: 'admin' });
+  }
+  assert(await publicAssetRequest('/api/skybox', '/native?level=Measured', 'GET'));
+  for (const path of [
+    '/?level=Measured',
+    '/ring?level=Measured',
+    '/native?level=Measured&files=1',
+    '/native?level=SSXOT_ER4_NIGHT',
+    '/native?level=Empty',
+  ])
+    assert.equal(await publicAssetRequest('/api/skybox', path, 'GET'), false, `${path} stays authenticated`);
+  assert.equal(await publicAssetRequest('/api/skybox', '/native?level=Measured', 'POST'), false);
   await writeFile(
     join(root, 'SSXOT_ER4_NIGHT/Skybox/Materials.json'),
     '{"Materials":[{"TexturePath":"../outside.png"}]}',
@@ -87,6 +117,8 @@ try {
 } finally {
   if (before === undefined) delete process.env.SLOPESMITH_MAPS_ROOT;
   else process.env.SLOPESMITH_MAPS_ROOT = before;
+  if (beforeWorkspace === undefined) delete process.env.SLOPESMITH_WORKSPACE_ROOT;
+  else process.env.SLOPESMITH_WORKSPACE_ROOT = beforeWorkspace;
   forgetWorkspaceConfig();
   await rm(root, { recursive: true, force: true });
 }

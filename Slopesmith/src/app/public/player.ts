@@ -10,7 +10,7 @@ import type { ViewportCallbacks } from '../viewport/types';
 import { createStore } from '../state/store';
 import { createPlay } from '../ride/play';
 import { rideControlHelp, type RideControlHelp } from '../ride/control-help';
-import { customSkyUrl, customSoundUrl, referenceSkyUrl, setAssetUrlResolver } from '../net/asset-paths';
+import { customSkyUrl, customSoundUrl, setAssetUrlResolver } from '../net/asset-paths';
 import { sharedAudioBuffer } from '../audio/runtime';
 import { setClientProjectId } from '../net/client';
 import type { SessionChannel } from '../net/session-channel';
@@ -23,7 +23,7 @@ import type { EditDoc } from '../../core/doc/doc-edit';
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { DEFAULT_CHARACTER_MODEL_ID } from '../../core/characters/builtins';
 import { lightPublicReference } from './lighting';
-import { installLocalSky } from './sky';
+import { installLocalSky, installServerSky } from './sky';
 import { cachedIsoCourses } from './iso-cache';
 import { publicMountainDocument, publicPropPayload } from './course-assets';
 import type { V3 } from '../../core/doc/types';
@@ -204,6 +204,7 @@ export async function preparePublicPlayer(
       const props = decodeProps(await json<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`));
       viewport.registerPropModels(props);
       viewport.setReferenceProps(props);
+      await installServerSky(viewport, level);
     }
     viewport.showReferenceProps(true);
     viewport.showReferenceTricks(true);
@@ -286,11 +287,7 @@ export async function preparePublicPlayer(
     if (document.skybox?.source.kind === 'level') {
       const level = document.skybox.source.level;
       if (serverOnlyLevel(level)) {
-        viewport.setSky({
-          panorama: referenceSkyUrl(level, 'panorama'),
-          ground: referenceSkyUrl(level, 'ground'),
-          topColor: document.skybox.topColor,
-        });
+        await installServerSky(viewport, level, document.skybox.topColor);
       } else {
         localSky = await installLocalSky(viewport, local.source, splitMapSource(level).name, local.fileUrl);
       }

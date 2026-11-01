@@ -18,6 +18,7 @@ import { readReferenceEffects } from '../../shared/map-effects';
 import { levelsWithNativeSky, readNativeSky, nativeSkyFiles } from '../../shared/map-sky';
 import { bundleAssets, bundleProps } from './bundle-assets';
 import { mapSourceId, type MapSource } from '../../core/reference/map-source';
+import { qualifySkyCatalogue, type SkyCatalogue } from '../../core/sky/catalogue';
 import type { MapSourceChoice } from '../../core/reference/map-game';
 import { mapSourceRequest } from '../net/map-source';
 import { safeDataName } from '../../core/export/names';
@@ -258,11 +259,13 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
           ?.current()
           ?.assets.filter(asset => asset.kind === 'sky')
           .map(asset => asset.name) ?? [];
-      if (localOnly) return json({ levels: [], nativeLevels, skies });
-      const response = await fetch(url, init);
-      if (!response.ok) return response;
-      const server = (await response.json()) as { nativeLevels?: string[] };
-      return json({ ...server, nativeLevels: [...new Set([...(server.nativeLevels ?? []), ...nativeLevels])] });
+      const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
+      const server = qualifySkyCatalogue(response?.ok ? ((await response.json()) as SkyCatalogue) : {}, 'server');
+      return json({
+        ...server,
+        nativeLevels: [...(server.nativeLevels ?? []), ...nativeLevels.map(name => mapSourceId('local', name))],
+        skies: localOnly ? skies : server.skies ?? [],
+      });
     }
     if (path === '/api/levels' || ((path === '/api/textures' || path === '/api/props') && !level)) {
       const maps = (await levels.listLevelOrigins(local.source)).map(map => ({
