@@ -111,6 +111,7 @@ const EXCLUSIVE_GROUP = new Map([
   // several SwiftShader processes at once costs no wall time beside the long CPU checks and removes needless load.
   ['particle-blend-webgl.test.ts', 'browser-webgl'],
   ['prop-shader-webgl.test.ts', 'browser-webgl'],
+  ['prop-thumbnails-browser.test.ts', 'browser-webgl'],
   ['snowfall-webgl.test.ts', 'browser-webgl'],
   ['stock-boards-webgl.test.ts', 'browser-webgl'],
   ['avalanche-browser.test.ts', 'browser-webgl'],

@@ -20,7 +20,7 @@ import { assetLocation, pinAssetMap } from '../net/asset-versions';
 import { contextMenu } from '../ui/components/controls';
 import { openBlenderGuide } from './blender-bridge';
 import { draftToRecord, glbToPropDraft } from './glb-import';
-import { ThumbRenderer } from './thumb-renderer';
+import { ThumbRenderer, type ThumbSnapshot } from './thumb-renderer';
 import { installStyles } from '../ui/components/styles';
 
 /**
@@ -105,6 +105,8 @@ const css = `
 .pl-tile { position: relative; width: 100%; border: 2px solid transparent; border-radius: 5px;
   cursor: pointer; background: #12202e center/contain no-repeat; overflow: hidden; }
 .pl-tile .pl-thumb { display: block; width: 100%; aspect-ratio: 1; background-size: contain; background-position: center; background-repeat: no-repeat; }
+.pl-thumb canvas { display: block; width: 100%; height: 100%; }
+.pl-tile .pl-thumb[data-state="error"] { display: grid; place-items: center; color: #9fb3c8; font-size: 10px; text-align: center; }
 .pl-tile .pl-name { display: block; font-size: 9px; line-height: 1.15; color: #9fb3c8; padding: 2px 3px 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; background: #0e1a26; }
 .pl-tile:hover { border-color: #6ee7a8; }
@@ -127,6 +129,24 @@ type Fold = { kind: 'sheet'; family: SheetFamily } | { kind: 'rail'; family: Rai
 /** Short display name: drop the "Mdl_" prefix and the trailing "_<n>" instance suffix authors used. */
 function shortName(name: string): string {
   return name.replace(/^Mdl_/, '').replace(/_\d+$/, '');
+}
+
+/** Keep cached canvases independent of the tiles that show them, including duplicate group members. */
+function showThumbnail(element: HTMLElement, snapshot: ThumbSnapshot): void {
+  element.replaceChildren();
+  element.style.backgroundImage = '';
+  if (typeof snapshot === 'string') element.style.backgroundImage = `url(${snapshot})`;
+  else {
+    const canvas = document.createElement('canvas');
+    canvas.width = snapshot.width;
+    canvas.height = snapshot.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Thumbnail canvas is unavailable.');
+    context.drawImage(snapshot, 0, 0);
+    element.append(canvas);
+  }
+  element.dataset.state = 'ready';
+  element.removeAttribute('title');
 }
 
 /** The header's keyword quick-filters: the major model-name families. Each chip narrows the grid to models
@@ -154,7 +174,7 @@ export class PropLibrary {
   private countEl = document.createElement('span');
   private body = document.createElement('div');
   private thumb = new ThumbRenderer(96);
-  private thumbCache = new Map<string, string>(); // `${level}:${id}` -> PNG data URL
+  private thumbCache = new Map<string, ThumbSnapshot>(); // `${level}:${id}` -> PNG data URL or display-only canvas
   private props: LevelProps | null = null;
   private loadedSource = '';
   private imported: LevelProps | null = null; // the '@import' catalogue, shown alongside in the Custom view
@@ -243,6 +263,7 @@ export class PropLibrary {
     this.fileInput.onchange = () => void this.importModels(this.fileInput.files);
     this.el.append(head, this.body, this.fileInput);
     document.body.appendChild(this.el);
+    this.thumb.canvas.addEventListener('webglcontextrestored', () => this.invalidateThumbnails());
 
     // lazy thumbnails: render one only when its swatch scrolls into view
     this.io = new IntersectionObserver(
@@ -587,7 +608,7 @@ export class PropLibrary {
         'rail pipe with this tube tile',
     );
     const cached = this.thumbCache.get(`${level}:${family.models[0]}`);
-    if (cached) thumb.style.backgroundImage = `url(${cached})`;
+    if (cached) showThumbnail(thumb, cached);
     else this.io.observe(el);
     el.onclick = () => {
       this.selModel = null;
@@ -623,7 +644,7 @@ export class PropLibrary {
         `${level} · click to lay a new one along a path`,
     );
     const cached = this.thumbCache.get(`${level}:${family.representative.model}`);
-    if (cached) thumb.style.backgroundImage = `url(${cached})`;
+    if (cached) showThumbnail(thumb, cached);
     else this.io.observe(el);
     el.onclick = () => {
       this.selModel = null;
@@ -701,7 +722,7 @@ export class PropLibrary {
     if (g.lights.length) parts.push(`${g.lights.length} light${g.lights.length > 1 ? 's' : ''}`);
     tooltip(el, `${g.name} — ${parts.join(' + ')} · placed ${g.occurrences}× in ${level} · click to place the set`);
     const cached = this.thumbCache.get(`${level}:g:${g.id}`);
-    if (cached) thumb.style.backgroundImage = `url(${cached})`;
+    if (cached) showThumbnail(thumb, cached);
     else this.io.observe(el);
     el.onclick = () => {
       this.selModel = null;
@@ -762,7 +783,7 @@ export class PropLibrary {
         (own ? ' · right-click to rename, duplicate or delete' : ''),
     );
     const cached = this.thumbCache.get(`${level}:${m.id}`);
-    if (cached) thumb.style.backgroundImage = `url(${cached})`;
+    if (cached) showThumbnail(thumb, cached);
     else this.io.observe(el); // render its thumbnail when it scrolls into view
     el.onclick = () => {
       this.selLevel = level;
@@ -1148,53 +1169,67 @@ export class PropLibrary {
   private async pump() {
     if (this.pumping) return;
     this.pumping = true;
-    while (this.queue.length) {
-      const el = this.queue.shift()!;
-      // a tile names its own level (the Custom view mixes authored models and imported GLBs); groups only
-      // ever come from the selected level itself
-      const level = el.dataset.level ?? this.props?.level;
-      const lp = level ? this.lpFor(level) : null;
-      if (!level || !lp) continue;
-      const generation = this.thumbnailGeneration;
-      let key: string;
-      let url: string | undefined;
-      if (el.dataset.group) {
-        // a Groups tile renders its whole assembly — every member model at its group-local pose
-        const g = this.groupList?.find(gg => gg.id === el.dataset.group);
-        if (!g) continue;
-        key = `${level}:g:${g.id}`;
-        url = this.thumbCache.get(key);
-        if (!url) {
-          const entries = g.props
-            .map(m => ({
-              model: this.props!.models.find(mm => mm.id === m.model),
-              relPos: m.relPos,
-              relYaw: m.relYaw,
-            }))
-            .filter(
-              (e): e is { model: NonNullable<typeof e.model>; relPos: typeof e.relPos; relYaw: number } => !!e.model,
-            );
-          if (!entries.length) continue;
-          url = await this.thumb.renderSet(entries, level, this.props!.materials);
-          if (generation !== this.thumbnailGeneration) continue;
-          this.thumbCache.set(key, url);
-        }
-      } else {
-        const id = Number(el.dataset.model);
-        const model = lp.models.find(mm => mm.id === id);
-        if (!model) continue;
-        key = `${level}:${id}`;
-        url = this.thumbCache.get(key);
-        if (!url) {
-          url = await this.thumb.render(model, level, lp.materials);
-          if (generation !== this.thumbnailGeneration) continue;
-          this.thumbCache.set(key, url);
+    try {
+      while (this.queue.length) {
+        const el = this.queue.shift()!;
+        try {
+          // a tile names its own level (the Custom view mixes authored models and imported GLBs); groups only
+          // ever come from the selected level itself
+          const level = el.dataset.level ?? this.props?.level;
+          const lp = level ? this.lpFor(level) : null;
+          if (!level || !lp) continue;
+          const generation = this.thumbnailGeneration;
+          let key: string;
+          let url: ThumbSnapshot | undefined;
+          if (el.dataset.group) {
+            // a Groups tile renders its whole assembly — every member model at its group-local pose
+            const g = this.groupList?.find(gg => gg.id === el.dataset.group);
+            if (!g) continue;
+            key = `${level}:g:${g.id}`;
+            url = this.thumbCache.get(key);
+            if (!url) {
+              const entries = g.props
+                .map(m => ({
+                  model: this.props!.models.find(mm => mm.id === m.model),
+                  relPos: m.relPos,
+                  relYaw: m.relYaw,
+                }))
+                .filter(
+                  (e): e is { model: NonNullable<typeof e.model>; relPos: typeof e.relPos; relYaw: number } =>
+                    !!e.model,
+                );
+              if (!entries.length) continue;
+              url = await this.thumb.renderSet(entries, level, this.props!.materials);
+              if (generation !== this.thumbnailGeneration) continue;
+              this.thumbCache.set(key, url);
+            }
+          } else {
+            const id = Number(el.dataset.model);
+            const model = lp.models.find(mm => mm.id === id);
+            if (!model) continue;
+            key = `${level}:${id}`;
+            url = this.thumbCache.get(key);
+            if (!url) {
+              url = await this.thumb.render(model, level, lp.materials);
+              if (generation !== this.thumbnailGeneration) continue;
+              this.thumbCache.set(key, url);
+            }
+          }
+          const t = el.querySelector<HTMLElement>('.pl-thumb');
+          if (t) showThumbnail(t, url);
+        } catch (error) {
+          const thumb = el.querySelector<HTMLElement>('.pl-thumb');
+          if (thumb) {
+            thumb.dataset.state = 'error';
+            thumb.textContent = 'Preview unavailable';
+            thumb.title = 'This prop can still be selected and placed.';
+          }
+          console.warn('Prop thumbnail failed', el.dataset.level, el.dataset.model ?? el.dataset.group, error);
         }
       }
-      const t = el.querySelector<HTMLElement>('.pl-thumb');
-      if (t) t.style.backgroundImage = `url(${url})`;
+    } finally {
+      this.pumping = false;
     }
-    this.pumping = false;
   }
 }
 

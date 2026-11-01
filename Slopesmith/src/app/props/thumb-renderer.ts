@@ -40,6 +40,7 @@ export interface ThumbEntry {
 /** The canonical 3/4 view — a touch above and off one corner. Library thumbnails render here; the orbit starts here. */
 export const THUMB_DEFAULT_AZIMUTH = Math.PI / 4; // 45° around vertical
 export const THUMB_DEFAULT_ELEVATION = Math.atan2(0.7, Math.SQRT2); // ≈ 26° above the horizon (matches dir 1,0.7,1)
+export type ThumbSnapshot = string | HTMLCanvasElement;
 
 export class ThumbRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -227,16 +228,30 @@ export class ThumbRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
-  /** Render `model` textured in the canonical 3/4 view to a PNG data URL (the Prop Library's swatches). */
-  async render(model: PropModel, level: string, materials: LevelProps['materials']): Promise<string> {
+  /** Render a library swatch; browsers that block image export can still display a canvas copy. */
+  async render(model: PropModel, level: string, materials: LevelProps['materials']): Promise<ThumbSnapshot> {
     return this.renderSet([{ model }], level, materials);
   }
 
   /** Render an ASSEMBLY in the canonical 3/4 view to a PNG data URL (the Groups grid's swatches). */
-  async renderSet(entries: ThumbEntry[], level: string, materials: LevelProps['materials']): Promise<string> {
+  async renderSet(entries: ThumbEntry[], level: string, materials: LevelProps['materials']): Promise<ThumbSnapshot> {
     await this.prepareSet(entries, level, materials);
+    if (this.renderer.getContext().isContextLost()) throw new Error('Thumbnail graphics context is unavailable.');
     this.view(THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION);
-    return this.renderer.domElement.toDataURL('image/png');
+    if (this.renderer.getContext().isContextLost()) throw new Error('Thumbnail graphics context is unavailable.');
+    const canvas = this.renderer.domElement;
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      // Displaying a canvas does not require the pixel export that some browser privacy settings block.
+      const copy = document.createElement('canvas');
+      copy.width = canvas.width;
+      copy.height = canvas.height;
+      const context = copy.getContext('2d');
+      if (!context) throw new Error('Thumbnail canvas is unavailable.');
+      context.drawImage(canvas, 0, 0);
+      return copy;
+    }
   }
 
   dispose() {
