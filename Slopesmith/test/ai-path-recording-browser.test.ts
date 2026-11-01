@@ -98,6 +98,11 @@ try {
   assert(!(await state()).riding, 'First Escape also saves and exits a captured first-person recording');
   assert((await state()).paths.length > saved.paths.length);
   await page.evaluate(() => (window as any).aiRecording.setTarget('reference'));
+  assert.equal(
+    await page.getByRole('button', { name: '▶ Play Last Call — Night', exact: true }).count(),
+    1,
+    'Test launch uses the reference display name instead of its server-qualified ID',
+  );
   assert(await page.getByRole('button', { name: '● Record AI run', exact: true }).isDisabled());
   await page.evaluate(() => (window as any).aiRecording.start(false, true));
   assert(!(await state()).recording, 'Reference/public sessions cannot capture authored paths');

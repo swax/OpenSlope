@@ -50,6 +50,7 @@ import { newFreeLight } from '../core/lighting/sign-lights';
 import { screenProp } from '../core/props/screen';
 import type { LightTransformUpdate } from './viewport/types';
 import type { RideEvent } from '../core/session/ride-event';
+import { mapDisplayName } from '../core/reference/map-game';
 
 const subV3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const scaleV3 = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
@@ -93,6 +94,7 @@ export type ViewportWiringDeps = {
   clearPaintSelection: () => void;
   // built after the viewport — reached through accessor closures, live by the time any callback fires
   viewport: () => Viewport;
+  getReferenceName?: () => string;
   palette: () => Palette;
   library: () => TextureLibrary;
   propOps: () => PropOps;
@@ -375,7 +377,8 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (store.currentMode === 'play') {
         if (source !== store.playTarget) {
           const mountainName = store.mdoc.name.trim() || 'Mountain';
-          const referenceName = viewport().refLevelName.trim() || 'Reference';
+          const referenceName =
+            deps.getReferenceName?.().trim() || mapDisplayName({ name: viewport().refLevelName }).trim() || 'Reference';
           const clicked = source === 'reference' ? referenceName : mountainName;
           const riding = store.playTarget === 'reference' ? referenceName : mountainName;
           const slope = store.playTarget === 'reference' ? `${referenceName} terrain` : `${mountainName} terrain`;

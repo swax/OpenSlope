@@ -213,6 +213,7 @@ export type ToolsPanelDeps = {
   syncPropLibBtn: () => void;
   syncDockTabs: () => void; // the bottom libraries' open/collapse handles
   getRefLevel: () => string;
+  getRefDisplayName?: () => string;
   propLevels: Map<string, LevelProps>;
   groupDefIdx: Map<string, GroupDef>;
   /** Refetch the imported catalogue and re-render placements against it — what an edit to an imported

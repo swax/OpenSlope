@@ -295,6 +295,7 @@ const viewportCallbacks = createViewportCallbacks({
   rangeSelectPaintCells,
   clearPaintSelection: clearPaintSel,
   viewport: () => viewport,
+  getReferenceName: () => reference.getRefDisplayName(),
   palette: () => palette,
   library: () => library,
   propOps: () => propOps,
@@ -1453,7 +1454,7 @@ const {
   resetHistory: () => history.reset(),
   loadMountain: () => loadMountain(),
   getRefCourse: () => reference.getRefCourse(),
-  getRefLevel: () => reference.getRefLevel(),
+  getRefLevel: () => reference.getRefDisplayName(),
   log,
 });
 
@@ -2253,6 +2254,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   syncPropLibBtn,
   syncDockTabs,
   getRefLevel: () => reference.getRefLevel(),
+  getRefDisplayName: () => reference.getRefDisplayName(),
   propLevels,
   groupDefIdx,
   reloadImportedProps: () => propOps.reloadImportedProps(),

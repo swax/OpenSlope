@@ -229,6 +229,7 @@ export function createReference(deps: ReferenceDeps) {
    *  extract of a retail course and which slot, or an authored export and whether it borrows retail art. Shown
    *  under the picker as the loaded reference's `origin` row, so what is in the slot says what it is. */
   let mapOrigins = new Map<string, ReferenceMapSummary>();
+  const levelDisplayName = (level: string) => mapDisplayName(mapOrigins.get(level) ?? { name: level });
   const originInfo = { origin: NO_COST };
   let originCtl: { updateDisplay(): void } | null = null;
   let refMesh: ReferenceMesh | null = null; // the loaded reference (kept for the lighting study)
@@ -983,7 +984,7 @@ export function createReference(deps: ReferenceDeps) {
     const statusToken =
       sharedStatusToken ??
       loadStatus.begin({
-        title: `Loading ${level}`,
+        title: `Loading ${levelDisplayName(level)}`,
         ...referencePropLoadStatus({ phase: 'download', receivedBytes: 0 }),
       });
     const ownsStatus = sharedStatusToken === null;
@@ -1029,7 +1030,7 @@ export function createReference(deps: ReferenceDeps) {
         trace.complete(`${lp.models.length} models · ${lp.instances.length} instances`);
         if (ownsStatus)
           await loadStatus.finish(statusToken, {
-            label: `${level} props ready`,
+            label: `${levelDisplayName(level)} props ready`,
             detail: `${lp.instances.length.toLocaleString()} placements loaded`,
           });
       } catch (e) {
@@ -1153,7 +1154,7 @@ export function createReference(deps: ReferenceDeps) {
     try {
       const rig = await fetchRefRig(level);
       if (!rig) {
-        toast(`no Lights.json sources for ${level}`, 'warn');
+        toast(`No light sources for ${levelDisplayName(level)}.`, 'warn');
         return;
       }
       if (level !== refState.level || !refMesh) return; // the reference changed while we were fetching — drop it
@@ -1163,7 +1164,7 @@ export function createReference(deps: ReferenceDeps) {
       const shadow = rig.counts.neg ?? 0;
       const sign = rig.counts.sign ?? 0;
       toast(
-        `${level}: ${shown} light sources${sign ? ` (${sign} sign)` : ''}${shadow ? ` + ${shadow} shadow` : ''}`,
+        `${levelDisplayName(level)}: ${shown} light sources${sign ? ` (${sign} sign)` : ''}${shadow ? ` + ${shadow} shadow` : ''}`,
         'ok',
       );
     } catch (e) {
@@ -1410,7 +1411,7 @@ export function createReference(deps: ReferenceDeps) {
       // ensureRefProps assigns through its guarded async owner; keep that post-await fact explicit for TS.
       const loadedProps = refProps as LevelProps | null;
       await loadStatus.finish(statusToken, {
-        label: `${name} ready`,
+        label: `${levelDisplayName(name)} ready`,
         detail: `${mesh.patchCount.toLocaleString()} patches loaded${
           viewport.hasReferenceProps() ? ` · ${(loadedProps?.instances.length ?? 0).toLocaleString()} props loaded` : ''
         }`,
@@ -2199,7 +2200,7 @@ export function createReference(deps: ReferenceDeps) {
       note(
         refGodRayFolder,
         level
-          ? `${level} has no extracted god-ray settings.`
+          ? `${levelDisplayName(level)} has no extracted god-ray settings.`
           : 'Load a mountain in Reference to compare its god-ray settings.',
       );
       return;
@@ -2408,7 +2409,7 @@ export function createReference(deps: ReferenceDeps) {
     getRefCourse: () => refCourse,
     getRefLaps: () => refLaps,
     getRefLevel: () => refState.level,
-    getRefDisplayName: () => refDocument ?? mapDisplayName(mapOrigins.get(refState.level) ?? { name: refState.level }),
+    getRefDisplayName: () => refDocument ?? levelDisplayName(refState.level),
     /** What the slot is showing when it holds a checkpoint rather than an extracted level (docs/040). */
     getRefDocument: () => refDocument,
   };

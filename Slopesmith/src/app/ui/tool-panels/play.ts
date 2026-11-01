@@ -22,6 +22,7 @@ import { resumeSharedAudio } from '../../audio/runtime';
 import { preloadReferenceRideMusic, referenceMusicIndex } from '../../audio/ride-music';
 import type { ToolsContext } from './widgets';
 import { preferImmersivePlay, primaryPointerIsCoarse } from '../../ride/input-modality';
+import { mapDisplayName } from '../../../core/reference/map-game';
 
 let characterImporting = false;
 
@@ -62,7 +63,8 @@ export function buildPlayTools(ctx: ToolsContext) {
   const { gui, store, viewport, propPreview, editSection, getPlay, getRefLevel, persistUi, rebuildTools } = ctx;
   const play = getPlay();
   const mountainName = store.mdoc.name.trim() || 'Mountain';
-  const referenceName = getRefLevel().trim() || 'Reference';
+  const referenceName =
+    ctx.getRefDisplayName?.().trim() || mapDisplayName({ name: getRefLevel() }).trim() || 'Reference';
   /**
    * Hand the keyboard back to the ride after using a control.
    *

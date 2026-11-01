@@ -190,7 +190,8 @@ function rebuildTools() {
     propPreview: { hide() {} },
     editSection,
     getPlay: () => play,
-    getRefLevel: () => 'Reference',
+    getRefLevel: () => 'server:SSXOT_ER4_NIGHT',
+    getRefDisplayName: () => 'Last Call — Night',
     persistUi() {},
     rebuildTools,
   } as never);
