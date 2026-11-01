@@ -241,17 +241,20 @@ export class ThumbRenderer {
     if (this.renderer.getContext().isContextLost()) throw new Error('Thumbnail graphics context is unavailable.');
     const canvas = this.renderer.domElement;
     try {
-      return canvas.toDataURL('image/png');
+      const image = canvas.toDataURL('image/png');
+      if (typeof image === 'string' && /^data:image\/png;base64,./.test(image)) return image;
     } catch {
-      // Displaying a canvas does not require the pixel export that some browser privacy settings block.
-      const copy = document.createElement('canvas');
-      copy.width = canvas.width;
-      copy.height = canvas.height;
-      const context = copy.getContext('2d');
-      if (!context) throw new Error('Thumbnail canvas is unavailable.');
-      context.drawImage(canvas, 0, 0);
-      return copy;
+      // Some browser privacy settings block image export by throwing instead of returning an image.
     }
+    // A modified export can also return undefined or an empty result without throwing. Displaying a
+    // canvas copy avoids export in either case and keeps an invalid snapshot out of the library cache.
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    const context = copy.getContext('2d');
+    if (!context) throw new Error('Thumbnail canvas is unavailable.');
+    context.drawImage(canvas, 0, 0);
+    return copy;
   }
 
   dispose() {

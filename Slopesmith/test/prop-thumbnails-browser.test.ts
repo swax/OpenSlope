@@ -46,11 +46,16 @@ async function visiblePixels(page: Page) {
     });
 }
 try {
-  for (const blockExport of [false, true]) {
+  for (const exportMode of ['normal', 'throws', 'undefined', 'empty', 'invalid'] as const) {
+    const blockExport = exportMode !== 'normal';
     const context = await browser.newContext({ viewport: { width: 850, height: 500 } });
     const page = await context.newPage();
     const errors: string[] = [];
+    const thumbnailWarnings: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+      if (message.text().startsWith('Prop thumbnail failed')) thumbnailWarnings.push(message.text());
+    });
     await page.route('**/thumbnail-fixture', route =>
       route.fulfill({
         contentType: 'text/html',
@@ -69,16 +74,22 @@ try {
       return route.fulfill({ status: 404, json: { error: 'Missing fixture texture' } });
     });
     if (blockExport)
-      await page.addInitScript(() => {
+      await page.addInitScript(mode => {
         HTMLCanvasElement.prototype.toDataURL = function () {
-          throw new DOMException('Canvas image export is blocked', 'SecurityError');
+          if (mode === 'throws') throw new DOMException('Canvas image export is blocked', 'SecurityError');
+          if (mode === 'undefined') return undefined as unknown as string;
+          return mode === 'empty' ? '' : 'data:,';
         };
-      });
+      }, exportMode);
     await page.goto(`${vite.resolvedUrls!.local[0]}thumbnail-fixture`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () => document.querySelectorAll('.pl-thumb[data-state="ready"], .pl-thumb[data-state="error"]').length === 4,
+    );
+    assert.deepEqual(thumbnailWarnings, [], `${exportMode} export does not fail thumbnail display`);
     await ready(page);
     assert((await visiblePixels(page)) > 500, 'the thumbnail contains visible model pixels');
     assert.equal(await page.locator('.pl-thumb canvas').count(), blockExport ? 4 : 0);
-    await page.screenshot({ path: join(root, blockExport ? 'export-blocked.png' : 'normal.png') });
+    await page.screenshot({ path: join(root, `${exportMode}.png`) });
 
     // Rerendering the grid must copy cached fallback canvases rather than move them or lose their pixels.
     await page.getByRole('button', { name: 'Misc', exact: true }).click();
@@ -111,7 +122,7 @@ try {
     await context.close();
   }
   console.log(
-    `PROP THUMBNAILS PASS: textured/missing models, blocked export, cached copies, groups, queue and context recovery. ${root}`,
+    `PROP THUMBNAILS PASS: textured/missing models, blocked/invalid exports, cached copies, groups, queue and context recovery. ${root}`,
   );
 } finally {
   await browser.close();
