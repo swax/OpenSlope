@@ -17,7 +17,7 @@ jobs:
   full:
     name: Full Windows compatibility and coverage
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Check out the toolkit and format-library submodule
@@ -72,7 +72,9 @@ jobs:
         run: npm --prefix Slopesmith run lint
 
       - name: Run deterministic Slopesmith tests with coverage
-        timeout-minutes: 15
+        # The complete covered browser suite exceeded 26 minutes locally; the previous
+        # nightly run stopped at 15 minutes before reaching the remaining checks.
+        timeout-minutes: 45
         run: npm --prefix Slopesmith run coverage
 
       - name: Build Slopesmith
