@@ -50,6 +50,7 @@ let serverVersion = first;
 let serverAvailable = true;
 let localAvailable = true;
 const resources: string[] = [];
+const versionRequests: string[] = [];
 configureAssetTransport(async input => {
   const url = new URL(input instanceof Request ? input.url : input.toString(), 'http://localhost');
   if (url.pathname === '/api/levels')
@@ -61,6 +62,7 @@ configureAssetTransport(async input => {
       ],
     });
   if (url.pathname === '/api/map-asset-version') {
+    versionRequests.push(url.searchParams.get('level')!);
     const local = url.searchParams.get('level')!.startsWith('local:');
     return local
       ? localAvailable
@@ -134,6 +136,57 @@ await pinDocumentAssets(upgrade);
 assert.equal(upgrade.props[0].level, other.id);
 assert.equal(upgrade.props[0].nativeCollision.physicsSource.level, other.id);
 assert.equal(upgrade.quadTex.a, `${other.id}/tile.png`);
+localVersion = first;
+serverVersion = other;
+clearAssetCatalogue();
+const serverLegacy = {
+  quadTex: { a: 'GARI/tile.png', b: 'local:GARI/tile.png' },
+  props: [{ level: 'GARI', model: 0 }],
+};
+await pinDocumentAssets(serverLegacy, 'server');
+assert.equal(
+  serverLegacy.quadTex.a,
+  `${other.id}/tile.png`,
+  'a legacy server map pins its server bank while an ISO is loaded',
+);
+assert.equal(serverLegacy.props[0].level, other.id, 'legacy prop bindings retain the server source too');
+assert.equal(
+  serverLegacy.quadTex.b,
+  `${first.id}/tile.png`,
+  'explicit local bindings keep their source in server maps',
+);
+const localLegacy = { quadTex: { a: 'GARI/tile.png', b: 'server:GARI/tile.png' } };
+await pinDocumentAssets(localLegacy, 'local');
+assert.equal(localLegacy.quadTex.a, `${first.id}/tile.png`);
+assert.equal(
+  localLegacy.quadTex.b,
+  `${other.id}/tile.png`,
+  'explicit server bindings remain server-backed in local maps',
+);
+serverAvailable = false;
+clearAssetCatalogue();
+const unavailableServer = { props: [{ level: 'GARI', model: 0 }] };
+await pinDocumentAssets(unavailableServer, 'server');
+assert.equal(
+  unavailableServer.props[0].level,
+  'GARI',
+  'a missing server bank never silently migrates to a different local version',
+);
+versionRequests.length = 0;
+const projectAssets = {
+  props: [
+    { level: '@effects', model: 0 },
+    { level: '@models', model: 1 },
+    { level: '@import', model: 2 },
+  ],
+  quadTex: { a: 'Custom/mine.png' },
+};
+const originalProjectAssets = structuredClone(projectAssets);
+await pinDocumentAssets(projectAssets, 'server');
+for (const level of ['@effects', '@models', '@import', 'Custom', 'server:@effects'])
+  assert.equal(await pinAssetMap(level), level, 'internal asset banks are never fingerprinted as reference maps');
+assert.deepEqual(projectAssets, originalProjectAssets);
+assert.deepEqual(versionRequests, [], 'loading a trigger volume makes no @effects fingerprint request');
 console.log(
   'Asset-bank fingerprints, canonical identity, both fallback directions, version mismatch rejection and legacy safety PASS',
 );

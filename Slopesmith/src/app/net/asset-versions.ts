@@ -13,6 +13,10 @@ let catalogueCache: Promise<MapSourceChoice[]> | undefined;
 const listeners = new Set<() => void>();
 const storageKey = 'slopesmith.asset-source-preferences.v1';
 let preferencesRead = false;
+const projectAssetLevel = (level: string): boolean => {
+  const name = splitMapSource(level).name;
+  return name === 'Custom' || name.startsWith('@');
+};
 
 export function configureAssetTransport(next: Transport): void {
   transport = next;
@@ -62,7 +66,7 @@ function prefer(id: string, source: MapSource): void {
 }
 
 /** Upgrade legacy pointers only while their original source can still be fingerprinted. */
-export async function pinDocumentAssets(document: unknown): Promise<void> {
+export async function pinDocumentAssets(document: unknown, defaultSource?: MapSource): Promise<void> {
   if (!document || typeof document !== 'object') return;
   const previous = documentPins.get(document);
   if (previous) return previous;
@@ -78,10 +82,11 @@ export async function pinDocumentAssets(document: unknown): Promise<void> {
         const texture = slash > 0 && /\.(png|webp|jpg|jpeg)$/i.test(child);
         const prop = key === 'level' && ('model' in value || 'body' in value);
         const level = texture ? child.slice(0, slash) : prop ? child : '';
-        if (!level || parseAssetVersion(level) || ['Custom', '@models', '@import'].includes(level)) continue;
+        if (!level || parseAssetVersion(level) || projectAssetLevel(level)) continue;
         let pinned = maps.get(level);
         if (!pinned) {
-          pinned = pinAssetMap(level);
+          const source = splitMapSource(level).source;
+          pinned = pinAssetMap(!source && defaultSource ? mapSourceId(defaultSource, level) : level);
           maps.set(level, pinned);
         }
         changes.push(
@@ -138,7 +143,7 @@ async function version(location: string, fresh = false): Promise<AssetVersion> {
 
 /** Called before a library exposes selectable assets, so drag/drop also carries a stable version. */
 export async function pinAssetMap(level: string): Promise<string> {
-  if (parseAssetVersion(level) || !level || ['Custom', '@models', '@import'].includes(level)) return level;
+  if (parseAssetVersion(level) || !level || projectAssetLevel(level)) return level;
   const choice = findMapChoice(await catalogue(), level) ?? { name: level };
   const location = locationId(choice);
   const value = await version(location, true);

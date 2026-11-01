@@ -3320,7 +3320,7 @@ function refreshSyncedDocumentUi() {
 
 async function loadMountain() {
   await reference.syncProjectReference();
-  await pinDocumentAssets(store.mdoc);
+  await pinDocumentAssets(store.mdoc, isLocalWorkspace() ? 'local' : 'server');
   surfaceEdits.reset();
   syncDocumentPending = false;
   syncUiBeforeDoc = null;

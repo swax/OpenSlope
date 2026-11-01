@@ -3,6 +3,7 @@ import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { browserExportProvider } from './provider';
 import { assetVersionsIn } from '../../core/reference/asset-version';
 import { pinDocumentAssets } from '../net/asset-versions';
+import { isLocalWorkspace } from '../net/workspace';
 import {
   canPickDirectory,
   directoryTarget,
@@ -49,7 +50,7 @@ export async function exportMapFolder(
   target: ExportTarget,
   opts?: { lighting?: boolean; aiPaths?: boolean },
 ): Promise<BrowserExportResult> {
-  await pinDocumentAssets(doc);
+  await pinDocumentAssets(doc, isLocalWorkspace() ? 'local' : 'server');
   const provider = browserExportProvider({
     assetLevels: assetVersionsIn(doc),
     folderName: target.folderName,

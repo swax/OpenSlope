@@ -46,6 +46,7 @@ import { toast } from '../ui/components/toast';
 import { fetchJson, postJson } from '../net/fetch-json';
 import { createPropLevelLoader, type PropLoadOptions } from './level-loader';
 import { pinAssetMap, pinDocumentAssets } from '../net/asset-versions';
+import { isLocalWorkspace } from '../net/workspace';
 
 /**
  * Placed-prop ops (docs/012 + 015): the prop domain around a placement — the model geometry caches (base
@@ -389,7 +390,7 @@ export function createPropOps(deps: PropOpsDeps) {
    *  uses the retry; progressive loading waits before rendering, while sync redraws only for new assets.
    *  Authored models are already refreshed by renderMountainObjects, including on the first load. */
   async function syncPropGeom(rebuild = true): Promise<boolean> {
-    await pinDocumentAssets(store.mdoc);
+    await pinDocumentAssets(store.mdoc, isLocalWorkspace() ? 'local' : 'server');
     const modelProps = (store.mdoc.props ?? []).filter(p => !isEffectTriggerProp(p));
     const levels = new Set(modelProps.map(p => p.level));
     const defLevels = new Set(modelProps.filter(p => p.group).map(p => p.level));
