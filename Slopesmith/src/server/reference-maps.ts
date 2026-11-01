@@ -64,6 +64,9 @@ export async function serverReferences() {
   return (await listLevelOrigins()).map(map => ({
     name: map.name,
     course: map.course ?? map.name,
+    origin: map.origin,
+    retailData: map.retailData,
+    ...(map.game ? { game: map.game } : {}),
     ...(map.displayName ? { displayName: map.displayName } : {}),
   }));
 }

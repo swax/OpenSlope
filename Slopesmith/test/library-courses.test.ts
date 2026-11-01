@@ -76,4 +76,48 @@ assert.equal(
   'a reference that borrows a course does not become that donor course',
 );
 assert.equal(libraryGameCourses([], [], [], [], ['TRICKY_GARI']).length, 1, 'missing required maps remain visible');
+const otherReferences = libraryGameCourses(
+  [],
+  [],
+  [
+    { name: 'Training_Hill', course: 'Training_Hill', origin: 'slopesmith', retailData: false },
+    { name: 'MYSTERY', course: 'MYSTERY' },
+    { name: 'TRICKY_OUR_HILL', course: 'TRICKY_OUR_HILL', origin: 'slopesmith' },
+    { name: 'GARI', course: 'GARI', origin: 'slopesmith' },
+    { name: 'TRICKY_GARI', course: 'TRICKY_GARI', origin: 'retail', game: 'ssx-tricky' },
+    { name: 'Renamed_Tour', course: 'WR2', game: 'ssx-on-tour', origin: 'retail' },
+  ],
+  [],
+);
+assert.equal(otherReferences.filter(entry => entry.game === 'other').length, 4);
+assert.equal(otherReferences.find(entry => entry.course === 'Training_Hill')?.reference?.name, 'Training_Hill');
+assert(otherReferences.some(entry => entry.game === 'other' && entry.course === 'GARI'));
+assert.equal(otherReferences.find(entry => entry.game === 'other' && entry.course === 'GARI')?.name, 'GARI');
+assert(otherReferences.some(entry => entry.game === 'tricky' && entry.course === 'TRICKY_GARI'));
+assert.equal(otherReferences.find(entry => entry.course === 'WR2')?.game, 'ontour');
+assert(!otherReferences.some(entry => entry.course === 'TRICKY_MYSTERY'), 'unknown refs retain their physical names');
+assert.equal(libraryGameCourses(['FIXTURE'], [], [], [])[0].game, 'tricky', 'legacy ISO imports remain game maps');
+const publicOther = libraryGameCourses(
+  [],
+  [],
+  [],
+  [
+    {
+      ...published,
+      id: 'Our_Hill',
+      name: 'Our Hill',
+      retailData: false,
+      isoCourses: [],
+    },
+  ],
+)[0];
+assert.equal(publicOther.game, 'other');
+assert.equal(publicOther.course, 'Our_Hill');
+const sameNames = libraryGameCourses(['GARI'], [], [{ name: 'GARI', course: 'GARI', origin: 'slopesmith' }], []);
+assert.equal(sameNames.length, 2);
+assert.equal(
+  new Set(sameNames.map(entry => entry.key)).size,
+  2,
+  'reference groups keep identical local/server names separate',
+);
 console.log('LIBRARY COURSES PASS: canonical merging, disc/cache/server availability, legacy keys and separate games.');

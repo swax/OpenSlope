@@ -1,7 +1,7 @@
 import './home.css';
 import type { PublicCourse } from '../../core/session/public-courses';
 import { referenceRoom } from '../../core/session/public-courses';
-import { discCourseName, isDiscCourse } from '../../core/reference/disc-courses';
+import { discContainsCourse, discCourseName, isDiscCourse } from '../../core/reference/disc-courses';
 import { currentAccount } from '../net/account';
 import { localEditorUrl } from '../navigation';
 import { deleteLocalProject, listLocalProjects } from '../state/local-projects';
@@ -14,7 +14,7 @@ import { linkLocalMountainFolder, refreshLocalMountainFolder } from '../mountain
 import { listMountainFolders } from '../state/folder-autosave';
 import type { PeerMarks } from '../viewport/scene/peers';
 import { cachedIsoCourses, needsCollisionSoundUpdate } from './iso-cache';
-import { publicCourseGroups, publicCourseLabel } from './course-list';
+import { publicCourseGroups, publicCourseLabel, requiredIsoState } from './course-list';
 import { element, publicJson } from './dom';
 import { publicHeader } from './header';
 import { isoRequirements, isoStatusBadges } from './iso-status';
@@ -225,8 +225,9 @@ export async function showPublicHome(): Promise<void> {
     requirements.hidden = !selected?.isoCourses.length;
     document.body.classList.toggle('public-map-assets', !!selected?.isoCourses.length);
     if (selected) {
-      const loaded = selected.isoCourses.filter(slot => cached.includes(slot)).length;
-      const total = selected.isoCourses.length;
+      const states = requiredIsoState(selected.isoCourses, cached);
+      const loaded = states.filter(state => state.loaded).length;
+      const total = states.length;
       const summary = element('summary', 'public-assets-summary');
       summary.setAttribute('aria-label', `ISO assets: ${loaded} of ${total} maps loaded`);
       summary.title = `${loaded} of ${total} ISO maps loaded`;
@@ -237,7 +238,7 @@ export async function showPublicHome(): Promise<void> {
       );
       const assets = isoRequirements(selected, cached);
       if (loaded < total && selected.kind === 'project')
-        assets.querySelector('p')!.textContent = 'ISO textures/props omitted for unloaded maps.';
+        assets.querySelector('p')!.textContent = 'Load the listed maps to restore missing textures and props. You can still ride the custom terrain.';
       requirements.append(summary, assets);
     }
   }
@@ -357,7 +358,7 @@ export async function showPublicHome(): Promise<void> {
     ] as const) {
       for (const course of courses) {
         if (library && course.kind === 'reference') continue;
-        const missing = course.isoCourses.some(slot => !cached.includes(slot));
+        const missing = course.isoCourses.some(slot => !discContainsCourse(cached, slot));
         const displayName = publicCourseLabel(course);
         const card = element('article', 'public-course public-map-tile');
         card.setAttribute('aria-label', displayName);
@@ -372,7 +373,7 @@ export async function showPublicHome(): Promise<void> {
         );
         if (missing)
           card.append(
-            element('span', 'public-requirements', course.kind === 'project' ? 'ISO optional' : 'ISO needed'),
+            element('span', 'public-requirements', 'Game assets missing'),
           );
         if (course.isoCourses.length) card.append(isoStatusBadges(course.isoCourses, cached));
         const message = cardMessages.get(`${course.kind}:${course.id}`);
@@ -554,7 +555,7 @@ export async function showPublicHome(): Promise<void> {
   async function load() {
     if (!selected || preparing) return;
     const course = selected;
-    const missing = course.isoCourses.some(slot => !cached.includes(slot));
+    const missing = course.isoCourses.some(slot => !discContainsCourse(cached, slot));
     if (course.kind === 'reference' && missing) {
       location.href = isoManagementUrl(course);
       return;

@@ -3,14 +3,17 @@ import { requiredIsoState } from './course-list';
 import { element } from './dom';
 import { isoManagementUrl } from './links';
 import { tooltip } from '../ui/components/tooltip';
+import { mapGame, mapGameLabel } from '../../core/reference/map-game';
 
 /** Colour and text both identify availability; these badges never rely on colour alone. */
 export function isoStatusBadges(slots: readonly string[], cached: readonly string[]): HTMLUListElement {
   const badges = element('ul', 'public-iso-badges');
   badges.setAttribute('aria-label', 'ISO map status');
   const states = requiredIsoState(slots, cached);
-  const descriptions = states.map(state =>
-    `${state.name}${state.name !== state.slot ? ` (${state.slot})` : ''} · ${state.loaded ? 'Loaded' : 'Not loaded'}`);
+  const descriptions = states.map(state => {
+    const game = mapGame({ name: state.slot });
+    return `${game === 'unknown' ? '' : `${mapGameLabel(game)} · `}${state.name} · ${state.loaded ? 'Loaded' : 'Not loaded'}`;
+  });
   if (states.length > 1) {
     const missing = states.filter(state => !state.loaded).length;
     const text = missing ? `Requirements unfulfilled (${missing})` : 'Requirements fulfilled';
@@ -37,7 +40,7 @@ export function isoRequirements(course: PublicCourse, cached: readonly string[])
   section.hidden = !course.isoCourses.length;
   const title = element('h2', '', 'ISO assets');
   const text = element('p', '', course.kind === 'project'
-    ? 'Optional: textures and props.' : 'Required to play.');
+    ? 'Required for this map’s referenced assets. You can still ride its custom terrain.' : 'Required to play.');
   const manage = element('a', 'public-manage-iso', 'Load ISO maps'); manage.href = isoManagementUrl(course);
   section.append(title, text, isoStatusBadges(course.isoCourses, cached), manage);
   return section;

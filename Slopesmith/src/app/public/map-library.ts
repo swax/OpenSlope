@@ -3,23 +3,23 @@ import { element } from './dom';
 import { ISO_GAMES, type IsoGame } from './iso-discs';
 import { mapGame, mapGameLabel } from '../../core/reference/map-game';
 import { mapAvailability } from './presentation';
-import type { LibraryVisibility } from './library-courses';
+import type { LibraryCounts, LibraryReferenceGroup, LibraryVisibility } from './library-courses';
 
-type View = LibraryVisibility | IsoGame;
+type View = LibraryVisibility | LibraryReferenceGroup;
 type Source = 'all' | 'device' | 'server';
 export type LibrarySection = {
   section: HTMLElement;
   grid: HTMLElement;
   source: Exclude<Source, 'all'>;
 };
-export type LibraryFilter = { game: IsoGame | null; query: string; source: Source; enabled: boolean; visibility: LibraryVisibility };
+export type LibraryFilter = { game: LibraryReferenceGroup | null; query: string; source: Source; enabled: boolean; visibility: LibraryVisibility };
 export type LibraryGameController = {
   selectGame: (game: IsoGame) => void;
   filter: (filter: LibraryFilter) => void;
   maps: HTMLElement;
   currentGame: () => IsoGame;
   sourceCounts: () => Record<Source, number>;
-  viewCounts: () => Record<LibraryVisibility, number>;
+  viewCounts: () => LibraryCounts;
 };
 
 /** One browsing shell for custom mountains, server publications and local game imports. */
@@ -31,7 +31,7 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
   title.classList.remove('public-visually-hidden');
   title.textContent = 'Map library';
   const intro = element('div', 'library-intro');
-  intro.append(title, element('p', '', 'Pick a game. Find your next run.'));
+  intro.append(title, element('p', '', 'Pick a map. Find your next run.'));
   const actions = element('div', 'library-actions');
   const createSlot = element('div', 'library-create');
   const loadMapHost = element('div', 'library-load-map-host');
@@ -43,7 +43,7 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
   const libraryNav = element('nav', 'library-views');
   libraryNav.setAttribute('aria-label', 'Library views');
   const views = new Map<View, HTMLButtonElement>();
-  const viewCounters = new Map<LibraryVisibility, HTMLElement>();
+  const viewCounters = new Map<LibraryVisibility | 'other', HTMLElement>();
   for (const [id, label] of [
     ['all', 'All maps'],
     ['public', 'Public'],
@@ -60,6 +60,21 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     libraryNav.append(button);
   }
   const gamesHost = element('div', 'library-games');
+  const otherRow = element('div', 'public-iso-game-card');
+  const otherName = element('dt', '');
+  const other = element('button', 'public-iso-game', 'Other');
+  other.type = 'button';
+  other.dataset.game = 'other';
+  other.setAttribute('aria-label', 'Other');
+  other.setAttribute('aria-controls', 'library-map-catalogue');
+  other.onclick = () => select('other');
+  const otherCount = element('span', 'library-game-count');
+  otherCount.setAttribute('aria-hidden', 'true');
+  other.append(otherCount);
+  views.set('other', other);
+  viewCounters.set('other', otherCount);
+  otherName.append(other);
+  otherRow.append(otherName);
   sidebar.append(
     libraryNav,
     gamesHost,
@@ -121,6 +136,7 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
   const requestedGame = url.searchParams.get('game');
   if (ISO_GAMES.some(game => game.id === requestedGame)) view = requestedGame as IsoGame;
   else if (url.searchParams.get('view') === 'public') view = 'public';
+  else if (url.searchParams.get('view') === 'other') view = 'other';
   else if (['private', 'custom'].includes(url.searchParams.get('view') ?? '')) {
     view = 'private';
     if (url.searchParams.get('view') === 'custom') {
@@ -152,18 +168,17 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     sourceFilters.hidden = gameView;
     heading.textContent = gameView
       ? ISO_GAMES.find(game => game.id === view)!.name
-      : view === 'public' ? 'Public maps' : view === 'private' ? 'Private maps' : 'All maps';
+      : view === 'other' ? 'Other references' : view === 'public' ? 'Public maps' : view === 'private' ? 'Private maps' : 'All maps';
     for (const [id, button] of views) button.setAttribute('aria-pressed', String(id === view));
     for (const button of gamesHost.querySelectorAll<HTMLButtonElement>('.public-iso-game')) {
-      const game = ISO_GAMES.find(game => game.id === button.dataset.game);
-      button.setAttribute('aria-pressed', String(game?.id === view));
+      button.setAttribute('aria-pressed', String(button.dataset.game === view));
     }
     let shown = 0;
     const counts = { all: 0, device: 0, server: 0 };
-    const visibilityCounts = { all: 0, public: 0, private: 0 };
+    const visibilityCounts: LibraryCounts = { all: 0, public: 0, private: 0, other: 0 };
     const query = search.value.trim().toLowerCase();
     controller?.filter({
-      game: gameView ? (view as IsoGame) : null,
+      game: view === 'other' ? 'other' : gameView ? (view as IsoGame) : null,
       query,
       source: gameView ? 'all' : source,
       enabled: true,
@@ -258,6 +273,7 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     selectGame: (game: IsoGame) => select(game, false),
     connect(next: LibraryGameController) {
       controller = next;
+      gamesHost.querySelector('.public-iso-support > dl')?.append(otherRow);
       catalogue.append(next.maps);
       if (isGameView(view)) next.selectGame(view);
       else if (url.searchParams.get('view') === 'games') select(next.currentGame());

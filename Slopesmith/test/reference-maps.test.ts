@@ -202,7 +202,11 @@ try {
     409,
     'existing courses are never overwritten',
   );
-  assert((await call('GET')).body.maps.some((map: { name: string }) => map.name === 'TRICKY_GARI'));
+  const installed = (await call('GET')).body.maps.find((map: { name: string }) => map.name === 'TRICKY_GARI');
+  assert(installed);
+  assert.equal(installed.game, 'ssx-tricky');
+  assert.equal(installed.origin, 'retail');
+  assert.equal(installed.retailData, true);
   const level = await fetch(`${service.url}/api/level?name=TRICKY_GARI`, {
     headers: { cookie: cookies.get('viewer')! },
   });

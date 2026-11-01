@@ -1082,7 +1082,7 @@ try {
       ].includes(url.pathname) ||
       ['FIXTURE', 'GARI', 'TRICKY_GARI'].includes(url.searchParams.get('level') ?? '')
     )
-      retailRequests.push(url.pathname);
+      retailRequests.push(url.pathname + url.search);
   });
   guest.on('websocket', socket => {
     if (new URL(socket.url()).pathname !== '/api/public/session') return;
@@ -1276,10 +1276,10 @@ try {
   await guest.locator('.public-chat-status').filter({ hasText: 'Connected as' }).waitFor();
   await closeCommunity(guest);
   const borrowedCard = guest.getByRole('article', { name: 'BORROWED RUN', exact: true });
-  assert.match(await borrowedCard.innerText(), /ISO optional/);
+  assert.match(await borrowedCard.innerText(), /Game assets missing/);
   assert(
     await borrowedCard.getByRole('button', { name: 'Play BORROWED RUN', exact: true }).isEnabled(),
-    'authored maps can be played while optional ISO assets are missing',
+    'custom terrain can still be played while referenced game assets are missing',
   );
   assert.equal(await borrowedCard.locator('.public-iso-badge').count(), 1);
   const borrowedRequirements = borrowedCard.locator('.public-iso-summary.missing');
@@ -1310,7 +1310,7 @@ try {
   );
   const assetsMenu = guest.locator('.public-header .public-requirements-host');
   await assetsMenu.locator('summary').click();
-  assert.match(await assetsMenu.innerText(), /ISO textures\/props omitted/);
+  assert.match(await assetsMenu.innerText(), /Load the listed maps to restore missing textures and props/);
   await guest.screenshot({ path: join(root, 'combined-map-header.png') });
   await assetsMenu.locator('summary').click();
   await guest.setViewportSize({ width: 320, height: 700 });
@@ -1582,12 +1582,12 @@ try {
   assert.equal(await guest.getByRole('button', { name: /Garibaldi/ }).count(), 0);
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   await guest
-    .getByRole('region', { name: 'Disc game support', exact: true })
+    .getByRole('region', { name: 'References', exact: true })
     .getByRole('button', { name: 'SSX Tricky', exact: true })
     .click();
   await closeCommunity(guest);
   await guest.getByRole('heading', { name: 'Map library', level: 1, exact: true }).waitFor();
-  const gameSupport = guest.getByRole('region', { name: 'Disc game support', exact: true });
+  const gameSupport = guest.getByRole('region', { name: 'References', exact: true });
   for (const [name, support] of [
     ['SSX Tricky', 'Full support'],
     ['SSX', 'Partial support'],
@@ -1786,7 +1786,7 @@ try {
   );
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   await guest
-    .getByRole('region', { name: 'Disc game support', exact: true })
+    .getByRole('region', { name: 'References', exact: true })
     .getByRole('button', { name: 'SSX Tricky', exact: true })
     .click();
   await closeCommunity(guest);
@@ -2139,7 +2139,7 @@ try {
   );
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   await guest
-    .getByRole('region', { name: 'Disc game support', exact: true })
+    .getByRole('region', { name: 'References', exact: true })
     .getByRole('button', { name: 'SSX Tricky', exact: true })
     .click();
   assert.equal(

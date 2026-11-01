@@ -86,6 +86,15 @@ assert.deepEqual(
   ],
   'each donor has its own loaded state, including a partial local cache',
 );
+assert.deepEqual(
+  requiredIsoState(['GARI', 'TRICKY_GARI', 'SNOW'], ['tricky_gari']),
+  [
+    { slot: 'GARI', name: 'Garibaldi', loaded: true },
+    { slot: 'SNOW', name: 'Snowdream', loaded: false },
+  ],
+  'legacy and namespaced Tricky dependencies share one loaded state',
+);
+assert.equal(requiredIsoState(['TRICKY_GARI'], ['GARI'])[0].loaded, true);
 const origin = 'https://slopesmith.example';
 registerDiscCourseNames({ AVALANCHE_CRS01_00: 'From the selected disc', GARI: 42 });
 const imported = publicCourseGroups([], ['AVALANCHE_CRS01_00']).local[0];

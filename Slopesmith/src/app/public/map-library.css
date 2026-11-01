@@ -345,7 +345,7 @@
 }
 .map-library[data-layout='list']
   .public-map-tile:not(.public-new-map)
-  > :is(.public-iso-summary, .public-requirements, .public-map-meta, .public-card-status) {
+  > :is(.public-iso-summary, .public-iso-badges, .public-requirements, .public-map-meta, .public-card-status) {
   grid-column: 1;
   margin: 0 0 0 40px;
 }
@@ -551,10 +551,6 @@ body.public-play:has(.map-library) #load-status {
 .library-game-panel .public-iso-actions:not(:has(:not([hidden]):not(label):not(input))) {
   display: none;
 }
-.map-library[data-layout='list'] .public-course > .public-iso-badges:not(:has(.public-iso-summary)) {
-  display: none;
-}
-
 @media (max-width: 600px) {
   .library-storage {
     margin: 9px 8px 0;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
@@ -11,6 +11,7 @@ import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { defaultMountain } from '../src/core/doc/mountain';
 import type { PublicCourse } from '../src/core/session/public-courses';
+import { encodePng } from '../src/server/routes/png';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-library-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
@@ -29,6 +30,45 @@ execFileSync(
   { windowsHide: true },
 );
 const api = await startApiService({ port: 0, host: '127.0.0.1' });
+const otherFolder = join(root, 'Maps', 'Training_Hill');
+mkdirSync(join(otherFolder, 'Textures'), { recursive: true });
+writeFileSync(
+  join(otherFolder, 'Origin.json'),
+  JSON.stringify({
+    Schema: 'openslope-origin/v1',
+    Origin: 'slopesmith',
+    RetailData: false,
+    Reasons: [],
+  }),
+);
+writeFileSync(
+  join(otherFolder, 'Patches.json'),
+  JSON.stringify({
+    Patches: [
+      {
+        Points: Array.from({ length: 16 }, (_, i) => [(i % 4) * 1000, Math.floor(i / 4) * 1000, 0]),
+        TexturePath: '0000.png',
+        LightmapID: -1,
+      },
+    ],
+  }),
+);
+writeFileSync(
+  join(otherFolder, 'Textures', '0000.png'),
+  encodePng({ w: 1, h: 1, data: new Uint8Array([64, 128, 192, 255]) }),
+);
+for (const file of ['Models', 'Materials', 'Instances'])
+  writeFileSync(join(otherFolder, `${file}.json`), JSON.stringify({ [file]: [] }));
+assert.equal(
+  (
+    await fetch(`${api.url}/api/publication?kind=reference&id=Training_Hill`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ published: true }),
+    })
+  ).status,
+  200,
+);
 const mountain = defaultMountain();
 await fetch(`${api.url}/api/projects`, {
   method: 'POST',
@@ -62,6 +102,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors: string[] = [];
 page.on('pageerror', error => errors.push(error.message));
 await page.route('**/api/public/courses', route => route.fulfill({ json: { courses } }));
+await page.route('**/api/reference-maps', route => route.fulfill({ json: { maps: [] } }));
 page.setDefaultTimeout(30_000);
 try {
   await page.goto(origin + '/');
@@ -72,7 +113,8 @@ try {
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'ISO', exact: true }).count(),
     0,
   );
-  assert.equal(await page.getByRole('region', { name: 'Disc game support' }).getByRole('button').count(), 7);
+  assert.equal(await page.getByRole('region', { name: 'References' }).getByRole('button').count(), 8);
+  assert(await page.getByRole('heading', { name: 'References', exact: true }).isVisible());
   const loadMap = page.getByRole('button', { name: 'Load map', exact: true });
   const loadMapPanel = page.getByRole('group', { name: 'Load map', exact: true });
   const newMapBounds = await page.getByRole('button', { name: 'New map', exact: true }).boundingBox();
@@ -632,6 +674,133 @@ try {
     }),
     'game actions preserve custom mountains',
   );
+  const borrowed = courses.find(course => course.id === 'published-lines')!;
+  borrowed.retailData = true;
+  borrowed.isoCourses = ['GARI'];
+  await page.goto(origin + '/?view=public');
+  const borrowedCard = page.getByRole('article', { name: 'PUBLIC LINES', exact: true });
+  const requirement = borrowedCard.locator('.public-iso-badge');
+  await requirement.waitFor();
+  assert.equal(await borrowedCard.locator('.public-requirements').innerText(), 'Game assets missing');
+  assert.equal(await requirement.innerText(), 'SSX Tricky · Garibaldi · Not loaded');
+  assert(await requirement.isVisible(), 'single-map dependencies stay visible in the list');
+  assert(await borrowedCard.getByRole('button', { name: 'Play PUBLIC LINES', exact: true }).isEnabled());
+  for (const width of [1440, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await requirement.isVisible(), `the game and source map remain visible at ${width}px`);
+    assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth));
+    await borrowedCard.screenshot({ path: join(root, `library-required-map-${width}.png`) });
+  }
+  await page.evaluate(async () => {
+    const path = '/src/app/public/iso-cache.ts';
+    const { openIsoCache, cacheTransaction, isoCourseCacheVersion } = (await import(
+      /* @vite-ignore */ path
+    )) as typeof import('../src/app/public/iso-cache');
+    const db = await openIsoCache();
+    try {
+      await cacheTransaction(db, 'courses', 'readwrite', store =>
+        store.put({ course: 'TRICKY_GARI', version: isoCourseCacheVersion('TRICKY_GARI'), files: 1 }),
+      );
+    } finally {
+      db.close();
+    }
+  });
+  await page.reload();
+  await requirement.waitFor();
+  assert.equal(await requirement.innerText(), 'SSX Tricky · Garibaldi · Loaded');
+  assert.equal(await borrowedCard.locator('.public-requirements').count(), 0, 'a new extract satisfies an old map');
+  assert.equal(await borrowedCard.getByRole('link', { name: 'Load ISO maps', exact: true }).count(), 0);
+  await page.evaluate(async () => {
+    const modulePath = '/src/app/public/iso-cache.ts';
+    const { openIsoCache, cacheTransaction } = await import(/* @vite-ignore */ modulePath);
+    const db = await openIsoCache();
+    try {
+      await cacheTransaction(db, 'courses', 'readwrite', (store: IDBObjectStore) =>
+        store.put({ course: 'GARI', version: 1, files: 1 }),
+      );
+    } finally {
+      db.close();
+    }
+  });
+  courses.push({
+    id: 'Training_Hill',
+    name: 'Training Hill',
+    kind: 'reference',
+    source: 'server',
+    retailData: false,
+    isoCourses: [],
+  });
+  let installedOther = [
+    { name: 'TRICKY_GARI', course: 'TRICKY_GARI', origin: 'retail', game: 'ssx-tricky' },
+    { name: 'Training_Hill', course: 'Training_Hill', origin: 'slopesmith', retailData: false },
+    { name: 'MYSTERY', course: 'MYSTERY' },
+    { name: 'TRICKY_OUR_HILL', course: 'TRICKY_OUR_HILL', origin: 'slopesmith', retailData: false },
+    { name: 'GARI', course: 'GARI', displayName: 'Practice Gari', origin: 'slopesmith', retailData: false },
+  ];
+  const removedReferences: string[] = [];
+  await page.route('**/api/reference-maps', route => route.fulfill({ json: { maps: installedOther } }));
+  await page.route('**/api/reference-maps/maps/*', async route => {
+    const name = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!);
+    removedReferences.push(name);
+    installedOther = installedOther.filter(map => map.name !== name);
+    await route.fulfill({ json: { removed: true } });
+  });
+  await page.goto(origin + '/?view=other');
+  const otherView = page.getByRole('button', { name: 'Other', exact: true });
+  const training = page.getByRole('article', { name: 'Training Hill', exact: true });
+  await training.waitFor();
+  assert.equal(await otherView.getAttribute('aria-pressed'), 'true');
+  assert.equal(await otherView.locator('.library-game-count').innerText(), '4');
+  assert.equal(await page.locator('.library-catalogue .public-course:visible').count(), 4);
+  assert(await page.getByRole('article', { name: 'Practice Gari', exact: true }).isVisible());
+  const mystery = page.getByRole('article', { name: 'MYSTERY', exact: true });
+  assert.equal(
+    new URL(
+      (await mystery.getByRole('link', { name: 'Inspect MYSTERY', exact: true }).getAttribute('href'))!,
+    ).searchParams.get('reference'),
+    'MYSTERY',
+  );
+  assert.equal(await training.getByRole('button', { name: /Load local/ }).count(), 0);
+  assert(await page.getByRole('button', { name: 'Load PS2 image…', exact: true }).isHidden());
+  for (const width of [1440, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await otherView.isVisible());
+    assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth));
+    await page.screenshot({ path: join(root, `library-other-references-${width}.png`) });
+  }
+  await page.getByRole('button', { name: 'SSX Tricky', exact: true }).click();
+  assert(await page.getByRole('article', { name: 'Garibaldi', exact: true }).isVisible());
+  assert.equal(await page.getByRole('article', { name: 'Practice Gari', exact: true }).count(), 0);
+  assert.equal(
+    await page.getByRole('article', { name: 'TRICKY_OUR_HILL', exact: true }).count(),
+    0,
+    'authored names do not imply a game',
+  );
+  await otherView.click();
+  await page.reload();
+  await training.waitFor();
+  assert.equal(await otherView.getAttribute('aria-pressed'), 'true');
+  await mystery.getByRole('button', { name: 'Map actions for MYSTERY', exact: true }).click();
+  await mystery.getByRole('button', { name: 'Remove reference from server', exact: true }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.deepEqual(removedReferences, []);
+  await mystery.getByRole('button', { name: 'Map actions for MYSTERY', exact: true }).click();
+  await mystery.getByRole('button', { name: 'Remove reference from server', exact: true }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Remove reference', exact: true }).click();
+  await mystery.waitFor({ state: 'hidden' });
+  assert.deepEqual(
+    removedReferences,
+    ['MYSTERY'],
+    'management uses the physical server folder without a Tricky prefix',
+  );
+  assert.equal(await otherView.locator('.library-game-count').innerText(), '3');
+  const serverTexture = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/texture' && url.searchParams.get('level') === 'Training_Hill';
+  });
+  await training.getByRole('link', { name: 'Play Training Hill', exact: true }).click();
+  assert.equal((await serverTexture).status(), 200, 'clean server references use their server textures');
+  await page.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.deepEqual(errors, []);
   console.log(
     'MAP LIBRARY PASS: public/private visibility, local and published copies, source counts, legacy views, games, imports, reload and responsive layouts. ' +

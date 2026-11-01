@@ -25,6 +25,9 @@ export interface ServerReference {
   name: string;
   course: string;
   displayName?: string;
+  game?: string;
+  origin?: string;
+  retailData?: boolean;
 }
 
 export const REFERENCE_CHUNK_BYTES = 8 * 1024 ** 2;
