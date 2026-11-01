@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
+import { buildMeshFromCourse, defaultMountain, migrateMountain, starterCourse } from '../src/core/doc/mountain';
 import { DEFAULT_SUN } from '../src/core/doc/types';
 import {
   EFFECT_TEMPLATES,
@@ -1961,7 +1961,17 @@ try {
       `${(100 * gnomonTopBlue).toFixed(1)}% of its self-lit texture`,
   );
 
-  const lit = migrateMountain(JSON.parse(JSON.stringify(defaultMountain())));
+  // Pin the terrain beneath the lighting probes independently of new-map defaults.
+  const lightingMountain = () => {
+    const mountain = buildMeshFromCourse(
+      starterCourse(1500, 1),
+      { widthM: 400, roughness: 0.5, targetPatchM: 50, seed: 1 },
+      { name: 'MOUNTAIN01', baseSurface: 1 },
+    );
+    if (!mountain) throw new Error('The prop-lighting fixture could not be generated.');
+    return migrateMountain(mountain);
+  };
+  const lit = lightingMountain();
   // The DEFAULT authored sun, white-tinted so the checks read channel values directly. This is the case
   // normal maps ship, and the one the first calibration got wrong: it was validated only against a
   // record-seeded sun (GARI's HDR 2.47), where the raw reading happened to land right.
@@ -2021,7 +2031,7 @@ try {
     // The ground's own baked light has to reach props, or every prop on the mountain ships equally bright.
     // These two positions differ only in the terrain under them: (150,-100) sits on ground the bake shades
     // down, (350,0) on ground in full sun.
-    const shaded = migrateMountain(JSON.parse(JSON.stringify(defaultMountain())));
+    const shaded = lightingMountain();
     shaded.props = [
       { level: IMPORTED_PROP_LEVEL, model: first.id, name: 'sunlit', pos: [350, 200, 0], yaw: 0, scale: 1 },
       { level: IMPORTED_PROP_LEVEL, model: first.id, name: 'shaded', pos: [150, 200, -100], yaw: 0, scale: 1 },
@@ -2086,7 +2096,7 @@ try {
     // (This record's triangle is 530 m above its origin, exactly the open/buried drop.)
     const raised = await saveImportedProp('zz-test-raised', record('zz test raised', null, 53_000));
     written.push(raised.file);
-    const seat = migrateMountain(JSON.parse(JSON.stringify(defaultMountain())));
+    const seat = lightingMountain();
     seat.props = [
       { level: IMPORTED_PROP_LEVEL, model: first.id, name: 'open', pos: [-182, 200, -260], yaw: 0, scale: 1 },
       { level: IMPORTED_PROP_LEVEL, model: first.id, name: 'buried', pos: [-182, -330, -260], yaw: 0, scale: 1 },

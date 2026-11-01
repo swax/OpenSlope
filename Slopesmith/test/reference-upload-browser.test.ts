@@ -252,12 +252,12 @@ try {
   assert(lostReply, 'the upload recovered after losing an accepted chunk response');
   await page.unroute('**/api/reference-maps/uploads/*?offset=*');
   await page.reload();
-  await toggle.waitFor({ state: 'attached' });
+  await toggle.filter({ hasText: /^Remove reference from server$/ }).waitFor({ state: 'attached' });
   assert.equal(await toggle.textContent(), 'Remove reference from server', 'server state survives reload');
   await page.goto(`${origin}/maps`);
   const serverReferences = page.locator('.library-catalogue');
   const mapsToggle = serverReferences.locator('[data-course="TRICKY_GARI"] .public-iso-reference');
-  await mapsToggle.waitFor({ state: 'attached' });
+  await mapsToggle.filter({ hasText: /^Remove reference from server$/ }).waitFor({ state: 'attached' });
   assert.equal(
     await mapsToggle.textContent(),
     'Remove reference from server',
@@ -324,7 +324,7 @@ try {
   await page.getByRole('alertdialog').getByRole('button', { name: 'Unload all maps', exact: true }).click();
   await page.getByText('0 loaded', { exact: true }).waitFor({ state: 'attached' });
   await page.reload();
-  await toggle.waitFor({ state: 'attached' });
+  await toggle.filter({ hasText: /^Remove reference from server$/ }).waitFor({ state: 'attached' });
   assert.equal(
     await toggle.textContent(),
     'Remove reference from server',

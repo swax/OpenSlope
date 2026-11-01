@@ -81,7 +81,7 @@ try {
     if (!process.argv[2]) {
       assert.equal(name, `Disc course ${Number(course.at(-4)) * 4 + Number(course.at(-1))}`);
     }
-    await page.getByRole('button', { name: `Load ${name}`, exact: true }).click();
+    await page.getByRole('button', { name: `Load local ${name}`, exact: true }).click();
     await page
       .getByRole('button', { name: `Unload ${name}`, exact: true, includeHidden: true })
       .waitFor({ state: 'attached', timeout: 120_000 });

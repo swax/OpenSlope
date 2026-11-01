@@ -502,6 +502,7 @@
     gap: 6px;
   }
   .map-library :is(.public-card-actions, .public-iso-map-actions) > :is(a, button) {
+    box-sizing: border-box;
     min-height: 40px;
     padding: 8px 10px;
   }

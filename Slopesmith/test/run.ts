@@ -116,6 +116,7 @@ const EXCLUSIVE_GROUP = new Map([
   ['avalanche-browser.test.ts', 'browser-webgl'],
   ['sync-browser.test.ts', 'browser-webgl'],
   ['edit-prop-tools.test.ts', 'browser-webgl'],
+  ['extrusion-toolbox-browser.test.ts', 'browser-webgl'],
   ['local-editor.test.ts', 'browser-webgl'],
   ['new-map-browser.test.ts', 'browser-webgl'],
   ['import-mountain-browser.test.ts', 'browser-webgl'],
@@ -138,6 +139,8 @@ const EXCLUSIVE_GROUP = new Map([
  * relative operation costs. Isolating these checks retains their deadlines, ratios and complete coverage.
  */
 const RUN_ALONE = new Set([
+  // Covered browser compilation can consume the CLI help subprocess's startup budget.
+  'cli-help.test.ts',
   'multiplayer.test.ts',
   'site-presence.test.ts',
   'chat-community.test.ts',

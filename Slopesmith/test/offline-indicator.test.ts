@@ -111,16 +111,28 @@ try {
   const counter = page.locator('.public-online');
   const label = counter.locator('.public-online-label');
   const count = counter.locator('.public-online-number');
+  const dot = counter.locator('.public-online-dot');
   await page.getByRole('button', { name: 'Online users', exact: true }).waitFor();
   await page.locator('.public-online[data-count="3"]').waitFor();
+  const onlineDotColor = await dot.evaluate(el => getComputedStyle(el).backgroundColor);
 
   // Chrome may keep a localhost socket reachable; its offline event must still clear the live badge.
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Offline — users and chat', exact: true }).waitFor();
   assert.equal(await label.innerText(), 'Offline');
+  assert(await label.isVisible(), 'Offline remains readable on desktop');
   assert(await count.isHidden(), 'disconnection removes the stale player count');
   await page.setViewportSize({ width: 320, height: 700 });
-  assert(await label.isVisible(), 'Offline remains readable on narrow screens');
+  assert(await label.isHidden(), 'the narrow header uses its compact connection indicator');
+  assert(await page.getByRole('button', { name: 'Offline — users and chat', exact: true }).isVisible());
+  assert(await page.locator('.public-users-icon').isVisible());
+  assert(await dot.isVisible(), 'connection status remains visible on narrow screens');
+  assert.notEqual(
+    await dot.evaluate(el => getComputedStyle(el).backgroundColor),
+    onlineDotColor,
+    'the mobile status dot distinguishes an outage from a live connection',
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // Network availability alone must not revive the previous player count.
   presence = false;

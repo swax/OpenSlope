@@ -1353,8 +1353,18 @@ try {
     'member navigation fits a narrow player header',
   );
   assert(await member.getByRole('link', { name: 'Library', exact: true }).isVisible());
-  assert(await member.getByRole('link', { name: 'PUBLIC RUN', exact: true }).isVisible());
+  assert(await member.getByRole('link', { name: 'PUBLIC RUN', exact: true }).isHidden());
+  const memberMore = member.getByRole('button', { name: 'More', exact: true });
+  await memberMore.click();
+  assert(
+    await member
+      .getByRole('region', { name: 'More links', exact: true })
+      .getByRole('link', { name: 'Return to PUBLIC RUN', exact: true })
+      .isVisible(),
+  );
+  await memberMore.press('Escape');
   await member.setViewportSize({ width: 1280, height: 720 });
+  assert(await member.getByRole('link', { name: 'PUBLIC RUN', exact: true }).isVisible());
   await member.getByRole('textbox', { name: 'Chat message' }).fill('Member riding with guests');
   await member.getByRole('textbox', { name: 'Chat message' }).press('Enter');
   await guest.getByText('Member riding with guests', { exact: true }).waitFor();
@@ -1425,8 +1435,13 @@ try {
     'turning chat off restores the full viewport',
   );
   const framesAfterHide = sent.length;
-  await new Promise(resolve => setTimeout(resolve, 350));
-  assert(sent.length > framesAfterHide, 'leaving chat keeps anonymous multiplayer positions publishing');
+  const hasPoseAfterHide = () =>
+    sent.slice(framesAfterHide).some(message => message.t === 'aware' && message.aware.player);
+  const resumeDeadline = Date.now() + 5000;
+  while (!hasPoseAfterHide() && Date.now() < resumeDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert(hasPoseAfterHide(), 'leaving chat keeps anonymous multiplayer positions publishing');
   await member.getByRole('textbox', { name: 'Chat message' }).fill('Only connected riders see this');
   await member.getByRole('textbox', { name: 'Chat message' }).press('Enter');
   assert.equal(
@@ -2098,8 +2113,9 @@ try {
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   const lastMap = guest
     .getByRole('navigation', { name: 'Primary' })
-    .getByRole('link', { name: 'Snowdream', exact: true });
-  await lastMap.waitFor();
+    .getByRole('link', { name: 'Snowdream', exact: true, includeHidden: true });
+  await lastMap.waitFor({ state: 'attached' });
+  assert(await lastMap.isHidden(), 'the saved map uses the More menu on mobile');
   assert.equal(
     new URL((await editorTab.getAttribute('href'))!).searchParams.get('reference'),
     'TRICKY_SNOW',
@@ -2110,7 +2126,11 @@ try {
     null,
     'the saved map does not replace the selected Maps tab',
   );
-  await lastMap.click();
+  await guest.getByRole('button', { name: 'More', exact: true }).click();
+  await guest
+    .getByRole('region', { name: 'More links', exact: true })
+    .getByRole('link', { name: 'Return to Snowdream', exact: true })
+    .click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(
     new URL(guest.url()).searchParams.get('reference'),
