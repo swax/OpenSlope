@@ -21,7 +21,13 @@ export function watchMapSources(changed: () => void): () => void {
   return () => listeners.delete(changed);
 }
 
-export function mapSourceDetails(level: string): { source: string; game: string; map: string; version?: string } {
+export function mapSourceDetails(level: string): {
+  source: string;
+  game: string;
+  map: string;
+  'asset hash'?: string;
+  'bank hash'?: string;
+} {
   const version = parseAssetVersion(level);
   const original = level;
   level = assetLocation(level) ?? level;
@@ -42,6 +48,6 @@ export function mapSourceDetails(level: string): { source: string; game: string;
         : 'Server',
     game: mapGameLabel(version?.game ?? mapGame(map)),
     map: own ? (map.label ?? mountain?.label ?? 'Mountain') : mapDisplayName(map),
-    ...(version ? { version: version.hash.slice(0, 8) } : {}),
+    ...(version ? { [version.kind ? 'asset hash' : 'bank hash']: version.hash.slice(0, 8) } : {}),
   };
 }

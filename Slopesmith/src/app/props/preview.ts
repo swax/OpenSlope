@@ -76,7 +76,7 @@ const css = `
 .pp-stats { font: 11px system-ui, sans-serif; color: #6f8398; font-variant-numeric: tabular-nums; }
 .pp-stats:empty { display: none; }
 .pp-source { align-self: stretch; display: grid; gap: 2px; font: 11px system-ui, sans-serif; }
-.pp-source-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 6px; }
+.pp-source-row { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 6px; }
 .pp-source-label { color: #6f8398; }
 .pp-source-value { color: #9fb3c8; overflow-wrap: anywhere; }
 .pp-missing { display: none; position: absolute; inset: 30px; border: 2px solid #ff00ff;
@@ -330,9 +330,9 @@ export class PropPreview {
     ];
     this.thumbEl.dataset.missing = String(missing.length > 0);
     const facts: Record<string, string> = {};
-    for (const key of ['source', 'game', 'map', 'version'] as const) {
-      if (key === 'version' && !sources.some(source => source.version)) continue;
-      facts[key] = [...new Set(sources.map(source => source[key]))].join(', ');
+    for (const key of ['source', 'game', 'map', 'asset hash', 'bank hash'] as const) {
+      const values = [...new Set(sources.map(source => source[key]).filter((value): value is string => !!value))];
+      if (values.length) facts[key] = values.join(', ');
     }
     if (this.sourceModels.length) {
       facts.status = missing.length
