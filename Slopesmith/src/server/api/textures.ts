@@ -8,6 +8,7 @@ import {
   deriveLevelTextures,
   levelsWithTextures,
   readParticleTextureBytes,
+  particleTextureReference,
   readReferenceTextureBytes,
   renameCustomTexture,
   replaceCustomTextureArt,
@@ -224,6 +225,12 @@ export const textureRoutes: Record<string, ApiHandler> = {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
       const name = q.get('name') ?? 'fog0.png',
         level = q.get('level') ?? '';
+      if (q.get('reference') === '1') {
+        res.setHeader('content-type', 'application/json');
+        res.setHeader('cache-control', 'private, no-cache');
+        res.end(JSON.stringify({ texture: await particleTextureReference(name, level) }));
+        return;
+      }
       await responseCache.bytes(
         req,
         res,

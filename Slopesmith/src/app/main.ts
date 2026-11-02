@@ -539,7 +539,7 @@ const library = new TextureLibrary({
   mountainName: () => store.mdoc.name,
 });
 
-/** Every place the LIVE document wears a texture ref: painted terrain cells plus authored model tiles.
+/** Every place the LIVE document wears a texture ref: terrain, authored models and fog volumes.
  *  Imported props are NOT counted here — their records live on disk and the Library asks the server. */
 function countDocTexRefs(ref: string): number {
   const doc = activeDoc();
@@ -550,7 +550,8 @@ function countDocTexRefs(ref: string): number {
     (n, m) => n + (m.texture === ref ? 1 : 0) + (m.frames ?? []).filter(f => f === ref).length,
     0,
   );
-  return painted + models;
+  const fog = (store.mdoc.particleVolumes ?? []).filter(volume => volume.texture === ref).length;
+  return painted + models + fog;
 }
 
 /**
@@ -591,6 +592,12 @@ function retargetDocTex(from: string, to: string | null): void {
       if (head.length > 1) model.frames = head;
       else delete model.frames;
     }
+  }
+  // Renames/replacements follow the chosen art. Deletion keeps fog's broken reference available for repair.
+  if (to) for (const volume of store.mdoc.particleVolumes ?? []) {
+    if (volume.texture !== from) continue;
+    volume.texture = to;
+    changed++;
   }
   palette.retargetRef(from, to); // the staging pad holds refs too, and is not part of the document
   propLib.invalidateThumbnails();
@@ -1689,6 +1696,7 @@ const effects = createEffectsEditor({
   store,
   viewport,
   scheduleRebuild,
+  pickTexture: request => library.openPick(request),
   goToProp,
   goToRail,
   pathHandles,

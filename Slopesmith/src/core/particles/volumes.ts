@@ -34,14 +34,14 @@ export interface ParticleVolume {
   objects: ParticleVolumeObject[];
   unknownInts: [number, number, number, number, number];
   /**
-   * The level this volume was copied from — its sprite donor. Fog draws from the level-independent
+   * Legacy source hint when texture is absent. Fog draws from the level-independent
    * PARTICLE.SSH art, which every extraction carries a copy of, so the donor only decides WHICH extracted
    * copy an export stages into `Textures/Particles/`. Recorded here, the way a painted tile records its
-   * source level, so a fresh export stages the same bytes the volume was authored against. Absent (an
+   * source level. An explicit texture reference takes precedence. Absent (an
    * authored-from-scratch cloud) => the first extracted copy in the library.
    */
   donor?: string;
-  /** Optional project-owned fog sprite (Custom/name.png), used by browser preview and folder export. */
+  /** Exact asset2 sprite or project-owned Custom/name.png. Absent on legacy maps using the shared fog bank. */
   texture?: string;
 }
 

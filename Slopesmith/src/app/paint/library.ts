@@ -800,7 +800,7 @@ export class TextureLibrary {
         (costs.length
           ? ` It is currently used by ${costs.join(' and ')}. Painted cells and editable models are cleared ` +
             'and fall back to their surface tint; imported props keep the reference and will show as ' +
-            'untextured until you point them somewhere else.'
+            'untextured until you point them somewhere else. Fog volumes keep their texture references for repair.'
           : ' Nothing is currently using it.'),
     });
     if (!ok) return;
@@ -818,10 +818,13 @@ export class TextureLibrary {
   /** The pick grid's "no texture" cell, first in the grid: answers the pick with null. Once a tile is set,
    *  this is the only way back to none — which for a model means untextured clay. */
   private noneSwatch(): HTMLElement {
-    const none = document.createElement('div');
+    const none = document.createElement('button');
+    none.type = 'button';
     none.className = 'sp-tile sp-add sp-none' + (this.selKey === '' ? ' sel' : '');
-    none.textContent = '∅';
-    tooltip(none, 'No texture — the model falls back to untextured clay.');
+    none.textContent = this.pick?.empty?.label ?? '∅';
+    none.setAttribute('aria-label', this.pick?.empty?.label ?? 'No texture');
+    if (this.pick?.empty) none.style.fontSize = '12px';
+    tooltip(none, this.pick?.empty?.hint ?? 'No texture — the model falls back to untextured clay.');
     none.onclick = () => {
       if (this.pick?.keep) {
         this.pick.onPick(null);
@@ -902,7 +905,9 @@ export class TextureLibrary {
     this.selKey = `tile:${ref}`;
     this.render();
     this.body.querySelector<HTMLElement>(`.sp-tile[data-ref="${ref}"]`)?.scrollIntoView({ block: 'center' });
-    this.emitTile(ref);
+    if (this.pick?.keep) this.pick.onPick(ref);
+    else if (this.pick) this.endPick(ref);
+    else this.emitTile(ref);
   }
 }
 

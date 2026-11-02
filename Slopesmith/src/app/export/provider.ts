@@ -27,6 +27,9 @@ import { fetchJson as defaultFetchJson } from '../net/fetch-json';
 import { findSkyLevel, type SkyCatalogue } from '../../core/sky/catalogue';
 import { decodePng, encodePng } from './png';
 import { stageRaceMusic } from './music';
+import { resolveFogTexture } from '../net/fog-texture';
+import { textureRefUrl } from '../net/asset-paths';
+import { parseTexRef } from '../../core/paint/textures';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 
 /**
@@ -175,8 +178,12 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
     importedProps: () => fetchJson<PropsPayload>('/api/custom-props'),
     nativeArt: () => fetchJson<NativeArt>('/api/props/native-art'),
     referenceTexture: (level, name) => asset('/api/texture', { level, name }, () => textureUrl(level, name)),
-    particleTexture: (name, level) =>
-      asset('/api/particle-texture', { name, level }, () => particleTextureUrl(name, level)),
+    particleTexture: async (name, level) => {
+      if (name !== 'fog0.png') return asset('/api/particle-texture', { name, level }, () => particleTextureUrl(name, level));
+      const ref = await resolveFogTexture(level, opts.request);
+      const texture = parseTexRef(ref);
+      return asset('/api/texture', { level: texture.level, name: texture.name }, () => textureRefUrl(ref));
+    },
     customSound: name => asset('/api/custom-sound', { name }, () => customSoundUrl(name)),
     soundIndex,
     courseEffectSound: (level, slot, bank) =>

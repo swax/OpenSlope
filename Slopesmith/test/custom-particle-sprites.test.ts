@@ -16,7 +16,7 @@ const provider = {
   nativeArt: async () => ({ gemLevel: '', gemTiers: [], railSkins: {} }),
   referenceTexture: async (level: string, name: string) => {
     calls.push(level + '/' + name);
-    return new Uint8Array([23, 51, 99]);
+    return new Uint8Array(name === 'other.png' ? [99, 51, 23] : [23, 51, 99]);
   },
   particleTexture: async () => {
     throw new Error('Custom fog requested native particle art');
@@ -67,4 +67,33 @@ for (const name of ['part', 'fog0'])
   );
 doc.particleVolumes!.push({ ...doc.particleVolumes![0], id: 'volume:1', texture: 'Custom/other.png' });
 await assert.rejects(() => buildExportFolder(doc, provider, { lighting: false }), /one fog0 slot/);
+doc.particleVolumes = [doc.particleVolumes![0]];
+doc.particleVolumes[0].texture = 'asset2:ssx-tricky:TRICKY_GARI:texture:particle-fog0.png:' + '1'.repeat(64);
+doc.particleVolumes.push({ ...doc.particleVolumes[0], id: 'volume:1', texture: undefined, donor: 'GARI' });
+const mixed = await buildExportFolder(
+  doc,
+  {
+    ...provider,
+    particleTexture: async () => new Uint8Array([23, 51, 99]),
+  },
+  { lighting: false },
+);
+assert.deepEqual(
+  mixed.files.find(file => file.path === 'Textures/Particles/fog0.png')?.bytes,
+  new Uint8Array([23, 51, 99]),
+  'legacy fog and an asset2 texture sharing the same bytes export together',
+);
+await assert.rejects(
+  () =>
+    buildExportFolder(
+      doc,
+      {
+        ...provider,
+        particleTexture: async () => new Uint8Array([24, 51, 99]),
+      },
+      { lighting: false },
+    ),
+  /one fog0 slot/,
+  'different legacy and asset2 images cannot occupy the same native slot',
+);
 console.log('PASS original particle export bytes, no native fog request, mixed-fog rejection');

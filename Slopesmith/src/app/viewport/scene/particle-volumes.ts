@@ -1,6 +1,6 @@
 import { loadAssetTexture } from '../../net/asset-images';
 import * as THREE from 'three';
-import { textureRefUrl, resolveAssetUrl } from '../../net/asset-paths';
+import { textureRefUrl, particleTextureUrl } from '../../net/asset-paths';
 import { renderLoadingManager } from '../render-assets';
 import type { ParticleVolume } from '../../../core/particles/volumes';
 import { particleRawFromEditor } from '../../../core/particles/volumes';
@@ -49,8 +49,8 @@ export function createParticleVolumesLayer(stage: Stage) {
   stage.refRoot.add(referenceVisuals, referenceBounds);
 
   const textures = new Map<string, THREE.Texture>();
-  function fogTexture(ref?: string) {
-    const url = ref ? textureRefUrl(ref) : resolveAssetUrl('/api/particle-texture?name=fog0.png');
+  function fogTexture(ref?: string, donor = '') {
+    const url = ref ? textureRefUrl(ref) : particleTextureUrl('fog0.png', donor);
     let texture = textures.get(url);
     if (!texture) {
       texture = loadAssetTexture(new THREE.TextureLoader(renderLoadingManager), url, loaded => {
@@ -137,11 +137,12 @@ export function createParticleVolumesLayer(stage: Stage) {
     puffs: readonly FogPuffDraw[],
     previous: ParticleBatches | null,
     ref?: string,
+    donor?: string,
   ): ParticleBatches | null {
     previous?.dispose();
     group.clear();
     if (!puffs.length) return null;
-    const batch = createParticleBatches(fogTexture(ref), 1, 1, puffs.length);
+    const batch = createParticleBatches(fogTexture(ref, donor), 1, 1, puffs.length);
     const { position, color, alpha, size, sprite } = batch.buffers;
     for (let i = 0; i < puffs.length; i++) {
       const puff = puffs[i],
@@ -179,19 +180,19 @@ export function createParticleVolumesLayer(stage: Stage) {
     authoredBatches.forEach(batch => batch.dispose());
     authoredBatches = [];
     authoredVisuals.clear();
-    const groups = new Map<string, FogPuffDraw[]>();
+    const groups = new Map<string, { ref?: string; donor?: string; puffs: FogPuffDraw[] }>();
     volumes.forEach((volume, index) => {
-      const ref = volume.texture ?? '';
-      const puffs = groups.get(ref) ?? [];
-      groups.set(ref, puffs);
-      const draw = build(volume, 'authored', index, puffs);
+      const key = volume.texture ?? `legacy:${volume.donor ?? ''}`;
+      const group = groups.get(key) ?? { ref: volume.texture, donor: volume.donor, puffs: [] };
+      groups.set(key, group);
+      const draw = build(volume, 'authored', index, group.puffs);
       authoredDraws.set(volume.id, draw);
       authoredBounds.add(draw.hit);
     });
-    for (const [ref, puffs] of groups) {
+    for (const { ref, donor, puffs } of groups.values()) {
       const group = new THREE.Group();
       authoredVisuals.add(group);
-      const batch = buildBatch(group, 'authored', puffs, null, ref || undefined);
+      const batch = buildBatch(group, 'authored', puffs, null, ref, donor);
       if (batch) authoredBatches.push(batch);
     }
     applyVisibility();
@@ -207,7 +208,7 @@ export function createParticleVolumesLayer(stage: Stage) {
       referenceDraws.set(index, draw);
       referenceBounds.add(draw.hit);
     });
-    referenceBatch = buildBatch(referenceVisuals, 'reference', puffs, referenceBatch);
+    referenceBatch = buildBatch(referenceVisuals, 'reference', puffs, referenceBatch, volumes[0]?.texture, volumes[0]?.donor);
     applyVisibility();
     applySelection();
   }

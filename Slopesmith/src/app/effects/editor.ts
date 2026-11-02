@@ -16,6 +16,12 @@ import {
 import type { ParticleVolume } from '../../core/particles/volumes';
 import { mphText } from '../../core/math/units';
 import { cloneParticleVolume, createFogVolume } from '../../core/particles/volumes';
+import { resolveFogTexture } from '../net/fog-texture';
+import { createFogSourceInfo } from './fog-source-info';
+import type { TexturePick } from '../paint/texture-pick';
+import { parseTexRef } from '../../core/paint/textures';
+import { textureRefUrl, particleTextureUrl } from '../net/asset-paths';
+import { setImageAsset } from '../net/asset-images';
 import {
   EFFECT_TYPES,
   addEmptyEffect,
@@ -192,6 +198,7 @@ export interface EffectsEditorDeps {
   store: Store;
   viewport: Viewport;
   scheduleRebuild: () => void;
+  pickTexture: (request: TexturePick) => void;
   /** Load/cache the prop model table used by the compact effect-host preview. */
   loadPropLevel: (level: string) => Promise<import('../../core/reference/props').LevelProps>;
   /** Jump to Props mode with this effect's host selected — an authored placement by doc index, or a
@@ -307,6 +314,7 @@ const emptyReferenceEffectFocus = (): ReferenceEffectFocus => ({
 export function createEffectsEditor(deps: EffectsEditorDeps) {
   const { store, viewport, goToProp } = deps;
   const root = el('div', 'sp-effects-editor');
+  const fogSourceInfo = createFogSourceInfo();
   const hostPreview = new EffectHostPreview(deps.loadPropLevel);
   const calledModelPreview = new EffectHostPreview(deps.loadPropLevel, 'Called effect model preview');
   const callerModelPreview = new EffectHostPreview(deps.loadPropLevel, 'Caller model preview');
@@ -644,6 +652,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     return true;
   }
 
+  function bindFogTexture(volume: ParticleVolume): void {
+    if (volume.texture) return;
+    const document = store.mdoc;
+    void resolveFogTexture(volume.donor).then(texture => {
+      if (store.mdoc !== document || volume.texture || !document.particleVolumes?.includes(volume)) return;
+      volume.texture = texture;
+      dirty();
+    }).catch(() => {
+      // Keep unavailable source art missing. Loading its course lets the legacy lookup resolve it later.
+    });
+  }
+
   function addFogVolume(): void {
     const list = volumes();
     const target = viewport.controls.target;
@@ -651,6 +671,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     list.push(volume);
     selectParticleVolume('authored', list.length - 1, volume.id);
     dirty();
+    bindFogTexture(volume);
   }
 
   function addEffectTrigger(): void {
@@ -841,6 +862,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     selectParticleVolume('authored', list.length - 1, volume.id);
     dirty();
     toast('Fog copied onto your mountain at the same map position.', 'ok');
+    bindFogTexture(volume);
   }
 
   function duplicateSelectedParticle(): void {
@@ -854,6 +876,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     selectedAuthoredParticleId = copy.id;
     viewport.selectAuthoredParticleVolume(copy.id);
     dirty();
+    bindFogTexture(copy);
   }
 
   function removeSelectedParticle(): void {
@@ -1722,12 +1745,43 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     return true;
   }
 
+  function fogTextureControl(volume: ParticleVolume, editable: boolean): HTMLElement {
+    const control = el(editable ? 'button' : 'div', 'sp-fog-texture');
+    const label = volume.texture ? parseTexRef(volume.texture).name : 'Shared fog sprite';
+    const image = el('img', 'sp-fog-texture-image');
+    image.alt = '';
+    setImageAsset(image, volume.texture ? textureRefUrl(volume.texture) : particleTextureUrl('fog0.png', volume.donor ?? ''));
+    control.append(image, el('span', 'sp-fog-texture-name', label));
+    control.title = volume.texture ?? 'Original shared fog sprite';
+    if (editable) {
+      (control as HTMLButtonElement).type = 'button';
+      control.setAttribute('aria-label', 'Choose fog texture');
+      control.onclick = () => {
+        const document = store.mdoc;
+        deps.pickTexture({
+          title: `Choose fog texture — ${volume.name}`,
+          current: volume.texture ?? null,
+          empty: { label: 'Shared', hint: 'Use the original shared fog sprite from this volume’s source course.' },
+          onPick: ref => {
+            if (store.mdoc !== document || !document.particleVolumes?.includes(volume)) return;
+            if (ref) volume.texture = ref;
+            else delete volume.texture;
+            dirty();
+            if (!ref) bindFogTexture(volume);
+          },
+        });
+      };
+    }
+    return row('Texture', control, editable ? 'Choose a library texture or add your own PNG. Cancel keeps the current reference.' : 'Original fog texture. Copy this volume onto your mountain to change it.');
+  }
+
   function authoredParticlePanel(): HTMLElement | null {
     const volume = selectedAuthoredParticleId ? volumes().find(item => item.id === selectedAuthoredParticleId) : null;
     if (!volume) return null;
     const puffCount = volume.objects.reduce((count, object) => count + object.puffs.length, 0);
     const s = section(`Fog: ${volume.name}`);
     s.body.append(
+      fogTextureControl(volume, true),
       row(
         'Name',
         input(volume.name, value => {
@@ -1809,7 +1863,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       button('Duplicate', 'Duplicate this fog bank and offset it five metres.', duplicateSelectedParticle),
       button('Delete', 'Delete this fog volume.', removeSelectedParticle, true),
     );
-    s.body.appendChild(actions);
+    s.body.append(fogSourceInfo.show(volume), actions);
     return s.root;
   }
 
@@ -1820,6 +1874,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const puffCount = volume.objects.reduce((count, object) => count + object.puffs.length, 0);
     const s = section(`Fog: ${volume.name} · read only`);
     s.body.append(
+      fogTextureControl(volume, false),
       row(
         'Name',
         input(volume.name, () => {}, { readonly: true }),
@@ -1854,7 +1909,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         copyReferenceParticle(selectedReferenceParticleIndex!),
       ),
     );
-    s.body.appendChild(actions);
+    s.body.append(fogSourceInfo.show(volume), actions);
     return s.root;
   }
 

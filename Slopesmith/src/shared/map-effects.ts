@@ -8,6 +8,7 @@ import {
 import type { V3 } from '../core/doc/types';
 import { type ReferenceEffectInstance, type ReferenceEffectsPayload } from '../core/reference/effects';
 import { particleVolumesFromNative } from '../core/particles/volumes';
+import { readParticleTextureReference } from './map-particle-texture';
 import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } from '../core/collision/native';
 import { isOnTourCourseHelper, prepareOnTourCourseHelpers } from '../core/props/course-helpers';
 
@@ -145,6 +146,13 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
     particleInstancesFile && particleModelsFile
       ? particleVolumesFromNative(particleInstancesFile.Particles ?? [], particleModelsFile.ParticlePrefabs ?? [])
       : ([] as ReturnType<typeof particleVolumesFromNative>);
+  if (particleVolumes.length) {
+    const texture = await readParticleTextureReference(io, 'fog0.png', [safe]).catch(() => undefined);
+    for (const volume of particleVolumes) {
+      volume.donor = safe;
+      if (texture) volume.texture = texture;
+    }
+  }
 
   return {
     level: safe,

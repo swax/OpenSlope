@@ -1,6 +1,7 @@
 import { migrateMountain, defaultMountain } from '../../core/doc/mountain';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { ProjectBundle } from '../../core/project/transfer';
+import { sha256 } from '../../core/reference/asset-hash';
 import type { ClientProject } from './project-sync';
 import {
   acceptMountainFolderSnapshot,
@@ -188,6 +189,45 @@ export async function openLocalProjects() {
   async function request(url: URL, init?: RequestInit): Promise<Response | null> {
     const path = url.pathname,
       method = init?.method?.toUpperCase() ?? 'GET';
+    if (path === '/api/texture-upload' && method === 'POST') {
+      const id = active?.project.id;
+      if (!id || (url.searchParams.get('project') && url.searchParams.get('project') !== id))
+        return Response.json({ error: 'Open a local mountain before adding textures.' }, { status: 404 });
+      const bytes = new Uint8Array(await new Response(init?.body).arrayBuffer());
+      if (bytes.length > 32 * 1024 ** 2 || bytes.length < 24 ||
+          [137, 80, 78, 71, 13, 10, 26, 10].some((value, index) => bytes[index] !== value))
+        return Response.json({ error: 'Choose a PNG image smaller than 32 MB.' }, { status: 400 });
+      const hash = await sha256(bytes);
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      const blob = btoa(binary);
+      const stem = (url.searchParams.get('name') ?? '').replace(/\.png$/i, '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80) || 'texture';
+      const saved = await new Promise<{ row: LocalProject; name: string } | undefined>((resolve, reject) => {
+        const tx = db.transaction('projects', 'readwrite');
+        const store = tx.objectStore('projects');
+        const read = store.get(id);
+        let saved: { row: LocalProject; name: string } | undefined;
+        read.onsuccess = () => {
+          const current = read.result as LocalProject | undefined;
+          if (!current) return;
+          const row = structuredClone(current);
+          const used = new Set(row.bundle.assets.filter(asset => asset.kind === 'texture').map(asset => asset.name.toLowerCase()));
+          let name = `${stem}.png`, suffix = 1;
+          while (used.has(name.toLowerCase())) name = `${stem}_${++suffix}.png`;
+          row.bundle.assets.push({ kind: 'texture', name, hash, size: bytes.length });
+          (row.bundle.blobs ??= {})[hash] = blob;
+          store.put(row);
+          saved = { row, name };
+        };
+        tx.oncomplete = () => resolve(saved);
+        tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Browser storage is full or unavailable.'));
+      });
+      if (!saved) return Response.json({ error: 'This local mountain was deleted.' }, { status: 404 });
+      projects.set(id, saved.row);
+      if (active?.project.id === id) active = saved.row;
+      void queueMountainFolderSave(id, saved.row.bundle).catch(console.error);
+      return Response.json({ name: saved.name });
+    }
     if (!path.startsWith('/api/projects')) return null;
     const body = init?.body
       ? (JSON.parse(String(init.body)) as {

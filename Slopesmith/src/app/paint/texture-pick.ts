@@ -9,6 +9,8 @@ export interface TexturePick {
   /** A tile was chosen; null clears the field. */
   onPick(ref: TexRef | null): void;
   onCancel?(): void;
+  /** Meaning of the null choice when the default is a shared sprite rather than untextured clay. */
+  empty?: { label: string; hint: string };
   /** A standing request: every tile clicked answers it and the panel stays up — its tiles still dragged out — until
    *  it is closed (Esc, Done, or the next request). The trail tile set builder's library. */
   keep?: boolean;

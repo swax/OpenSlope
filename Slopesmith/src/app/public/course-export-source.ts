@@ -25,6 +25,7 @@ import { bindMapPayload, mapSourceRequest } from '../net/map-source';
 import { bundleAssets, bundleProps } from './bundle-assets';
 import { cachedIsoCourses } from './iso-cache';
 import { lazyLocalMapData } from './lazy-local-map-data';
+import { readParticleTextureReference } from '../../shared/map-particle-texture';
 
 /** Owns only this export's bytes. It never reconfigures the live player or editor's workspace. */
 export async function courseExportSource(bundle: ProjectBundle, aliases: Record<string, string> = {}) {
@@ -68,9 +69,18 @@ export async function courseExportSource(bundle: ProjectBundle, aliases: Record<
       return Response.json({ levels: maps.map(map => map.name), maps });
     }
     const level = selected.name;
-    const useLocal = selected.source !== 'server' && local.hasLevel(level);
+    const useLocal =
+      selected.source !== 'server' &&
+      (local.hasLevel(level) || (url.pathname === '/api/particle-texture' && !level && cached.length > 0));
     if (selected.source === 'local' && !useLocal)
       throw new Error(`Load ${level} on this device before exporting this mountain.`);
+    if (useLocal && url.pathname === '/api/particle-texture' && q.get('reference') === '1') {
+      const texture = await readParticleTextureReference(local.source, q.get('name') ?? 'fog0.png', level ? [level] : cached);
+      if (texture) return Response.json({ texture });
+      return selected.source === 'local'
+        ? Response.json({ error: 'The original particle sprite is unavailable.' }, { status: 404 })
+        : fetch(url);
+    }
     const resolved = custom.resolve(url.href);
     if (resolved !== url.href) {
       if (resolved.startsWith('data:'))

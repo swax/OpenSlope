@@ -5,6 +5,7 @@ import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import { compareBoardAudioSources } from '../../core/audio/board-sources';
 import { normalizeMapGame } from '../../core/reference/map-game';
+import { referenceParticleTexturePaths } from '../../core/effects/particle-textures';
 import { mapSourceRequest } from '../net/map-source';
 import { cachedCourseHasFiles, cachedCoursePaths, readCachedCourseFile } from './iso-cache';
 import { localMapData } from './local-map-data';
@@ -280,21 +281,8 @@ export async function lazyLocalMapData(
     if (url.pathname === '/api/particle-texture' && (level ? hasLevel(level) : courses.length > 0)) {
       const name = q.get('name') ?? 'fog0.png';
       for (const course of level ? [level] : courses) {
-        const riding = await source.readJsonOr<{ Schema?: string; Enabled?: boolean; Sheet?: string; Puff?: string }>(
-          `${course}/RidingEffects.json`,
-          {},
-        );
-        const adapted =
-          riding.Schema === 'openslope-riding-effects/v1' && riding.Enabled !== false
-            ? name === 'spry.png'
-              ? riding.Sheet
-              : /^ex0[6-9]\.png$/.test(name)
-                ? riding.Puff
-                : undefined
-            : undefined;
-        const safe =
-          adapted && adapted.split('/').every(part => /^[a-z0-9_.-]+$/i.test(part) && part !== '.' && part !== '..');
-        for (const sprite of safe ? [adapted] : [`Particles/${name}`, name]) {
+        const riding = await source.readJsonOr<unknown>(`${course}/RidingEffects.json`, {});
+        for (const sprite of referenceParticleTexturePaths(name, riding)) {
           const full = `${course}/Textures/${sprite}`;
           if (await readFile(full)) return fileUrl(full);
         }

@@ -32,6 +32,7 @@ import { readLevelGroups } from '../../shared/map-groups';
 import type { GroupsPayload } from '../../core/reference/groups';
 import { readAssetVersion } from '../../shared/map-asset-version';
 import { readAssetManifest } from '../../shared/map-asset-manifest';
+import { readParticleTextureReference } from '../../shared/map-particle-texture';
 
 const serverSettingsPaths = new Set(['/api/config', '/api/version', '/api/update', '/api/restart', '/api/voice']);
 
@@ -218,6 +219,12 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
           : json({ error: 'Server maps are unavailable offline.' }, { status: 403 });
       if (q.get('mapSource') === 'local' && level && !knownLevel(level))
         return json({ error: 'This local map is not available on this device.' }, { status: 404 });
+      if (path === '/api/particle-texture' && q.get('reference') === '1') {
+        const texture = await readParticleTextureReference(local.source, q.get('name') ?? 'fog0.png', level ? [level] : cached);
+        if (texture) return json({ texture });
+        if (canReadServer && !q.get('mapSource')) return fetch(url, init);
+        return json({ error: 'The original particle sprite is unavailable.' }, { status: 404 });
+      }
       if (path === '/api/map-asset-version' && knownLevel(level)) {
         let value = localVersions.get(level);
         if (!value) {

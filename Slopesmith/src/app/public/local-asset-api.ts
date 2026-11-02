@@ -8,6 +8,7 @@ import { readAssetManifest } from '../../shared/map-asset-manifest';
 import { buildLevelPropsUncached, readMaterialTables, readPhysicsBodySpheres } from '../../shared/map-props';
 import { readLevelGroups } from '../../shared/map-groups';
 import type { lazyLocalMapData as localMapData } from './lazy-local-map-data';
+import { readParticleTextureReference } from '../../shared/map-particle-texture';
 
 /** The public player resolves the same versioned dependencies, without starting editor/project writes. */
 export function installLocalAssetApi(
@@ -25,6 +26,13 @@ export function installLocalAssetApi(
       const source = url.searchParams.get('mapSource');
       if (source === 'local' && level && !local.hasLevel(level))
         return Response.json({ error: 'This local map is not available on this device.' }, { status: 404 });
+      if (url.pathname === '/api/particle-texture' && url.searchParams.get('reference') === '1') {
+        if (allowServer && source !== 'local' && (!level || source === 'server')) return null;
+        const texture = source !== 'server'
+          ? await readParticleTextureReference(local.source, url.searchParams.get('name') ?? 'fog0.png', level ? [level] : courses)
+          : undefined;
+        return texture ? Response.json({ texture }) : Response.json({ error: 'The original particle sprite is unavailable.' }, { status: 404 });
+      }
       if (url.pathname === '/api/levels') {
         const localMaps = (await listLevelOrigins(local.source)).map(map => ({
           ...map,

@@ -144,6 +144,7 @@ const editor = createEffectsEditor({
   store,
   viewport,
   scheduleRebuild() {},
+  pickTexture() {},
   loadPropLevel: async () => props,
   goToProp() {},
   goToSpecialProp() {},

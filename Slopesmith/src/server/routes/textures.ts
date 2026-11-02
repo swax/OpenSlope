@@ -10,6 +10,7 @@ import {
   pathExists,
   readBytesOrNull,
   readJsonOr,
+  referenceMapData,
   READ_CONCURRENCY,
 } from '../reference-map-paths';
 import { CUSTOM_TEX_LEVEL, makeTexRef, parseTexRef, type LevelTextures, type TexTile } from '../../core/paint/textures';
@@ -23,6 +24,8 @@ import { retireName, safeDataName, storeUnderFreeName } from './safe-name';
 import { readSlopesmithExportManifest } from './export-manifest';
 import { projectAssetPath } from '../project-assets';
 import { referenceAssetRevision } from '../reference-asset-revisions';
+import { referenceParticleTexturePaths } from '../../core/effects/particle-textures';
+import { readParticleTextureReference } from '../../shared/map-particle-texture';
 
 export { CUSTOM_TEX_LEVEL };
 
@@ -127,6 +130,19 @@ export async function readTextureBytes(level: string, name: string): Promise<Buf
 
 async function tryTexture(level: string, name: string): Promise<Buffer | null> {
   try {
+    if (name.includes('/')) {
+      const parts = name.split('/');
+      if (!PNG.test(name) || parts.some(part => !/^[a-z0-9_.-]+$/i.test(part) || part === '.' || part === '..')) return null;
+      let directory = textureDir(level);
+      // Asset2 keys are case-independent; extracted folders retain names such as Textures/Particles.
+      for (const part of parts.slice(0, -1)) {
+        const entry = (await listEntries(directory)).find(entry => entry.isDirectory && entry.name.toLowerCase() === part.toLowerCase());
+        if (!entry) return null;
+        directory = join(directory, entry.name);
+      }
+      const file = (await listDir(directory)).find(file => file.toLowerCase() === parts.at(-1)!.toLowerCase());
+      return file ? readBytesOrNull(join(directory, file)) : null;
+    }
     return await readTextureBytes(level, name);
   } catch {
     return null;
@@ -164,6 +180,12 @@ export async function readReferenceTextureBytes(level: string, name: string): Pr
         /* Try the exact source when a staged copy has changed. */
       }
     }
+  }
+
+  // Nested manifest texture keys name files below Textures, rather than another logical map bank.
+  if (!version && ref.includes('/')) {
+    const nested = await tryTexture(lvl, ref);
+    if (nested) return nested;
   }
 
   if (dependency.level) {
@@ -458,8 +480,18 @@ export async function readParticleTextureBytes(name: string, preferredLevel = ''
   const levels = preferredLevel ? [safeDataName(preferredLevel), ...textured] : textured;
   // Preference order, so the requested level wins even when a later one also carries the sprite.
   for (const level of new Set(levels)) {
-    const bytes = await readBytesOrNull(join(mapsRoot(), level, 'Textures', 'Particles', fileName));
-    if (bytes) return bytes;
+    const riding = await readJsonOr<unknown>(join(mapsRoot(), level, 'RidingEffects.json'), {});
+    for (const path of referenceParticleTexturePaths(fileName, riding)) {
+      const bytes = await readBytesOrNull(join(mapsRoot(), level, 'Textures', path));
+      if (bytes) return bytes;
+    }
   }
   throw new Error(`no shared particle texture ${name}`);
+}
+
+export async function particleTextureReference(name: string, preferredLevel = ''): Promise<string> {
+  const levels = [...new Set([...(preferredLevel ? [safeDataName(preferredLevel)] : []), ...await levelsWithTextures()])];
+  const texture = await readParticleTextureReference(referenceMapData(), name, levels);
+  if (!texture) throw new Error(`no shared particle texture ${name}`);
+  return texture;
 }

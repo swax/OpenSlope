@@ -1050,15 +1050,31 @@ export async function buildExportFolder(
   // name the extraction they were copied from, so the staged sprite is the one they were authored against.
   const particleRefs = authoredParticleTextures(doc.effects);
   const fogRefs = new Set((doc.particleVolumes ?? []).map(volume => volume.texture ?? ''));
-  if (fogRefs.size > 1) throw new Error('Folder export has one fog0 slot; use the same fog sprite for all volumes.');
+  let sharedFog: Uint8Array | undefined;
+  if (fogRefs.size > 1) {
+    // Old implicit fog and newly pinned copies may name the same image differently. Compare real bytes.
+    for (const ref of fogRefs) {
+      const source = ref ? parseTexRef(ref) : undefined;
+      const bytes = source
+        ? await provider.referenceTexture(source.level, source.name)
+        : await provider.particleTexture('fog0.png', particleDonorLevel(doc.particleVolumes?.filter(volume => !volume.texture)));
+      if (sharedFog && (sharedFog.length !== bytes.length || sharedFog.some((value, index) => value !== bytes[index])))
+        throw new Error('Folder export has one fog0 slot; use the same fog sprite for all volumes.');
+      sharedFog = bytes;
+    }
+  }
   const fogRef = [...fogRefs][0];
   if (fogRef) particleRefs.fog0 = fogRef;
   for (const [name, ref] of Object.entries(particleRefs)) {
+    if (name === 'fog0' && sharedFog) continue;
     const { level, name: file } = parseTexRef(ref);
     out.push({ path: `Textures/Particles/${name}.png`, bytes: await provider.referenceTexture(level, file) });
     logLines.push(`custom particle sprite: ${ref} â†’ Textures/Particles/${name}.png`);
   }
-  if (doc.particleVolumes?.length && !particleRefs.fog0) {
+  if (sharedFog) {
+    out.push({ path: 'Textures/Particles/fog0.png', bytes: sharedFog });
+    logLines.push('copied the matching fog sprite shared by all volumes to Textures/Particles/fog0.png');
+  } else if (doc.particleVolumes?.length && !particleRefs.fog0) {
     try {
       out.push({
         path: 'Textures/Particles/fog0.png',

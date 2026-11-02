@@ -401,6 +401,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sp-fog-texture {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  width: 100%;
+  padding: 4px;
+  border: 1px solid #2b4358;
+  border-radius: 4px;
+  background: #10202e;
+  color: #cfe3f5;
+  text-align: left;
+}
+button.sp-fog-texture { cursor: pointer; }
+button.sp-fog-texture:hover { border-color: #6ee7a8; }
+button.sp-fog-texture:focus-visible { outline: 2px solid #6ee7a8; outline-offset: 2px; }
+.sp-fog-texture-image { width: 32px; height: 32px; flex: 0 0 auto; object-fit: contain; background: #071019; }
+.sp-fog-texture-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-fx-clip-actions .sp-fx-btn:first-child {
   min-width: 66px;
 }
