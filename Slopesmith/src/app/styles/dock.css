@@ -94,6 +94,17 @@ body.os-xr-editing .pl-head {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* Group member names share the toolbox width with their info badge. */
+.lil-gui .sp-prop-member .lil-widget,
+.lil-gui .sp-prop-member button {
+  min-width: 0;
+}
+.lil-gui .sp-prop-member .lil-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .lil-gui .sp-note.sp-vr-resolution-capped {
   color: #ff8d8d;
   background: #2a171b;

@@ -10,6 +10,7 @@ import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { AUTHORED_MODEL_LEVEL, createAuthoredModel } from '../src/core/doc/models';
 import type { EditDoc } from '../src/core/doc/doc-edit';
+import { referenceAssetId } from '../src/core/reference/asset-manifest';
 
 // The real mode switch clears Edit gizmos. Exercise the button in the full editor so a passing toolbox test
 // cannot hide a lost selection or transform handle when Props takes over.
@@ -267,8 +268,86 @@ try {
   await enterEdit();
   assert.deepEqual(await page.evaluate(() => (window as unknown as Observation).slopesmith.errors()), []);
   assert.deepEqual(errors, []);
+  for (const mixed of [false, true]) {
+    const longName = 'LeavesWithAnIntentionallyLongReadableName'.repeat(4);
+    const name = `PINNED_GROUP_LABELS_${mixed ? 'MIXED' : 'SAME'}`;
+    const pinned: EditDoc = {
+      ...doc,
+      name,
+      props: doc.props!.map((prop, index) =>
+        index === 0
+          ? prop
+          : {
+              ...prop,
+              model: index,
+              name: index === 1 ? 'Mdl_Trunk_20' : mixed ? longName : 'Mdl_Leaves_21',
+              level: referenceAssetId(
+                'ssx-tricky',
+                mixed && index === 2 ? 'TRICKY_ALASKA' : 'TRICKY_GARI',
+                'prop',
+                String(index),
+                String(index).repeat(64),
+              ),
+            },
+      ),
+    };
+    const response = await fetch(`${api.url}/api/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ document: pinned }),
+    });
+    assert(response.ok);
+    const { project } = (await response.json()) as { project: { id: string } };
+    await page.goto(`${vite.resolvedUrls!.local[0]}editor/${name}?project=${project.id}&agent=1`);
+    await page.waitForFunction(
+      () =>
+        !!(window as unknown as Observation).slopesmith &&
+        document.querySelector('#load-status')?.getAttribute('aria-busy') === 'false',
+      undefined,
+      { timeout: 60_000 },
+    );
+    await enterEdit();
+    await button('Assembly · 2').click();
+    await openProps();
+    const members = panel.locator('.sp-prop-member button');
+    const labels = await members.allTextContents();
+    assert.equal(labels.length, 2);
+    assert(
+      labels.every(label => !/asset[12]:/.test(label)),
+      labels.join('\n'),
+    );
+    if (mixed) {
+      assert(labels[0].includes('Trunk · Garibaldi'), labels[0]);
+      assert(labels[1].includes(`${longName} · Alaska`), labels[1]);
+      const overflow = await members.nth(1).evaluate(button => {
+        const name = button.querySelector<HTMLElement>('.lil-name')!;
+        const row = button.closest('.lil-controller')!;
+        return {
+          ellipsis: getComputedStyle(name).textOverflow,
+          clipped: name.scrollWidth > name.clientWidth,
+          contained: button.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1,
+          title: button.getAttribute('title'),
+        };
+      });
+      assert.equal(overflow.ellipsis, 'ellipsis');
+      assert(overflow.clipped && overflow.contained, JSON.stringify(overflow));
+      assert(overflow.title?.includes(longName), 'the full readable name remains available on hover');
+    } else {
+      assert.equal(labels[0], '▸ Trunk · solid');
+      assert.equal(labels[1], '▸ Leaves · solid', 'different prop hashes from one course do not add source suffixes');
+    }
+    await page.screenshot({ path: join(root, `props-group-asset2-${mixed ? 'mixed' : 'same'}.png`) });
+    await members.first().click();
+    assert.deepEqual(await selected(), { prop: 1, props: [] }, 'shortened member buttons still open the right prop');
+    assert.equal(
+      (await page.evaluate(() => (window as unknown as Observation).slopesmith.doc())).props![1].level,
+      pinned.props![1].level,
+      'display labels never change the saved asset identity',
+    );
+  }
+  assert.deepEqual(errors, []);
   console.log(
-    `EDIT PROP TOOLS PASS: compact single/group/multi selection, transforms, labels, a free light and Props handoff. Screenshots: ${root}`,
+    `EDIT PROP TOOLS PASS: compact selection, transforms, labels, free lights, Props handoff, readable asset2 group members and overflow containment. Screenshots: ${root}`,
   );
 } catch (error) {
   if (page) {

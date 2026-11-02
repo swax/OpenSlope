@@ -97,6 +97,7 @@ import { openBlenderGuide } from '../../props/blender-bridge';
 import { IMPORTED_PROP_LEVEL } from '../../../core/props/imported';
 import { addPropDeformTools } from '../components/prop-deform';
 import { isEffectTriggerProp } from '../../../core/effects/trigger-volume';
+import { mapSourceDetails } from '../../state/map-sources';
 
 /**
  * One contact & collision vocabulary for both prop inspectors. The authored panel spends it on editable
@@ -1300,6 +1301,14 @@ export function createPropTools(ctx: ToolsContext) {
   /** Whether a group has members to tell apart — otherwise its panel edits it as one prop. */
   const hasMembers = (def: GroupDef | null | undefined): def is GroupDef => !!def && groupMembers(def).length > 1;
 
+  /** Keep member names in their row; the full readable label remains available on hover. */
+  function memberButton<C extends { domElement: HTMLElement }>(controller: C): C {
+    controller.domElement.classList.add('sp-prop-member');
+    const button = controller.domElement.querySelector('button');
+    if (button) button.title = button.textContent ?? '';
+    return controller;
+  }
+
   /** Each member's button name: its browsing name, numbered where two models share one, counted where the
    *  assembly places it more than once. */
   function memberLabel(def: GroupDef, model: number): string {
@@ -1373,19 +1382,21 @@ export function createPropTools(ctx: ToolsContext) {
       const label = memberLabel(def, member.model);
       const profile = entries[String(member.model)]?.nativeCollision;
       const contact = profile ? ` · ${memberContactText[collisionProfileContactState(profile)]}` : '';
-      tip(
-        section
-          .add(
-            {
-              open: () => {
-                openMember = { key, model: member.model };
-                rebuildTools();
+      memberButton(
+        tip(
+          section
+            .add(
+              {
+                open: () => {
+                  openMember = { key, model: member.model };
+                  rebuildTools();
+                },
               },
-            },
-            'open',
-          )
-          .name(`▸ ${label}${contact}`),
-        `Open ${label}’s own contact, lighting and sounds.`,
+              'open',
+            )
+            .name(`▸ ${label}${contact}`),
+          `Open ${label}’s own contact, lighting and sounds.`,
+        ),
       );
     }
     return section;
@@ -1714,7 +1725,14 @@ export function createPropTools(ctx: ToolsContext) {
       .name(`✕ delete group (${plural(members.length)}${lights.length ? ` + ${lightsText(lights.length)}` : ''})`);
     addDeselect();
 
-    const levels = new Set(members.map(i => props[i]?.level));
+    const sources = new Map(
+      members.flatMap(index => {
+        const prop = props[index];
+        return prop ? [[prop.level, mapSourceDetails(prop.level)] as const] : [];
+      }),
+    );
+    const levels = new Set([...sources.values()].map(source => JSON.stringify([source.game, source.map])));
+    const games = new Set([...sources.values()].map(source => source.game));
     const memberSection = editSection('props-assembly-members', `Members (${members.length + lights.length})`, true);
     note(
       memberSection,
@@ -1725,22 +1743,28 @@ export function createPropTools(ctx: ToolsContext) {
     for (const index of members) {
       const prop = props[index];
       if (!prop) continue;
-      const label = `${shortPropName(prop.name)}${levels.size > 1 ? ` · ${prop.level}` : ''}`;
-      tip(
-        memberSection
-          .add({ open: () => selectAssemblyMember(index) }, 'open')
-          .name(`▸ ${label} · ${memberSummary(prop)}`),
-        `Open ${shortPropName(prop.name)}’s own panel.`,
+      const source = sources.get(prop.level)!;
+      const map = games.size > 1 ? `${source.game} · ${source.map}` : source.map;
+      const label = `${shortPropName(prop.name)}${levels.size > 1 ? ` · ${map}` : ''}`;
+      memberButton(
+        tip(
+          memberSection
+            .add({ open: () => selectAssemblyMember(index) }, 'open')
+            .name(`▸ ${label} · ${memberSummary(prop)}`),
+          `Open ${shortPropName(prop.name)}’s own panel.`,
+        ),
       );
     }
     for (const light of lights) {
       const lightId = light.id;
       if (!lightId) continue;
-      tip(
-        memberSection
-          .add({ open: () => selectAssemblyLight(lightId) }, 'open')
-          .name(`▸ ${lightLabel(light)} · ${light.kind} light`),
-        `Open ${lightLabel(light)}’s own panel.`,
+      memberButton(
+        tip(
+          memberSection
+            .add({ open: () => selectAssemblyLight(lightId) }, 'open')
+            .name(`▸ ${lightLabel(light)} · ${light.kind} light`),
+          `Open ${lightLabel(light)}’s own panel.`,
+        ),
       );
     }
     tip(
