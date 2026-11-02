@@ -64,6 +64,17 @@ const concurrent = createAssetResolver({
 const pair = await Promise.all([concurrent.fetch('same'), concurrent.fetch('same')]);
 assert.deepEqual(await Promise.all(pair.map(response => response.text())), ['shared', 'shared']);
 assert.equal(reads, 1, 'concurrent callers share work but receive independent response bodies');
+let largeReads = 0;
+const largeMountain = createAssetResolver({
+  key: String,
+  local: async () => {
+    largeReads++;
+    return new Response('small tile');
+  },
+  remote: options.remote,
+});
+for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 320; i++) await largeMountain.fetch(`tile-${i}`);
+assert.equal(largeReads, 320, 'a mountain with more than 256 small assets stays in memory within the byte budget');
 let finishOld!: () => void,
   raceReads = 0;
 const race = createAssetResolver({

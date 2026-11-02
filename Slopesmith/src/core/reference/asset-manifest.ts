@@ -1,4 +1,5 @@
 import type { AssetVersion } from './asset-version';
+import type { PropsPayload } from './props';
 
 export type ReferenceAssetKind = NonNullable<AssetVersion['kind']>;
 export interface ReferenceAsset extends AssetVersion {
@@ -27,6 +28,23 @@ export function manifestAsset(
     asset =>
       asset.kind === kind && (kind === 'texture' ? asset.key.toLowerCase() === key.toLowerCase() : asset.key === key),
   );
+}
+
+/** A placed asset needs its own reusable definition, without the donor map's models and placements. */
+export function propAssetPayload(payload: PropsPayload, asset: AssetVersion): PropsPayload {
+  if (asset.kind !== 'prop' && asset.kind !== 'body') return payload;
+  const models = asset.kind === 'prop' ? payload.models.filter(model => String(model.id) === asset.key) : [];
+  return {
+    ...payload,
+    models,
+    materials: payload.materials.filter(material =>
+      models.some(model => model.subs.some(sub => sub.mat === material.id)),
+    ),
+    instances: [],
+    // Models carry their reusable collision inline; this table belongs to donor placements.
+    collisionMeshes: [],
+    physicsBodies: asset.kind === 'body' ? payload.physicsBodies?.filter(body => String(body.id) === asset.key) : [],
+  };
 }
 
 export function assetRequestCovered(version: AssetVersion, path: string, query: URLSearchParams): boolean {

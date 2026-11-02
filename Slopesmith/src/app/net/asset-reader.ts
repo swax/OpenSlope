@@ -1,6 +1,6 @@
 import { assetMapKey, parseAssetVersion, type AssetVersion } from '../../core/reference/asset-version';
 import type { AssetManifest, ReferenceAsset, ReferenceAssetKind } from '../../core/reference/asset-manifest';
-import { assetRequestCovered, manifestAsset } from '../../core/reference/asset-manifest';
+import { assetRequestCovered, manifestAsset, propAssetPayload } from '../../core/reference/asset-manifest';
 import type { MapSourceChoice } from '../../core/reference/map-game';
 import { mapSourceId, splitMapSource } from '../../core/reference/map-source';
 import type { PropsPayload } from '../../core/reference/props';
@@ -73,6 +73,21 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
     clear() {
       catalogue = undefined;
       metadata.clear();
+    },
+    /** Crowd animation belongs to the shared frame bank, not the model's ordinary material closure. */
+    async crowdFrames(id: string, names: readonly string[]): Promise<string[]> {
+      const expected = parseAssetVersion(id);
+      if (expected?.kind !== 'prop' || !names.length) return [...names];
+      for (const location of await locations(expected)) {
+        try {
+          const manifest = (await descriptor(location, true)) as AssetManifest;
+          if (!manifest.assets.some(asset => asset.id === id)) continue;
+          return names.map(name => manifestAsset(manifest, 'texture', name)?.id ?? name);
+        } catch {
+          /* Keep ordinary missing-frame handling if this source is unavailable. */
+        }
+      }
+      return [...names];
     },
     async libraryBank(id: string): Promise<string> {
       const expected = parseAssetVersion(id);
@@ -185,20 +200,8 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
                 : payload.physicsBodies?.find(body => String(body.id) === asset.key);
             if (!definition || (await assetDefinitionHash(definition, {})) !== asset.payloadHash)
               throw new Error('Prop bytes differ from the manifest');
-            const models = asset.kind === 'prop' ? payload.models.filter(model => String(model.id) === asset.key) : [];
-            const scoped = {
-              ...payload,
-              level: id,
-              models,
-              materials: payload.materials.filter(material =>
-                models.some(model => model.subs.some(sub => sub.mat === material.id)),
-              ),
-              instances: [],
-              physicsBodies:
-                asset.kind === 'body' ? payload.physicsBodies?.filter(body => String(body.id) === asset.key) : [],
-            };
             bind(id, location);
-            return Response.json(scoped);
+            return Response.json({ ...propAssetPayload(payload, asset), level: id });
           }
           bind(id, location);
           return response;

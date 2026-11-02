@@ -19,10 +19,28 @@ import type { AssetManifest } from '../core/reference/asset-manifest';
 import { assetRequestCovered } from '../core/reference/asset-manifest';
 import { readLevelProps } from './routes/props';
 const manifests = new Map<string, Promise<AssetManifest>>();
+const manifestReads = new Map<string, Promise<AssetManifest>>();
 
 export async function serverMapAssetManifest(name: string): Promise<AssetManifest> {
   const level = await resolveServerMapName(name);
   if (!level || safeDataName(level) !== level) throw new Error('Invalid asset map name.');
+  const key = `${mapsRoot()}/${level}`;
+  let reading = manifestReads.get(key);
+  if (!reading) {
+    // A page can request hundreds of assets from one bank at once. Share the freshness scan as well
+    // as the manifest build, rather than walking and stat-ing that bank once per waiting texture.
+    reading = readServerManifest(level);
+    manifestReads.set(key, reading);
+    void reading
+      .finally(() => {
+        if (manifestReads.get(key) === reading) manifestReads.delete(key);
+      })
+      .catch(() => {});
+  }
+  return reading;
+}
+
+async function readServerManifest(level: string): Promise<AssetManifest> {
   const files = await assetBankFiles(referenceMapData(), level);
   const signature = await serverAssetSignature(level, files);
   const key = `${mapsRoot()}/${level}/${await sha256(new TextEncoder().encode(signature))}`;

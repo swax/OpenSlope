@@ -3,6 +3,7 @@ import { beforeAppUpdate } from '../offline';
 import { defaultMountain } from '../../core/doc/mountain';
 import { authoredModelLevelProps } from '../../core/doc/models';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
+import { resolvePropCrowdFrames } from '../net/asset-versions';
 import { decodeReferenceEffects } from '../../core/reference/effects';
 import { buildReferenceMeshProgressive } from '../../core/reference/terrain';
 import { Viewport } from '../viewport/viewport';
@@ -217,7 +218,9 @@ export async function preparePublicPlayer(
       viewport.setReferenceAiPaths(data.aiPaths);
       viewport.setReferenceLaps(data.laps);
       viewport.setReferenceShowoffSeconds(data.showoffSeconds);
-      const props = decodeProps(await json<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`));
+      const props = decodeProps(
+        await resolvePropCrowdFrames(await json<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`)),
+      );
       viewport.registerPropModels(props);
       viewport.setReferenceProps(props);
       await installServerSky(viewport, level);
@@ -256,6 +259,7 @@ export async function preparePublicPlayer(
           ? await fetchJson<PropsPayload>(`/api/props?level=${encodeURIComponent(level)}`)
           : await buildLevelPropsUncached(local.source, splitMapSource(level).name);
       payload.level = level;
+      await resolvePropCrowdFrames(payload);
       viewport.registerPropModels(decodeProps(payload));
       installed.add(level);
     };

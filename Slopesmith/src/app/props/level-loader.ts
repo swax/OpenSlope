@@ -2,6 +2,7 @@ import { decodeProps, type LevelProps, type PropsPayload } from '../../core/refe
 import { fetchText, type DownloadProgress } from '../net/fetch-json';
 import { runDiagnosticPhase } from '../net/diagnostics';
 import { beginPropLoad, reportPropModels } from '../state/asset-loads';
+import { resolvePropCrowdFrames } from '../net/asset-versions';
 
 export type PropLoadProgress =
   | ({ phase: 'download' } & DownloadProgress)
@@ -79,6 +80,7 @@ export function createPropLevelLoader(deps: {
         const payload = runDiagnosticPhase('props', `${level}:decode-json`, () => JSON.parse(text) as PropsPayload);
         if (payload.error) throw new Error(payload.error);
         payload.level = level;
+        await resolvePropCrowdFrames(payload);
         const detail = `${payload.models.length} models · ${payload.instances.length} instances`;
         const props = runDiagnosticPhase('props', `${level}:decode`, () => decodeProps(payload), detail);
         const counts = { models: props.models.length, instances: props.instances.length };

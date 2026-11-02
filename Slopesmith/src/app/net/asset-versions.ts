@@ -2,6 +2,7 @@ import { parseAssetVersion, type AssetVersion } from '../../core/reference/asset
 import { type MapSourceChoice } from '../../core/reference/map-game';
 import { createAssetReader } from './asset-reader';
 import type { ReferenceAssetKind } from '../../core/reference/asset-manifest';
+import type { PropsPayload } from '../../core/reference/props';
 import { findMapChoice, mapSourceId, splitMapSource, type MapSource } from '../../core/reference/map-source';
 
 type Transport = (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -171,6 +172,13 @@ export const referenceLibraryBank = (level: string) => reader.libraryBank(level)
 
 export function fetchVersionedAsset(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return reader.fetch(input, init);
+}
+
+/** Also runs on persisted payloads from earlier builds, which still carry bare crowd filenames. */
+export async function resolvePropCrowdFrames(payload: PropsPayload): Promise<PropsPayload> {
+  if (parseAssetVersion(payload.level)?.kind === 'prop' && payload.crowdFrames?.length)
+    payload.crowdFrames = await reader.crowdFrames(payload.level, payload.crowdFrames);
+  return payload;
 }
 
 export const availableAssetMaps = () => reader.maps();

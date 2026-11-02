@@ -44,7 +44,7 @@ export function createAssetResolver(options: AssetResolverOptions) {
     if (response.status !== 200) return response;
     const bytes = await response.clone().arrayBuffer();
     if (requestedGeneration === generation && bytes.byteLength <= limit) {
-      while ((size + bytes.byteLength > limit || memory.size >= 256) && memory.size) {
+      while ((size + bytes.byteLength > limit || memory.size >= 4096) && memory.size) {
         const oldest = memory.keys().next().value!;
         size -= memory.get(oldest)!.bytes.byteLength;
         memory.delete(oldest);

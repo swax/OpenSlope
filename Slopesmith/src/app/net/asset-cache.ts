@@ -71,37 +71,56 @@ export async function validateReferenceAssetResponse(input: RequestInfo | URL, r
 /** Browser storage is optional. Account/policy scopes keep private cache entries out of public playback. */
 export function browserAssetCache(scope: () => Promise<string>): AssetCache {
   let writing: Promise<void> = Promise.resolve();
+  const stores = new Map<string, Promise<{ cache: Cache; sizes?: Map<string, number>; total: number }>>();
   async function open() {
     if (typeof caches === 'undefined') return undefined;
-    return caches.open(`slopesmith.reference-assets.v1.${encodeURIComponent(await scope())}`);
+    const name = `slopesmith.reference-assets.v1.${encodeURIComponent(await scope())}`;
+    let store = stores.get(name);
+    if (!store) {
+      store = caches.open(name).then(cache => ({ cache, total: 0 }));
+      stores.set(name, store);
+      void store.catch(() => stores.delete(name));
+    }
+    return store;
   }
   return {
     async get(key) {
-      return (await open())?.match(key);
+      return (await open())?.cache.match(key);
     },
     put(key, response, bytes) {
       const work = writing.then(async () => {
-        const cache = await open();
+        const store = await open();
         const limit = 128 * 1024 * 1024;
-        if (!cache || bytes > limit) return;
-        const entries = (await cache.keys()).filter(entry => entry.url !== key);
-        const sizes = await Promise.all(
-          entries.map(async entry =>
-            Number((await cache.match(entry))?.headers.get('x-slopesmith-cache-size') ?? limit),
-          ),
-        );
-        let total = bytes + sizes.reduce((sum, size) => sum + size, 0),
-          count = entries.length + 1;
-        for (let i = 0; i < entries.length && (total > limit || count > 256); i++) {
-          await cache.delete(entries[i]);
-          total -= sizes[i];
-          count--;
+        if (!store || bytes > limit) return;
+        const { cache } = store;
+        // Read existing sizes once, rather than reopening every stored response for each new tile.
+        if (!store.sizes) {
+          store.sizes = new Map(
+            await Promise.all(
+              (await cache.keys()).map(async entry => {
+                const size = Number((await cache.match(entry))?.headers.get('x-slopesmith-cache-size') ?? limit);
+                return [entry.url, Number.isFinite(size) && size >= 0 ? size : limit] as const;
+              }),
+            ),
+          );
+          store.total = [...store.sizes.values()].reduce((sum, size) => sum + size, 0);
+        }
+        const sizes = store.sizes;
+        let total = store.total - (sizes.get(key) ?? 0) + bytes;
+        sizes.delete(key);
+        for (const [oldest, size] of sizes) {
+          if (total <= limit && sizes.size < 4096) break;
+          await cache.delete(oldest);
+          sizes.delete(oldest);
+          total -= size;
         }
         const headers = new Headers(response.headers);
         headers.set('x-slopesmith-cache-size', String(bytes));
         await cache.put(key, new Response(response.body, { status: response.status, headers }));
+        sizes.set(key, bytes);
+        store.total = total;
       });
-      writing = work.catch(() => {});
+      writing = work.catch(() => stores.clear());
       return work;
     },
   };

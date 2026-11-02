@@ -4,6 +4,8 @@ import { readCrowdFrames } from '../src/shared/map-crowd';
 import { buildLevelPropsUncached } from '../src/shared/map-props';
 import { decodeProps } from '../src/core/reference/props';
 import type { MapDataSource } from '../src/shared/map-data';
+import { createAssetReader } from '../src/app/net/asset-reader';
+import { referenceAssetId, type AssetManifest } from '../src/core/reference/asset-manifest';
 
 const native = Array.from({ length: 16 }, (_, i) => `crowd-cd${String(i).padStart(2, '0')}.png`);
 const legacy = Array.from({ length: 16 }, (_, i) => `cd${i}.png`);
@@ -63,4 +65,35 @@ for (const profile of [
   files.set('LOCAL/Crowd.json', profile);
   await assert.rejects(readCrowdFrames(source, 'LOCAL'), /Invalid crowd frame profile/);
 }
+const propId = referenceAssetId('ssx-tricky', 'TRICKY_MERQUER', 'prop', '48', 'a'.repeat(64));
+const crowdIds = native.map((name, i) =>
+  referenceAssetId('ssx-tricky', 'TRICKY_MERQUER', 'texture', name, i.toString(16).padStart(64, '0')),
+);
+const manifest: AssetManifest = {
+  schema: 'openslope-assets/v1',
+  game: 'ssx-tricky',
+  map: 'TRICKY_MERQUER',
+  assets: [propId, ...crowdIds].map((id, i) => ({
+    id,
+    game: 'ssx-tricky',
+    map: 'TRICKY_MERQUER',
+    kind: i ? 'texture' : 'prop',
+    key: i ? native[i - 1] : '48',
+    hash: i ? (i - 1).toString(16).padStart(64, '0') : 'a'.repeat(64),
+    files: {},
+  })),
+};
+const reader = createAssetReader(async input => {
+  const url = new URL(String(input), 'http://localhost');
+  if (url.pathname === '/api/levels')
+    return Response.json({ levels: ['server:MERQUER'], maps: [{ name: 'server:MERQUER', course: 'TRICKY_MERQUER' }] });
+  if (url.pathname === '/api/map-asset-manifest') return Response.json(manifest);
+  throw new Error('Crowd resolution must not download prop geometry or image bytes.');
+});
+assert.deepEqual(
+  await reader.crowdFrames(propId, native),
+  crowdIds,
+  'old prop IDs resolve frames through independent texture identities',
+);
+assert.deepEqual(await reader.crowdFrames(propId, crowdIds), crowdIds, 'already resolved frames remain stable');
 console.log('NATIVE CROWD TEXTURES PASS: local payload, profile order, legacy banks and invalid profiles.');

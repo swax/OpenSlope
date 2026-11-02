@@ -18,6 +18,7 @@ import {
   nativeArtSource,
   readLevelProps,
   readLevelPropsJsonWithCacheInfo,
+  readLevelPropsWithCacheInfo,
   readMaterialTables,
   readPhysicsBodySpheres,
 } from '../routes/props';
@@ -25,6 +26,8 @@ import { adoptRecordArt } from '../props/adopt-art';
 import { responseCache } from '../response-cache';
 import { invalidateProjectLibrary, readJsonBody, RequestBodyTooLargeError, type ApiHandler } from './common';
 import { projectAssetCacheKey } from '../project-assets';
+import { parseAssetVersion } from '../../core/reference/asset-version';
+import { propAssetPayload } from '../../core/reference/asset-manifest';
 
 const PROP_IMPORT_LIMIT = 96 * 1024 * 1024;
 
@@ -172,6 +175,12 @@ export const propRoutes: Record<string, ApiHandler> = {
         });
       } else {
         await responseCache.jsonBytes(req, res, `props:${level}`, async () => {
+          const asset = parseAssetVersion(url.searchParams.get('assetVersion') ?? '');
+          if (asset?.kind === 'prop' || asset?.kind === 'body') {
+            const generated = await readLevelPropsWithCacheInfo(level);
+            res.setHeader('x-slopesmith-persistent-cache', generated.cache);
+            return Buffer.from(JSON.stringify(propAssetPayload(generated.payload, asset)));
+          }
           const generated = await readLevelPropsJsonWithCacheInfo(level);
           res.setHeader('x-slopesmith-persistent-cache', generated.cache);
           return generated.json;

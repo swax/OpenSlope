@@ -28,15 +28,23 @@ const bank = join(root, 'Maps', 'TRICKY_GARI');
 mkdirSync(join(bank, 'Textures'), { recursive: true });
 mkdirSync(join(bank, 'Meshes'));
 writeFileSync(join(bank, 'Meshes/tree.obj'), 'v 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n');
+writeFileSync(join(bank, 'Meshes/other.obj'), 'v 0 0 0\nv 200 0 0\nv 0 200 0\nf 1 2 3\n');
 for (const [file, value] of Object.entries({
   'Import.json': { Game: 'ssx-tricky', DisplayName: 'Garibaldi' },
   'Models.json': {
     Models: [
       { ModelName: 'Tree', ModelObjects: [{ ParentID: -1, MeshData: [{ MeshPath: 'tree.obj', MaterialID: 0 }] }] },
+      {
+        ModelName: 'Other tree',
+        ModelObjects: [{ ParentID: -1, MeshData: [{ MeshPath: 'other.obj', MaterialID: 0 }] }],
+      },
     ],
   },
   'Instances.json': {
-    Instances: [{ ModelID: 0, InstanceName: 'Tree', Location: [0, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] }],
+    Instances: [
+      { ModelID: 0, InstanceName: 'Tree', Location: [0, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] },
+      { ModelID: 1, InstanceName: 'Other tree', Location: [100, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] },
+    ],
   },
   'Materials.json': { Materials: [{ TexturePath: 'tile.png' }] },
   'Physics.json': { Bodies: [], Note: 'legacy collision source' },
@@ -69,7 +77,15 @@ try {
   assert(readFileSync(join(root, 'individual-export/Slopesmith.json'), 'utf8').includes(individualTile.id));
   const individualResponse = await get(`/api/texture?level=${encodeURIComponent(individualTile.id)}&name=tile.png`);
   assert.equal(individualResponse.status, 200, individualResponse.ok ? '' : await individualResponse.text());
-  assert.equal((await get(`/api/props?level=${encodeURIComponent(individualProp.id)}`)).status, 200);
+  const individualPropResponse = await get(`/api/props?level=${encodeURIComponent(individualProp.id)}`);
+  assert.equal(individualPropResponse.status, 200);
+  const individualPayload = await individualPropResponse.json();
+  assert.deepEqual(
+    individualPayload.models.map((model: { id: number }) => model.id),
+    [0],
+  );
+  assert.deepEqual(individualPayload.instances, [], 'individual props never transfer source-map placements');
+  assert.equal((await (await get('/api/props?level=TRICKY_GARI')).json()).models.length, 2);
   assert.equal((await get(`/api/groups?level=${encodeURIComponent(individualTile.id)}`)).status, 404);
   const wrapper = join(root, 'Maps/WRAPPER/Textures');
   mkdirSync(wrapper, { recursive: true });

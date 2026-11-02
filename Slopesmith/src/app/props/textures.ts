@@ -16,7 +16,7 @@ import {
   type TextureFlipPlayback,
   type UvScrollPlayback,
 } from '../../core/effects/world-effects';
-import { CUSTOM_TEX_LEVEL, makeTexRef } from '../../core/paint/textures';
+import { CUSTOM_TEX_LEVEL, makeTexRef, resolvePropTex } from '../../core/paint/textures';
 import type { PropInstance } from '../../core/reference/props';
 import type { PropAlphaMode } from '../../core/reference/props';
 import { textureUrl } from '../net/asset-paths';
@@ -808,9 +808,10 @@ export class PropTextureCache {
           settle = resolve;
         }),
       );
+      const source = resolvePropTex(level, file);
       t = loadAssetTexture(
         this.loader,
-        textureUrl(level, file),
+        textureUrl(source.level, source.name!),
         loaded => {
           this.recordAlpha(level, file, loaded.image);
           settle();
