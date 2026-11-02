@@ -49,8 +49,11 @@ const STORAGE_KEY = 'slopesmith:diagnostics:v1';
 const MAX_REQUESTS = 240,
   MAX_PHASES = 240,
   MAX_STALLS = 120;
+const PERSIST_INTERVAL_MS = 250;
 const page = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 let sequence = 0;
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+let persistDirty = false;
 
 const state: DiagnosticSnapshot = { requests: [], phases: [], stalls: [] };
 
@@ -72,13 +75,26 @@ function loadPrevious() {
   }
 }
 
-function persist() {
-  if (!browserAvailable()) return;
+function flushDiagnostics() {
+  if (persistTimer !== undefined) {
+    clearTimeout(persistTimer);
+    persistTimer = undefined;
+  }
+  if (!persistDirty || !browserAvailable()) return;
+  persistDirty = false;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* Diagnostics are best-effort under private browsing/storage limits. */
   }
+}
+
+/** Checkpoint bursts together without postponing a pending request indefinitely under continuous activity. */
+function persist(immediate = false) {
+  if (!browserAvailable()) return;
+  persistDirty = true;
+  if (immediate) flushDiagnostics();
+  else persistTimer ??= setTimeout(flushDiagnostics, PERSIST_INTERVAL_MS);
 }
 
 function trim<T>(items: T[], max: number) {
@@ -100,9 +116,9 @@ export interface RequestDiagnosticTrace {
   fail(error: unknown): void;
 }
 
-/** Begin a browser request record before fetch() is called. It remains `pending` in sessionStorage while the
- * request is in flight, so a reload after a hang still says whether dispatch happened and whether headers ever
- * arrived. `headersMs` is queue + server + first-byte time; `bodyMs` is transfer + JSON parsing. */
+/** Begin a browser request record before fetch() is called. Pending requests are checkpointed during loading
+ * and flushed when leaving the page, so a reload after a hang can identify dispatch and received headers.
+ * `headersMs` is queue + server + first-byte time; `bodyMs` is transfer + JSON parsing. */
 export function beginRequestDiagnostic(input: RequestInfo | URL, init?: RequestInit): RequestDiagnosticTrace {
   const started = performance.now();
   let headersAt: number | null = null;
@@ -127,7 +143,7 @@ export function beginRequestDiagnostic(input: RequestInfo | URL, init?: RequestI
     entry.totalMs = ended - started;
     if (headersAt !== null) entry.bodyMs = ended - headersAt;
     if (error !== undefined) entry.error = error instanceof Error ? error.message : String(error);
-    persist();
+    persist(status === 'error');
     if ((entry.totalMs ?? 0) >= 1000 || status === 'error') {
       const cache = entry.cache ? ` cache=${entry.cache}` : '';
       console.warn(
@@ -190,7 +206,7 @@ export function beginDiagnosticPhase(category: string, name: string, detail?: st
     entry.durationMs = performance.now() - started;
     if (nextDetail) entry.detail = nextDetail;
     if (error !== undefined) entry.error = error instanceof Error ? error.message : String(error);
-    persist();
+    persist(status === 'error');
     if ((entry.durationMs ?? 0) >= 500 || status === 'error') {
       console.warn(`[phase] ${category} ${name} ${status} ${(entry.durationMs ?? 0).toFixed(1)}ms`, entry);
     }
@@ -250,7 +266,7 @@ export function clearDiagnostics() {
   state.requests.length = 0;
   state.phases.length = 0;
   state.stalls.length = 0;
-  persist();
+  persist(true);
 }
 
 function printDiagnostics() {
@@ -312,6 +328,13 @@ loadPrevious();
 
 if (typeof window !== 'undefined') {
   window.slopesmithDiagnostics = { snapshot: diagnosticsSnapshot, print: printDiagnostics, clear: clearDiagnostics };
+  if (browserAvailable()) {
+    window.addEventListener('pagehide', flushDiagnostics);
+    if (typeof document !== 'undefined')
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushDiagnostics();
+      });
+  }
   const supported =
     typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask');
   if (supported) {
