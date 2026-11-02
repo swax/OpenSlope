@@ -105,6 +105,8 @@ public class SlopesmithCompatibilityTests
     [InlineData("TRICKY_GARI", true)]
     [InlineData("gari", true)]
     [InlineData("versioned", true)]
+    [InlineData("individual-body", true)]
+    [InlineData("individual-prop", true)]
     [InlineData("MESA", false)]
     [InlineData("other-game", false)]
     [InlineData("bad-version", false)]
@@ -115,6 +117,8 @@ public class SlopesmithCompatibilityTests
         string sourceLevel = identity switch
         {
             "versioned" => Version,
+            "individual-body" => $"asset2:ssx-tricky:TRICKY_GARI:body:9:{Hash}",
+            "individual-prop" => $"asset2:ssx-tricky:TRICKY_GARI:prop:0:{Hash}",
             "other-game" => $"asset1:ssx-3:TRICKY_GARI:{Hash}",
             "bad-version" => "asset1:ssx-tricky:TRICKY_GARI:invalid",
             _ => identity,

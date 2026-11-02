@@ -16,12 +16,16 @@ internal static class TrickyAssetIdentity
     public static bool SameCourse(string source, string target)
     {
         if (!TryLegacyCourse(target, out string targetCourse)) return false;
-        if (source.StartsWith("asset1:", StringComparison.Ordinal))
+        if (source.StartsWith("asset1:", StringComparison.Ordinal) || source.StartsWith("asset2:", StringComparison.Ordinal))
         {
             string[] parts = source.Split(':');
-            if (parts.Length != 4 || parts[3].Length != 64
-                || !parts[3].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')
+            bool individual = parts[0] == "asset2";
+            int hashIndex = individual ? 5 : 3;
+            if (parts.Length != (individual ? 6 : 4) || parts[hashIndex].Length != 64
+                || !parts[hashIndex].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')
                 || Uri.UnescapeDataString(parts[1]) != "ssx-tricky") return false;
+            if (individual && (parts[3] is not ("prop" or "body")
+                || !int.TryParse(Uri.UnescapeDataString(parts[4]), out int key) || key < 0)) return false;
             source = Uri.UnescapeDataString(parts[2]);
         }
         return TryLegacyCourse(source, out string sourceCourse) && sourceCourse == targetCourse;
