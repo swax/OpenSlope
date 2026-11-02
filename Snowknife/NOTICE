@@ -140,8 +140,9 @@ setting one course's sky still leaves the other twelve visually unchanged.
 --------------------------------------------------------------------------------
 THIRD-PARTY COMPONENTS
 
-This program links, but does not redistribute, the community format library it
-wraps. It is consumed as a git submodule under its own license:
+Source builds consume the community format library as a git submodule under
+its own license. Binary release packages include its compiled library, license
+notice, and a matching source archive containing the pinned submodule:
 
     SSX-Library — GlitcherOG, Erickson400, jaime0907
     Licensed GPL-3.0. https://github.com/GlitcherOG/SSX-Library
@@ -156,15 +157,21 @@ that notice beside binary output as licenses/SharpTriStrip-LICENSE.txt:
     Original NvTriStrip Library Algorithm — Copyright (c) NVidia
     Licensed BSD-3-Clause. https://github.com/MaxHwoy/SharpTriStrip
 
-Build-time NuGet dependencies, retrieved from nuget.org and not redistributed
-here:
+NuGet dependencies are retrieved from nuget.org for source builds. Self-contained
+binary packages redistribute their runtime assemblies with license notices and
+package/source metadata under licenses/NuGet/ and dependencies.json:
 
     DiscUtils.Iso9660 — MIT License
-    JsonSchema.Net    — MIT License
+    JsonSchema.Net    — MIT source license and packaged maintenance-fee terms
     Newtonsoft.Json   — MIT License
 
-The SSX-Library submodule brings its own build-time packages, likewise from
-nuget.org and not redistributed here: BCnEncoder.Net, SharpGLTF, SharpZipLib
+The JSON-schema packages also depend on Json.More.Net, JsonPointer.Net and
+Humanizer.Core; their original license and maintenance-fee notices are included
+with the package metadata. Self-contained downloads bundle Microsoft.NETCore.App
+with its license and third-party notices under licenses/dotnet-runtime/.
+
+The SSX-Library submodule brings its own packages from nuget.org: BCnEncoder.Net,
+CommunityToolkit.HighPerformance, SharpGLTF, SharpZipLib
 and System.IO.Hashing (MIT), and SixLabors.ImageSharp with SixLabors.Fonts,
 ImageSharp.Drawing and PolygonClipper under the Six Labors Split License, which
 extends its Apache-2.0 terms to open-source consumers such as this program. A

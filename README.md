@@ -28,6 +28,8 @@
 
 [Download Native Player for Windows or Quest](https://github.com/swax/OpenSlope/releases/latest)
 
+[Download Snowknife CLI for Windows, Linux or macOS](Snowknife/README.md#download-and-run)
+
 ## What is OpenSlope?
 
 OpenSlope is a toolkit for building, converting, and riding snowboard courses. Its browser editor,

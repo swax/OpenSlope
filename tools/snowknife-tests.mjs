@@ -12,12 +12,23 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pythonCommand } from './python.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const resultsDir = join(root, 'TestResults');
 const trxPath = join(resultsDir, 'snowknife.trx');
 const full = process.argv.includes('--full');
 let coverageReportFailure = null;
+
+const packagingTests = spawnSync(
+  pythonCommand(),
+  ['-m', 'unittest', 'discover', '-s', 'tools', '-p', 'test_snowknife_release.py'],
+  { cwd: root, stdio: 'inherit', timeout: 60_000, windowsHide: true },
+);
+if (packagingTests.error || packagingTests.status !== 0) {
+  console.error(`Snowknife release packaging checks failed: ${packagingTests.error?.message ?? packagingTests.status}`);
+  process.exit(1);
+}
 
 // Each run reports on its own output, so start from an empty directory - otherwise "the newest coverage
 // report" is whatever a previous run happened to leave behind.

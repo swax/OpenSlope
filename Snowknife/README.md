@@ -11,7 +11,29 @@ the pipeline depends on decoding fixes and additions that are not upstream: Tric
 corrections, texture and palette handling, HUD-text SSF opcodes, variable-size external sounds, and
 repack-time texture-slot reuse. It merges upstream periodically, and its README lists the changes.
 
-## Build and test
+## Download and run
+
+Prebuilt Snowknife packages are attached to [Snowknife releases](https://github.com/swax/OpenSlope/releases?q=snowknife-v).
+Choose Windows x64, Linux x64, macOS Intel (`osx-x64`), or macOS Apple Silicon (`osx-arm64`).
+Extract the **entire** archive and open a terminal in that folder:
+
+```powershell
+.\snowknife.exe --help         # Windows PowerShell
+```
+
+```sh
+./snowknife --help             # Linux / macOS
+```
+
+The .NET runtime is included, so no SDK, runtime installation, source checkout or compilation is needed.
+Keep `Patches/`, `licenses/` and the accompanying files beside the executable. For a downloaded
+Slopesmith `.snowknife.zip`, follow [REPACK.md](REPACK.md). macOS packages are not notarized.
+
+Maintainers can build downloadable workflow artifacts or create a draft prerelease through
+[Snowknife release packages](https://github.com/swax/OpenSlope/actions/workflows/snowknife-release.yml).
+See [Releasing Snowknife](docs/releases.md) for versioning, package validation and publishing.
+
+## Build and test from source
 
 Requires the .NET 10 SDK selected by [`global.json`](../global.json) and the repository submodule.
 Run these commands from the **OpenSlope repository root**. `dotnet --version` must succeed there;
@@ -77,6 +99,10 @@ snowknife unity      Maps\<LEVEL> C:\MyWorld\Assets\OpenSlope\Maps\<LEVEL>
 
 Slopesmith exports the same portable map contract directly, so authored courses begin at `gltf`.
 To send an authored map back to PCSX2 or PS2 hardware, follow [REPACK.md](REPACK.md).
+The same `repack` command accepts `--mod-manager` to package an SSX Mod Manager ZIP for Tricky NTSC-U PS2
+from the standard map export, without building an output ISO. Choose Slopesmith's **Export… → Snowknife**
+option and pass its `.snowknife.zip` download directly to `repack` or `texture-plan`; no extraction is needed.
+`repack-many` accepts these archives in its `Export` fields too. Existing map-directory inputs still work.
 
 Snowknife leaves source map folders untouched when building or staging, so each stage can be rerun
 independently. The [bundle pipeline](docs/034-bundle-pipeline.md) documents the data boundary and

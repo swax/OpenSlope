@@ -17,6 +17,7 @@ Gaps are intentional, and other components may reuse the same identifiers in the
 - [Effects interchange contract](contracts/effects-interchange.md)
 - [Repack technical reference](repack-technical-reference.md)
 - [Testing Snowknife](testing.md)
+- [Releasing Snowknife](releases.md) — prebuilt downloads, matching source and GitHub Actions packaging.
 
 Unity import and runtime behavior are documented in
 [Unity](../../Unity/docs/README.md); interactive authoring behavior is documented in

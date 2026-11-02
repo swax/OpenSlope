@@ -32,6 +32,9 @@ const SNOWKNIFE = {
     'package.json',
     'package-lock.json',
     'tools/snowknife-tests.mjs',
+    'tools/snowknife-release.py',
+    'tools/test_snowknife_release.py',
+    'Snowknife/VERSION.txt',
     'tools/affected-suites.mjs',
   ],
 };

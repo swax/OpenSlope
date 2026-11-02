@@ -1,0 +1,131 @@
+name: Snowknife release packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_draft:
+        description: Create a draft GitHub prerelease with all checked downloads
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snowknife-release
+  cancel-in-progress: false
+
+jobs:
+  source:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Audit release sources and packaging
+        run: |
+          python tools/hygiene.py
+          python -m unittest discover -s tools -p 'test_snowknife_release.py'
+      - name: Package matching source, including the format library
+        id: metadata
+        run: |
+          python tools/snowknife-release.py source
+          echo "version=$(cat Snowknife/VERSION.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snowknife-source
+          path: temp/snowknife-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  packages:
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: win-x64
+            runner: windows-2022
+          - runtime: linux-x64
+            runner: ubuntu-22.04
+          - runtime: osx-x64
+            runner: macos-15-intel
+          - runtime: osx-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Test Snowknife with synthetic fixtures
+        run: dotnet test Snowknife/Snowknife.Tests/Snowknife.Tests.csproj -c Debug --filter "Category!=EndToEnd"
+      - name: Publish and test the extracted download without installed dotnet
+        run: python tools/snowknife-release.py package --runtime ${{ matrix.runtime }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snowknife-${{ matrix.runtime }}
+          path: temp/snowknife-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: inputs.create_draft
+    needs: [source, packages]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: snowknife-*
+          merge-multiple: true
+          path: release-files
+      - name: Verify all downloads and create a draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release-files
+          for target in win-x64.zip linux-x64.tar.gz osx-x64.tar.gz osx-arm64.tar.gz source.tar.gz; do
+            test -f "snowknife-$VERSION-$target"
+            test -f "snowknife-$VERSION-$target.sha256"
+          done
+          sha256sum --check ./*.sha256
+          cat > RELEASE-NOTES.md <<'NOTES'
+          Prebuilt Snowknife command-line packages. Extract the entire archive and run `snowknife --help` from a terminal; the .NET runtime is included.
+
+          Choose Windows x64, Linux x64, macOS Intel, or macOS Apple Silicon. Packages include patch descriptors, license notices and a SHA-256 checksum. The source archive includes the exact format-library submodule missing from GitHub's automatic source archives.
+
+          To use a Slopesmith `.snowknife.zip`, follow the included `REPACK.md`. Game files are supplied locally by the user.
+          NOTES
+          tag="snowknife-v$VERSION"
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" > /dev/null 2> tag-error.txt; then
+            echo "Tag already exists; increment Snowknife/VERSION.txt. Existing releases are never overwritten." >&2
+            exit 1
+          elif ! grep -q 'HTTP 404' tag-error.txt; then
+            cat tag-error.txt >&2
+            exit 1
+          fi
+          gh release create "$tag" snowknife-* --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "Snowknife $VERSION (preview)" --notes-file RELEASE-NOTES.md

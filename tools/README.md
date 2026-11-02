@@ -8,6 +8,7 @@ by the checks they serve.
 | --- | --- |
 | `verify.mjs`, `pre-push.mjs`, `affected-suites.mjs` | Full verification, push-time checks, and shared suite selection |
 | `native-tests.mjs`, `snowknife-tests.mjs`, `unity-tests.mjs` | Component test and coverage entry points |
+| `snowknife-release.py`, `test_snowknife_release.py` | Self-contained Snowknife downloads, matching sources, and packaging checks |
 | `format-*.mjs` | Component and repository-tool formatting entry points |
 | `python.mjs` | Shared Python interpreter discovery; honors `PYTHON` |
 | `actions-usage.mjs` | GitHub Actions usage reports (`npm run actions:usage`) |
