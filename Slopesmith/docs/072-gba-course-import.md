@@ -13,6 +13,13 @@ Play or Inspect it. This uses the local source/cache workflow and the same
 converter used by Windows and Quest. It does not require the private research
 mountains described below. See [the native importer guide](../../Native/docs/ssx-gba-import.md)
 for supported revision, reconstruction policy and current limits.
+ROM imports use 0.15625 metres per source unit, making the course 56.25% larger than
+the original imports. Compatible triangle pairs become quads; the matcher can
+rearrange earlier pairs to recover additional quads. Faces isolated by texture,
+surface or crease boundaries stay single triangular patches instead of splitting
+into three. Shared boundary curves and fitted interior height controls smooth
+joins of up to 20 degrees while preserving sharp creases. Refresh Slopesmith,
+then Unload and Load the course to replace its cached reconstruction.
 
 ## Terrain and presentation
 
@@ -22,7 +29,7 @@ above the selected 20-degree threshold stay between patches. Boundary controls
 and texture coordinates remain shared; interior fitting removes the artificial
 diagonal. Fitting does not claim recovery of original authoring controls.
 
-The current owner-calibrated scale is 0.1 metres per source unit. This doubled
+The private prototype's scale is 0.1 metres per source unit. This doubled
 the earlier map/collision dimensions while retaining the rider's physical size.
 The 2D GBA horizon is wrapped into a project-owned panorama with an authored sky
 fill. The selected GBA music arrangement is a project-owned looping track.
@@ -80,7 +87,7 @@ reports and captures stay in the ignored local study directory.
 ## Other extracted courses
 
 The remaining seven AXYE courses are saved as separate private mountains. They
-use the accepted 0.1 metres per source unit, editable curved terrain and the
+use the prototype's 0.1 metres per source unit, editable curved terrain and the
 20-degree crease threshold. Every source display triangle is accounted for as
 terrain, scenery or a recorded degenerate. Flat-colour type-5 quads are retained
 in scenery; the courses have their own palette and atlas dimensions.

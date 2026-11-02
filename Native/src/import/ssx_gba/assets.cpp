@@ -1,5 +1,6 @@
 #include "assets.hpp"
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <fstream>
 #include <map>
@@ -197,7 +198,12 @@ Textures::Textures(std::span<const std::uint8_t> data, const ImportCancel& cance
         const auto decoded = lzss(data.subspan(at, packed), expanded, cancel);
         pixels.insert(pixels.end(), decoded.begin(), decoded.end());
     }
-    opaque = {"gba-opaque", 512, ((n + 15) / 16) * 32 + 1, {}};
+    // Keep tile texels and the single-texel palette strip intact on power-of-two
+    // texture consumers. Resizing the packed atlas mixes adjacent tiles and colours.
+    opaque = {"gba-opaque",
+              std::bit_ceil(atlas_columns * atlas_pitch),
+              std::bit_ceil(((n + atlas_columns - 1) / atlas_columns) * atlas_pitch + 1),
+              {}};
     opaque.rgba.resize(opaque.width * opaque.height * 4);
     keyed = opaque;
     keyed.name = "gba-keyed";
@@ -211,13 +217,52 @@ Textures::Textures(std::span<const std::uint8_t> data, const ImportCancel& cance
         }
         image.rgba[at + 3] = transparent && colour == 0 ? 0 : 255;
     };
-    for (unsigned i = 0; i < n; ++i)
-        for (unsigned y = 0; y < 32; ++y)
-            for (unsigned x = 0; x < 32; ++x) {
-                const auto colour = pixels[i * 1024 + y * 32 + x];
-                put(opaque, (i % 16) * 32 + x, (i / 16) * 32 + y, colour, false);
-                put(keyed, (i % 16) * 32 + x, (i / 16) * 32 + y, colour, true);
+    for (unsigned i = 0; i < n; ++i) {
+        Image tile{"", tile_edge, tile_edge, {}};
+        tile.rgba.resize(tile_edge * tile_edge * 4);
+        std::array<int, tile_edge * tile_edge> nearest;
+        nearest.fill(-1);
+        std::vector<unsigned> queue;
+        for (unsigned y = 0; y < tile_edge; ++y)
+            for (unsigned x = 0; x < tile_edge; ++x) {
+                const auto at = y * tile_edge + x;
+                put(tile, x, y, pixels[i * tile_edge * tile_edge + at], true);
+                if (tile.rgba[at * 4 + 3]) {
+                    nearest[at] = int(at);
+                    queue.push_back(at);
+                }
             }
+        // Filtering straight-alpha art must not mix the source's green key into
+        // the silhouette. Propagate RGB within this tile only, preserving alpha.
+        for (unsigned head = 0; head < queue.size(); ++head) {
+            const auto at = queue[head];
+            const int x = int(at % tile_edge), y = int(at / tile_edge);
+            for (const auto [dx, dy] : std::array<std::pair<int, int>, 4>{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}}) {
+                const int nx = x + dx, ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= int(tile_edge) || ny >= int(tile_edge))
+                    continue;
+                const auto next = unsigned(ny) * tile_edge + unsigned(nx);
+                if (nearest[next] != -1)
+                    continue;
+                nearest[next] = nearest[at];
+                queue.push_back(next);
+            }
+        }
+        for (unsigned at = 0; at < nearest.size(); ++at)
+            if (!tile.rgba[at * 4 + 3])
+                for (unsigned channel = 0; channel < 3; ++channel)
+                    tile.rgba[at * 4 + channel] = nearest[at] < 0 ? 0 : tile.rgba[unsigned(nearest[at]) * 4 + channel];
+        // A duplicated one-texel border keeps bilinear taps inside the same tile.
+        for (unsigned y = 0; y < atlas_pitch; ++y)
+            for (unsigned x = 0; x < atlas_pitch; ++x) {
+                const auto sx = unsigned(std::clamp(int(x) - int(atlas_border), 0, int(tile_edge) - 1));
+                const auto sy = unsigned(std::clamp(int(y) - int(atlas_border), 0, int(tile_edge) - 1));
+                const auto tx = (i % atlas_columns) * atlas_pitch + x, ty = (i / atlas_columns) * atlas_pitch + y;
+                put(opaque, tx, ty, pixels[i * tile_edge * tile_edge + sy * tile_edge + sx], false);
+                std::copy_n(tile.rgba.begin() + (sy * tile_edge + sx) * 4, 4,
+                            keyed.rgba.begin() + (ty * keyed.width + tx) * 4);
+            }
+    }
     for (unsigned i = 0; i < colours; ++i) {
         put(opaque, i, opaque.height - 1, i, false);
         put(keyed, i, keyed.height - 1, i, false);
@@ -227,7 +272,8 @@ Textures::Textures(std::span<const std::uint8_t> data, const ImportCancel& cance
 std::array<double, 2> Textures::uv(unsigned material, double u, double v, bool colour) const {
     require(material < (colour ? palette.size() : flags.size()), "Invalid GBA primitive material");
     return colour ? std::array<double, 2>{(material + .5) / opaque.width, (opaque.height - .5) / opaque.height}
-                  : std::array<double, 2>{((material % 16) * 32 + u + .5) / opaque.width,
-                                          ((material / 16) * 32 + v + .5) / opaque.height};
+                  : std::array<double, 2>{
+                        ((material % atlas_columns) * atlas_pitch + atlas_border + u + .5) / opaque.width,
+                        ((material / atlas_columns) * atlas_pitch + atlas_border + v + .5) / opaque.height};
 }
 } // namespace openslope::import_detail::gba

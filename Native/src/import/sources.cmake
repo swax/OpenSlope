@@ -13,6 +13,10 @@ target_sources(openslope_core PRIVATE
   src/import/ssx_gba/importer.cpp
   src/import/ssx_gba/assets.cpp
   src/import/ssx_gba/course.cpp
+  src/import/ssx_gba/terrain.cpp
+  src/import/ssx_gba/terrain_curves.cpp
+  src/import/ssx_gba/terrain_fit.cpp
+  src/import/ssx_gba/terrain_matching.cpp
   src/import/ssx_gba/rails.cpp
   src/import/ssx_gba/sky.cpp
   src/import/ssx_gba/audio.cpp

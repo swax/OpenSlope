@@ -8,7 +8,7 @@ namespace openslope::import_detail::gba {
 using Json = nlohmann::json;
 inline constexpr unsigned archive_offset = 0x2905c, directory_offset = 0x28606, names_offset = 0x28646,
                           name_lookup_offset = 0x28b64;
-inline constexpr double metres_per_unit = .1;
+inline constexpr double metres_per_unit = .15625;
 void require(bool condition, const char* message);
 void save(const std::filesystem::path& path, const Json& value);
 Json raw(Vec3 point);
@@ -48,6 +48,8 @@ struct Geometry {
 };
 
 struct Textures {
+    static constexpr unsigned tile_edge = 32, atlas_border = 1, atlas_pitch = tile_edge + 2 * atlas_border,
+                              atlas_columns = 15;
     std::vector<unsigned> flags;
     std::vector<std::uint16_t> palette;
     Image opaque, keyed;

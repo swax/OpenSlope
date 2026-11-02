@@ -9,9 +9,10 @@ import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
 // Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
+// GBA generation 9 rematches terrain into larger quads without subdividing isolated faces.
 export const isoCourseCacheVersion = (course: string): number =>
   /^SSXGBA_/i.test(course)
-    ? 2
+    ? 9
     : /^AVALANCHE_/i.test(course)
       ? 3
       : /^MADTRIX_/i.test(course)
@@ -262,7 +263,7 @@ export async function cachedCourseHasFiles(course: string, folder: string): Prom
   }
 }
 
-/** Upload the original portable filenames, rather than the lowercase lookup keys used by playback. */
+/** Transfer the original portable filenames, rather than the lowercase lookup keys used by playback. */
 export async function cachedCourseFiles(course: string): Promise<Array<{ path: string; blob: Blob }>> {
   const db = await openIsoCache();
   try {
@@ -280,7 +281,7 @@ export async function cachedCourseFiles(course: string): Promise<Array<{ path: s
       }),
     ]);
     if (!marker || marker.version !== isoCourseCacheVersion(course) || marker.files !== files.length)
-      throw new Error('Load this map completely before uploading a server reference.');
+      throw new Error('Load this map completely before exporting or uploading it.');
     return files.map(({ path, blob }) => ({ path, blob }));
   } finally {
     db.close();

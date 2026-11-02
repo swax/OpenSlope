@@ -1,151 +1,196 @@
-#include "assets.hpp"
 #include "openslope/appearance.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/terrain.hpp"
+#include "terrain.hpp"
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 namespace openslope::import_detail::gba {
 Json write_rails(const Geometry& geometry, const std::filesystem::path& output, const ImportCancel& cancel);
 
 namespace {
-using UV = std::array<double, 2>;
-
-struct Face {
-    std::array<unsigned, 3> ids;
-    std::array<UV, 3> uv;
-    unsigned record, kind, material, flags;
-    Vec3 normal;
-    bool keyed;
-};
-
-std::vector<Face> faces(const Geometry& g, const Textures& t) {
-    std::vector<Face> result;
-    for (unsigned i = 0; i < g.records.size(); ++i) {
-        const auto& r = g.records[i];
-        const auto kind = r.tag & 63, mat = r.tag >> 8;
-        if (kind > 5)
-            continue;
-        require(mat < (kind < 4 ? t.flags.size() : t.palette.size()), "Invalid GBA primitive material");
-        const bool keyed = kind < 4 && ((r.tag & 128) || (t.flags.at(mat) & 2));
-        const auto emit = [&](std::array<unsigned, 3> ids, std::array<UV, 3> tex) {
-            const auto n = cross(g.points[ids[1]] - g.points[ids[0]], g.points[ids[2]] - g.points[ids[0]]);
-            if (length(n) > 1e-9)
-                result.push_back({ids, tex, i, kind, mat, r.last, normalized(n), keyed});
-        };
-        if (kind == 0 || kind == 1 || kind == 5) {
-            const auto a = r.vertices[0], b = r.vertices[1], c = r.vertices[2], d = r.last;
-            const auto uv = [&](double u, double v) { return t.uv(mat, u, v, kind == 5); };
-            emit({a, b, d}, {uv(0, 0), uv(31, 0), uv(0, 31)});
-            emit({b, c, d}, {uv(31, 0), uv(31, 31), uv(0, 31)});
-        } else if (kind == 4) {
-            const auto uv = t.uv(mat, 0, 0, true);
-            emit(r.vertices, {uv, uv, uv});
-        } else if (kind == 2) {
-            emit(r.vertices, {t.uv(mat, 31, 0), t.uv(mat, 0, 0), t.uv(mat, 0, 31)});
-        } else {
-            emit(r.vertices, {t.uv(mat, 0, 31), t.uv(mat, 31, 31), t.uv(mat, 31, 0)});
-        }
-    }
-    return result;
-}
-
-Json patch(const Geometry& g, std::array<unsigned, 4> q, std::array<UV, 4> uv, unsigned source) {
-    // GBA triangle records carry mixed winding. Portable analytic terrain is one-sided;
-    // transpose the parameter frame and its UV corners together to expose the skyward side.
-    const auto du = g.points[q[1]] + g.points[q[3]] - g.points[q[0]] - g.points[q[2]];
-    const auto dv = g.points[q[2]] + g.points[q[3]] - g.points[q[0]] - g.points[q[1]];
-    if (cross(du, dv).y < 0) {
-        std::swap(q[1], q[2]);
-        std::swap(uv[1], uv[2]);
-    }
-    Json controls = Json::array();
-    for (unsigned i = 0; i < 4; ++i)
-        for (unsigned j = 0; j < 4; ++j) {
-            const double u = i / 3., v = j / 3.;
-            controls.push_back(raw(g.points[q[0]] * ((1 - u) * (1 - v)) + g.points[q[1]] * (u * (1 - v)) +
-                                   g.points[q[2]] * ((1 - u) * v) + g.points[q[3]] * (u * v)));
-        }
-    return {{"PatchName", "GBA surface " + std::to_string(source)},
-            {"Points", controls},
-            {"UVPoints", uv},
-            {"TexturePath", "gba-opaque.png"},
-            {"SurfaceType", 1},
-            {"LightmapID", -1},
-            {"LightMapPoint", {0, 0, 0, 0}},
-            {"TrickOnlyPatch", false},
-            {"SourceRecord", source}};
-}
-
 void scenery(const Geometry& g, const std::vector<Face>& all, const std::set<unsigned>& terrain,
              const std::filesystem::path& out) {
     std::filesystem::create_directories(out / "Meshes");
     std::filesystem::create_directories(out / "Collision");
-    Json parts = Json::array();
-    for (unsigned group = 0; group < 2; ++group) {
-        std::ostringstream obj;
-        obj << std::setprecision(12);
-        unsigned vertex = 0;
-        for (const auto& f : all)
-            if (!terrain.contains(f.record) && f.keyed == bool(group)) {
-                for (unsigned j = 0; j < 3; ++j) {
-                    const auto p = raw(g.points[f.ids[j]]);
-                    obj << "v " << p[0].get<double>() << ' ' << p[1].get<double>() << ' ' << p[2].get<double>() << '\n';
-                    obj << "vt " << f.uv[j][0] << ' ' << 1 - f.uv[j][1] << '\n';
+
+    struct Prop {
+        std::vector<Face> faces;
+        std::vector<std::array<unsigned, 3>> collision;
+        Vec3 low{std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+                 std::numeric_limits<double>::infinity()};
+        Vec3 high{-std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(),
+                  -std::numeric_limits<double>::infinity()};
+        std::string name;
+    };
+
+    std::vector<Face> source;
+    for (const auto& f : all)
+        if (!terrain.contains(f.record))
+            source.push_back(f);
+    for (unsigned i = 0; i < g.records.size(); ++i)
+        if (const auto& r = g.records[i]; (r.tag & 63) == 7)
+            source.push_back({r.vertices, {}, i, 7, 0, r.last, {}, false});
+
+    // Position-only source vertices can repeat at UV/material seams. Weld their
+    // identities before finding edge-connected objects, keeping both alpha groups together.
+    std::map<std::array<double, 3>, unsigned> positions;
+    std::vector<unsigned> welded;
+    for (const auto& point : g.points)
+        welded.push_back(positions.try_emplace({point.x, point.y, point.z}, unsigned(positions.size())).first->second);
+    std::vector<unsigned> parent(source.size());
+    for (unsigned i = 0; i < parent.size(); ++i)
+        parent[i] = i;
+    const auto root = [&](unsigned i) {
+        while (parent[i] != i) {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
+    };
+    std::map<std::array<unsigned, 2>, unsigned> edges;
+    for (unsigned i = 0; i < source.size(); ++i)
+        for (unsigned j = 0; j < 3; ++j) {
+            const auto a = welded[source[i].ids[j]], b = welded[source[i].ids[(j + 1) % 3]];
+            if (a == b)
+                continue;
+            const auto [edge, inserted] = edges.try_emplace({std::min(a, b), std::max(a, b)}, i);
+            if (!inserted) {
+                const auto x = root(i), y = root(edge->second);
+                parent[std::max(x, y)] = std::min(x, y);
+            }
+        }
+    std::map<unsigned, std::vector<Face>> components;
+    for (unsigned i = 0; i < source.size(); ++i)
+        components[root(i)].push_back(source[i]);
+
+    const auto cell_for = [&](const std::array<unsigned, 3>& ids) {
+        const auto centre = (g.points[ids[0]] + g.points[ids[1]] + g.points[ids[2]]) / 3.;
+        return std::pair{int(std::floor(centre.x / 100)), int(std::floor(centre.z / 100))};
+    };
+    const auto expand = [&](Prop& prop, const Face& face) {
+        for (auto id : face.ids) {
+            const auto p = g.points[id];
+            prop.low = {std::min(prop.low.x, p.x), std::min(prop.low.y, p.y), std::min(prop.low.z, p.z)};
+            prop.high = {std::max(prop.high.x, p.x), std::max(prop.high.y, p.y), std::max(prop.high.z, p.z)};
+        }
+    };
+    std::vector<Prop> props;
+    unsigned object = 0;
+    for (const auto& [component, faces] : components) {
+        Prop bounds;
+        for (const auto& face : faces)
+            expand(bounds, face);
+        const bool split = bounds.high.x - bounds.low.x > 100 || bounds.high.z - bounds.low.z > 100;
+        std::map<std::pair<int, int>, Prop> parts;
+        for (const auto& f : faces) {
+            auto& part = parts[split ? cell_for(f.ids) : std::pair{0, 0}];
+            expand(part, f);
+            if (f.kind != 7)
+                part.faces.push_back(f);
+            if (f.kind == 2 || f.kind == 3 || f.kind == 7)
+                part.collision.push_back(f.ids);
+        }
+        unsigned piece = 0;
+        const bool collision_only = std::all_of(faces.begin(), faces.end(), [](const auto& f) { return f.kind == 7; });
+        for (auto& [cell, prop] : parts) {
+            prop.name = (collision_only ? "GBA collision " : "GBA prop ") + std::to_string(object);
+            if (parts.size() > 1)
+                prop.name += " part " + std::to_string(piece++);
+            props.push_back(std::move(prop));
+        }
+        ++object;
+    }
+
+    Json models = Json::array(), instances = Json::array();
+    unsigned mesh_serial = 0, collision_serial = 0;
+    for (auto& prop : props) {
+        // A base-centred pivot makes an imported object useful as a placed prop.
+        // Only long connected structures are subdivided for camera-range queries.
+        const Vec3 origin{(prop.low.x + prop.high.x) * .5, prop.low.y, (prop.low.z + prop.high.z) * .5};
+        const bool visible = !prop.faces.empty();
+        if (!visible)
+            for (const auto& ids : prop.collision)
+                prop.faces.push_back({ids, {}, 0, 7, 0, 0, {}, false}); // Hidden mesh supplies collider bounds.
+        Json parts = Json::array();
+        for (unsigned group = 0; group < 2; ++group) {
+            std::ostringstream obj;
+            obj << std::setprecision(12);
+            unsigned vertex = 0;
+            for (const auto& f : prop.faces)
+                if (f.keyed == bool(group)) {
+                    for (unsigned j = 0; j < 3; ++j) {
+                        const auto p = raw(g.points[f.ids[j]] - origin);
+                        obj << "v " << p[0].get<double>() << ' ' << p[1].get<double>() << ' ' << p[2].get<double>()
+                            << '\n';
+                        obj << "vt " << f.uv[j][0] << ' ' << 1 - f.uv[j][1] << '\n';
+                    }
+                    obj << "f " << vertex + 1 << '/' << vertex + 1 << ' ' << vertex + 2 << '/' << vertex + 2 << ' '
+                        << vertex + 3 << '/' << vertex + 3 << '\n';
+                    vertex += 3;
                 }
-                obj << "f " << vertex + 1 << '/' << vertex + 1 << ' ' << vertex + 2 << '/' << vertex + 2 << ' '
-                    << vertex + 3 << '/' << vertex + 3 << '\n';
+            if (vertex) {
+                const auto name = "gba-scenery-" + std::to_string(mesh_serial++) + ".obj";
+                std::ofstream file(out / "Meshes" / name);
+                file << obj.str();
+                require(bool(file), "Cannot write GBA scenery");
+                parts.push_back({{"MeshPath", name}, {"MaterialID", group}});
+            }
+        }
+        Json paths = Json::array();
+        if (!prop.collision.empty()) {
+            const auto name = "gba-world" + (collision_serial ? "-" + std::to_string(collision_serial) : "") + ".obj";
+            ++collision_serial;
+            std::ofstream col(out / "Collision" / name);
+            col << std::setprecision(12);
+            unsigned vertex = 0;
+            for (const auto& ids : prop.collision) {
+                for (auto id : ids) {
+                    const auto p = raw(g.points[id] - origin);
+                    col << "v " << p[0].get<double>() << ' ' << p[1].get<double>() << ' ' << p[2].get<double>() << '\n';
+                }
+                col << "f " << vertex + 1 << ' ' << vertex + 2 << ' ' << vertex + 3 << '\n';
                 vertex += 3;
             }
-        if (vertex) {
-            const auto name = "gba-scenery-" + std::to_string(group) + ".obj";
-            std::ofstream file(out / "Meshes" / name);
-            file << obj.str();
-            require(bool(file), "Cannot write GBA scenery");
-            parts.push_back({{"MeshPath", name}, {"MaterialID", group}});
+            require(bool(col), "Cannot write GBA collision");
+            paths.push_back(name);
         }
+        const auto id = models.size();
+        Json model{{"ModelName", prop.name},
+                   {"ModelObjects", {{{"ObjectName", "GBA source mesh"}, {"ParentID", -1}, {"MeshData", parts}}}}};
+        if (!paths.empty())
+            model["PlacementCollisionPath"] = paths[0];
+        models.push_back(model);
+        instances.push_back({{"InstanceName", prop.name},
+                             {"ModelID", id},
+                             {"Location", raw(origin)},
+                             {"Rotation", {0, 0, 0, 1}},
+                             {"Scale", {1, 1, 1}},
+                             {"Visable", visible},
+                             {"PlayerCollision", !paths.empty()},
+                             {"CollsionMode", paths.empty() ? 0 : 1},
+                             {"CollsionModelPaths", paths},
+                             {"SurfaceType", 1},
+                             {"U0", 1},
+                             {"PlayerBounce", !paths.empty()},
+                             {"PlayerBounceAmmount", 0},
+                             {"IncludeSound", false},
+                             {"AmbentLightColour", {256, 256, 256}}});
     }
     save(out / "Materials.json", {{"Materials",
                                    {{{"TexturePath", "gba-opaque.png"}, {"AlphaMode", "opaque"}},
                                     {{"TexturePath", "gba-keyed.png"}, {"AlphaMode", "cutout"}}}}});
     save(out / "TextureAlpha.overrides.json", {{"gba-opaque.png", "opaque"}, {"gba-keyed.png", "cutout"}});
-    save(out / "Models.json",
-         {{"Models",
-           {{{"ModelName", "GBA scenery"},
-             {"PlacementCollisionPath", "gba-world.obj"},
-             {"ModelObjects", {{{"ObjectName", "GBA source mesh"}, {"ParentID", -1}, {"MeshData", parts}}}}}}}});
-    Json instance{{"InstanceName", "GBA scenery and collision"},
-                  {"ModelID", 0},
-                  {"Location", {0, 0, 0}},
-                  {"Rotation", {0, 0, 0, 1}},
-                  {"Scale", {1, 1, 1}},
-                  {"Visable", true},
-                  {"PlayerCollision", true},
-                  {"CollsionMode", 1},
-                  {"CollsionModelPaths", {"gba-world.obj"}},
-                  {"SurfaceType", 1},
-                  {"U0", 1},
-                  {"PlayerBounce", true},
-                  {"PlayerBounceAmmount", 0},
-                  {"AmbentLightColour", {256, 256, 256}}};
-    save(out / "Instances.json", {{"Instances", {instance}}});
-    std::ofstream col(out / "Collision/gba-world.obj");
-    col << std::setprecision(12);
-    for (const auto& p : g.points) {
-        const auto r = raw(p);
-        col << "v " << r[0].get<double>() << ' ' << r[1].get<double>() << ' ' << r[2].get<double>() << '\n';
-    }
-    for (const auto& f : all)
-        if (!terrain.contains(f.record) && (f.kind == 2 || f.kind == 3))
-            col << "f " << f.ids[0] + 1 << ' ' << f.ids[1] + 1 << ' ' << f.ids[2] + 1 << '\n';
-    for (const auto& r : g.records)
-        if ((r.tag & 63) == 7)
-            col << "f " << r.vertices[0] + 1 << ' ' << r.vertices[1] + 1 << ' ' << r.vertices[2] + 1 << '\n';
-    require(bool(col), "Cannot write GBA collision");
+    save(out / "Models.json", {{"Models", models}});
+    save(out / "Instances.json", {{"Instances", instances}});
 }
 
 void route(const Geometry& g, const Terrain& terrain, const std::filesystem::path& out) {
@@ -193,58 +238,13 @@ void write_course(const Rom& rom, const Course& course, const std::filesystem::p
     std::filesystem::create_directories(out / "Textures");
     write_png(out / "Textures/gba-opaque.png", textures.opaque);
     write_png(out / "Textures/gba-keyed.png", textures.keyed);
-    const auto all = faces(geometry, textures);
-    Json patches = Json::array();
-    std::set<unsigned> terrain, consumed;
-    std::map<std::array<unsigned, 4>, std::vector<unsigned>> partners;
-    for (unsigned i = 0; i < all.size(); ++i) {
-        const auto& f = all[i];
-        if (f.kind == 3 && !f.keyed)
-            partners[{f.material, f.flags, f.ids[2], f.ids[0]}].push_back(i);
-    }
-    unsigned pairs = 0;
-    for (const auto& f : all) {
-        check_cancel(cancel);
-        if (f.kind < 2 || f.kind > 4 || f.keyed || consumed.contains(f.record))
-            continue;
-        if (f.kind == 2) {
-            const auto found = partners.find({f.material, f.flags, f.ids[0], f.ids[2]});
-            if (found != partners.end() && found->second.size() == 1) {
-                const auto& other = all[found->second.front()];
-                const std::array<unsigned, 4> q{f.ids[1], f.ids[0], f.ids[2], other.ids[1]};
-                const auto deviation = length(geometry.points[q[0]] + geometry.points[q[3]] - geometry.points[q[1]] -
-                                              geometry.points[q[2]]) /
-                                       4;
-                const auto edge0 = geometry.points[q[1]] - geometry.points[q[0]],
-                           edge1 = geometry.points[q[2]] - geometry.points[q[0]];
-                bool convex = true;
-                const std::array<unsigned, 4> ring{q[0], q[1], q[3], q[2]};
-                const auto normal = cross(edge0, edge1);
-                for (unsigned i = 0; i < 4; ++i)
-                    convex &= dot(cross(geometry.points[ring[(i + 1) % 4]] - geometry.points[ring[i]],
-                                        geometry.points[ring[(i + 2) % 4]] - geometry.points[ring[(i + 1) % 4]]),
-                                  normal) > 1e-10;
-                if (!consumed.contains(other.record) && std::set(q.begin(), q.end()).size() == 4 && convex &&
-                    dot(f.normal, other.normal) >= std::cos(20 * pi / 180) && deviation <= .05) {
-                    patches.push_back(patch(geometry, q, {f.uv[1], f.uv[0], f.uv[2], other.uv[1]}, f.record));
-                    consumed.insert(other.record);
-                    terrain.insert(other.record);
-                    consumed.insert(f.record);
-                    terrain.insert(f.record);
-                    ++pairs;
-                    continue;
-                }
-            }
-        }
-        patches.push_back(
-            patch(geometry, {f.ids[0], f.ids[1], f.ids[2], f.ids[2]}, {f.uv[0], f.uv[1], f.uv[2], f.uv[2]}, f.record));
-        consumed.insert(f.record);
-        terrain.insert(f.record);
-    }
+    const auto all = terrain_faces(geometry, textures);
+    const auto terrain = terrain_patches(geometry, all, cancel);
+    const auto& patches = terrain.patches;
     require(!patches.empty(), "GBA course has no terrain");
     save(out / "Patches.json", {{"Patches", patches}});
     notify("Converting GBA scenery and collision");
-    scenery(geometry, all, terrain, out);
+    scenery(geometry, all, terrain.records, out);
     notify("Tracing GBA grind surfaces");
     const auto rails = write_rails(geometry, out, cancel);
     notify("Converting GBA horizon");
@@ -277,12 +277,18 @@ void write_course(const Rom& rom, const Course& course, const std::filesystem::p
           {"MetresPerSourceUnit", metres_per_unit},
           {"CreaseThresholdDegrees", 20},
           {"TerrainPatches", patches.size()},
-          {"PairedTrianglePatches", pairs},
+          {"PairedTrianglePatches", terrain.paired},
+          {"FlatColourQuadPatches", terrain.flat},
+          {"UnpairedTrianglePatches", terrain.triangles},
+          {"QuadSplitTriangles", 0},
+          {"CurvedTerrainEdges", terrain.curved_edges},
+          {"LinearHangingEdges", 0},
+          {"FittedTerrainPatches", terrain.fitted},
           {"DisplayTriangles", all.size()},
           {"Rails", rails},
           {"Environment", sky},
-          {"GeometryPolicy",
-           "UV-matched low-angle pairs become bilinear bicubics; remaining faces retain exact triangle geometry"},
+          {"GeometryPolicy", "Compatible faces are rematched into the most quads; isolated faces stay single patches. "
+                             "Shared boundary curves and fitted interior heights smooth joins up to 20 degrees."},
           {"SpawnPolicy", "section route re-seated on converted terrain; final guard omitted"},
           {"Deferred",
            {"native-pickup-checkpoint-placement", "type6-event-billboards", "original-music-scheduling",

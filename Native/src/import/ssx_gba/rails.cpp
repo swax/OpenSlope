@@ -92,9 +92,10 @@ Json write_rails(const Geometry& g, const std::filesystem::path& output, const I
             ends.push_back(id);
     std::set<unsigned> joined;
     unsigned seams = 0;
+    const double seam_tolerance = 1.5 * metres_per_unit;
     for (const auto a : ends)
         if (!joined.contains(a)) {
-            double best = .15000001;
+            double best = seam_tolerance + 1e-8;
             std::optional<unsigned> choice;
             for (const auto b : ends)
                 if (a != b && !joined.contains(b)) {
@@ -163,7 +164,7 @@ Json write_rails(const Geometry& g, const std::filesystem::path& output, const I
         double distance = 0;
         for (unsigned i = 1; i < simple.size(); ++i)
             distance += length(simple[i] - simple[i - 1]);
-        if (distance < .15)
+        if (distance < seam_tolerance)
             continue;
         total += distance;
         Json segments = Json::array();
