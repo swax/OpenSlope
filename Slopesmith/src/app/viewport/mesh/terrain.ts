@@ -17,6 +17,8 @@ import { refitSurfaceTrees, type TreeGeometry } from './surface-trees';
 import type { ShadeMode } from '../types';
 import type { Stage } from '../stage';
 import type { TileMaterials } from './tile-materials';
+import { createTerrainLightingClient } from './lighting-client';
+import type { TerrainBakePart } from '../../../core/lighting/terrain-bake';
 
 /** Scratch for the patch-extent bookkeeping below, which runs per incremental update and allocates nothing. */
 const priorExtent = new Float32Array(6);
@@ -64,7 +66,7 @@ export function createTerrainLayer(
   tiles: TileMaterials,
   view: TerrainViewAccess,
   host: TerrainHostHooks,
-  opts: { pickTarget?: boolean } = {},
+  opts: { pickTarget?: boolean; lightingClient?: ReturnType<typeof createTerrainLightingClient> } = {},
 ) {
   /** Fallback material (material slot 0): SurfaceType tint for cells with no painted tile. Back faces tint
    *  magenta — the non-ridable side of a one-sided patch (backface-tint.ts). */
@@ -95,6 +97,8 @@ export function createTerrainLayer(
   let terrainDisplay: Float32Array | null = null; // what the colour attribute holds (lit, or a display transform of it)
   let sampleGroundLight: ((p: V3) => number) | null = null; // lazy spatial index over it
   let occlusionStale = false; // patches moved under the retained AO / shadow bakes
+  let lightingEpoch = 0;
+  let lightingClient = opts.lightingClient;
   // Where each patch's positions stood when the geometry's ray-acceleration trees last saw them: six floats
   // per patch (min xyz, max xyz). Those trees index the terrain's OWN buffers (mesh/surface-trees.ts), so an
   // incremental re-emit moves the surface out from under their node bounds, and the box a patch is vacating
@@ -142,6 +146,7 @@ export function createTerrainLayer(
   /** Swap the tessellated preview in as the terrain's geometry (disposing the old one), let the shell
    *  re-target every dependent overlay, then re-split the materials and re-light against the new vertices. */
   function applyPreview(p: PreviewData) {
+    lightingEpoch++;
     const hadNormals = terrain.geometry.hasAttribute('normal');
     preview = p;
     const g = new THREE.BufferGeometry();
@@ -189,6 +194,7 @@ export function createTerrainLayer(
   ) {
     const p = preview;
     if (!p || !quads.size) return;
+    lightingEpoch++;
     const g = terrain.geometry;
     // Every attribute wraps the preview's own buffer, which the re-emit has already rewritten in place — so
     // this is an upload, not a rebuild.
@@ -324,8 +330,37 @@ export function createTerrainLayer(
    * shadow by geometry + direction) so dragging the strength / colour controls doesn't re-bake.
    */
   function setTerrainLight(opts: TerrainLightOptions | null) {
+    lightingEpoch++;
     terrainLight = opts;
     applyTerrainLight();
+  }
+
+  /** Load-time preparation: cache reads and expensive misses finish before the synchronous lighting install. */
+  async function prepareLighting(options: TerrainLightOptions, includeRig = view.rigVisible()): Promise<boolean> {
+    const p = preview,
+      epoch = lightingEpoch;
+    if (!p) return false;
+    const rig = includeRig ? view.rigData() : null;
+    const parts: TerrainBakePart[] = [];
+    if (options.ao > 0) parts.push('ao');
+    if (options.shadow > 0) parts.push('shadow');
+    if (rig) parts.push('glow');
+    if (!parts.length) return true;
+    const dir: [number, number, number] = [...options.dir];
+    lightingClient ??= createTerrainLightingClient();
+    const result = await lightingClient.prepare(
+      { positions: p.positions, normals: p.normals, indices: p.indices, dir, rig },
+      parts,
+    );
+    // Document replacement, sculpting, light edits or release supersede an asynchronous preparation.
+    if (epoch !== lightingEpoch || preview !== p) return false;
+    if (result.ao) tlAO = result.ao;
+    if (result.shadow) {
+      tlShadow = result.shadow;
+      tlDirKey = dir.join(',');
+    }
+    if (result.glow) authoredRigGlow = result.glow;
+    return true;
   }
 
   /** Toggle the baked (in-game) view: ON runs the LIGHT through the lightmap encode + GS decode (the bake's
@@ -350,13 +385,13 @@ export function createTerrainLayer(
       return;
     }
     occlusionStale = false;
-    if (!tlAO) tlAO = bakeAO(p.positions, p.indices, p.normals);
+    if (o.ao > 0 && !tlAO) tlAO = bakeAO(p.positions, p.indices, p.normals);
     const dirKey = o.dir.join(',');
-    if (!tlShadow || dirKey !== tlDirKey) {
+    if (o.shadow > 0 && (!tlShadow || dirKey !== tlDirKey)) {
       tlShadow = bakeSunShadow(p.positions, p.indices, o.dir);
       tlDirKey = dirKey;
     }
-    const colors = computeModelColored(p.normals, o.dir, o, tlShadow, tlAO); // sun + sky tint (= the bake's Lc)
+    const colors = computeModelColored(p.normals, o.dir, o, tlShadow ?? undefined, tlAO ?? undefined); // sun + sky tint (= the bake's Lc)
     // fold the authored local lights (sign + free) into the lit terrain, gated by effective Local lights
     // (WYSIWYG with the exported lightmap: the same bakeRigLighting + screen composite). Cached per rig /
     // terrain edit so dragging sun sliders is free.
@@ -403,6 +438,7 @@ export function createTerrainLayer(
    */
   function settleLighting(): boolean {
     if (!occlusionStale || !terrainLight || !preview) return false;
+    lightingEpoch++;
     tlShadow = tlAO = null;
     authoredRigGlow = null;
     applyTerrainLight();
@@ -472,12 +508,14 @@ export function createTerrainLayer(
 
   /** Drop the cached rig glow (the rig changed; the next lit pass re-bakes it from the new rig). */
   function invalidateRigGlow() {
+    lightingEpoch++;
     authoredRigGlow = null;
   }
 
   /** Park the layer empty: drop the preview, geometry and lighting caches, and hide the mesh until the
    *  next applyPreview. A secondary layer (the model-session mountain backdrop) rests here between uses. */
   function release() {
+    lightingEpoch++;
     preview = null;
     terrain.geometry.dispose();
     terrain.geometry = new THREE.BufferGeometry();
@@ -528,6 +566,7 @@ export function createTerrainLayer(
     settleLighting,
     applyMaterials,
     applyTerrainLight,
+    prepareLighting,
     setTerrainLight,
     setTerrainBakedView,
     invalidateRigGlow,

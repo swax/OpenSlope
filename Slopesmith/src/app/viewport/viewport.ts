@@ -4142,6 +4142,12 @@ export class Viewport {
     return this.meshEdgeHandle;
   }
 
+  /** Prepare load-time lighting from the persistent cache or a worker before its synchronous installation. */
+  async prepareTerrainLighting(opts: TerrainLightOptions, localLights?: boolean) {
+    await this.terrainLayer.prepareLighting(opts, localLights);
+    if (this.modelContextOn) await this.contextLayer?.prepareLighting(opts, localLights);
+  }
+
   /**
    * Stage D: light the AUTHORED terrain with a directional SSX sun (sun + sky colour) + baked cast-shadow
    * / AO, drawn UNLIT so the colour is the lighting - so shadows take the sky colour (blue / pink). Pass

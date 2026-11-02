@@ -9,6 +9,7 @@ import { chromiumExecutable } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { defaultMountain } from '../src/core/doc/mountain';
+import { DEFAULT_SUN } from '../src/core/doc/types';
 
 const temp = join(process.cwd(), 'temp');
 mkdirSync(temp, { recursive: true });
@@ -144,10 +145,12 @@ async function ready() {
   await page!.locator('#load-status').waitFor({ state: 'hidden' });
 }
 try {
+  const mountain = defaultMountain();
+  mountain.sun = { ...DEFAULT_SUN, on: true, ao: 0.4, shadow: 0.5 };
   const created = await fetch(`${api.url}/api/projects`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ document: defaultMountain() }),
+    body: JSON.stringify({ document: mountain }),
   });
   assert(created.ok);
   const { project } = (await created.json()) as { project: { id: string } };
@@ -159,10 +162,37 @@ try {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const lightingWorkers: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/lighting-worker')) lightingWorkers.push(request.url());
+  });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/editor?project=${project.id}`);
   await page.waitForFunction(() => !!(window as unknown as TestWindow).slop);
   await page.locator('#load-status').waitFor({ state: 'hidden' });
+  const coldLighting = await page.evaluate(() =>
+    window
+      .slopesmithDiagnostics!.snapshot()
+      .phases.filter(phase => phase.name === 'terrain:prepare')
+      .at(-1),
+  );
+  assert.equal(coldLighting?.status, 'ok');
+  assert.match(coldLighting!.detail!, /ao=computed.*shadow=computed/);
+  assert(lightingWorkers.length > 0, 'the real editor prepares a cold mountain with its lighting worker');
+  lightingWorkers.length = 0;
+  await page.reload();
+  await page.waitForFunction(() => !!(window as unknown as TestWindow).slop);
+  await page.locator('#load-status').waitFor({ state: 'hidden' });
+  const warmLighting = await page.evaluate(() =>
+    window
+      .slopesmithDiagnostics!.snapshot()
+      .phases.filter(phase => phase.name === 'terrain:prepare')
+      .at(-1),
+  );
+  assert.equal(warmLighting?.status, 'ok');
+  assert.notEqual(warmLighting!.page, coldLighting!.page, 'the warm checkpoint belongs to the reloaded page');
+  assert.match(warmLighting!.detail!, /ao=cached.*shadow=cached/);
+  assert.equal(lightingWorkers.length, 0, 'the real editor reuses stored lighting after a complete reload');
   await page.evaluate(() => {
     const test = window as unknown as TestWindow;
     test.loadLabels = [];

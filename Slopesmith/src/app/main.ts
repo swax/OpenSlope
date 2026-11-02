@@ -1277,9 +1277,10 @@ async function renderDocProgressively(token: number) {
   renderMountainDetails();
   loadStatus.update(token, {
     progress: 96,
-    label: 'Finalizing editor state',
-    detail: 'Preparing the restored session',
+    label: 'Preparing mountain lighting',
+    detail: 'Restoring the saved lighting',
   });
+  await reference.prepareSunFromDoc();
   if (viewport.mountainSettlePending) scheduleSettle();
   finishRenderDoc(false);
 }
@@ -3471,6 +3472,8 @@ async function loadMountain() {
     applyCage(); // effective cage onto the viewport + re-gate the overlay pill for the shade view
     focusActive();
     scheduleCommit(); // document replacement still participates in the same debounced history contract
+    // A replacement must not bake its new mesh against the previous document's lighting during installation.
+    viewport.setTerrainLight(null);
     await renderDocProgressively(token);
     syncSunFromDoc(); // restore this doc's saved sun (or re-light with the current one) - it ships on export
     syncSkyFromDoc(); // ...and its saved sky, which ships the same way

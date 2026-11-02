@@ -1882,6 +1882,26 @@ export function createReference(deps: ReferenceDeps) {
     bakeAmbCtl?.updateDisplay();
   }
 
+  function terrainSunOptions(sun: SunLight) {
+    const e = (sun.el * Math.PI) / 180,
+      a = (sun.az * Math.PI) / 180;
+    const dir: [number, number, number] = [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
+    return {
+      dir,
+      ambient: effectiveBakeAmbient(sun),
+      sun: effectiveBakeSun(sun),
+      shadow: sun.shadow,
+      ao: sun.ao,
+      sunTint: hex2rgb(sun.sunTint),
+      skyTint: hex2rgb(sun.skyTint),
+    };
+  }
+
+  async function prepareSunFromDoc() {
+    const sun = store.mdoc.sun ?? sunLight;
+    if (sun.on) await viewport.prepareTerrainLighting(terrainSunOptions(sun), store.propLightsVisible);
+  }
+
   function applySunLight(edited = false, persist = true) {
     if (persist) {
       store.mdoc.sun = { ...sunLight }; // the authored sun rides on the doc, so export / save / reload all carry it
@@ -1898,9 +1918,8 @@ export function createReference(deps: ReferenceDeps) {
       applyGodRays();
       return;
     }
-    const e = (sunLight.el * Math.PI) / 180,
-      a = (sunLight.az * Math.PI) / 180;
-    const dir: [number, number, number] = [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
+    const terrainOptions = terrainSunOptions(sunLight),
+      dir = terrainOptions.dir;
     // Props preview from the RAW record pair because that is what their per-instance lighting ships with
     // (docs/032 · lighting). Terrain normalises independently through bakeExposure/lightmap saturation;
     // passing its exposed pair here would make an HDR reference-seeded preview disagree with the packed PBD.
@@ -1915,15 +1934,7 @@ export function createReference(deps: ReferenceDeps) {
     // incl. the safe clamp), so a record-seeded HDR sun (e.g. 2.47) reads at its baked ~0.67 and the record's
     // hot ambient reads at the lightmap-effective ~0.3 — not blown out. Export (buildLightsJson) keeps the raw
     // sun.sun / ambient; with no records both overrides are absent, so this matches the authored values.
-    viewport.setTerrainLight({
-      dir,
-      ambient: effectiveBakeAmbient(sunLight),
-      sun: effectiveBakeSun(sunLight),
-      shadow: sunLight.shadow,
-      ao: sunLight.ao,
-      sunTint: hex2rgb(sunLight.sunTint),
-      skyTint: hex2rgb(sunLight.skyTint),
-    });
+    viewport.setTerrainLight(terrainOptions);
     applyGodRays();
   }
 
@@ -2386,6 +2397,7 @@ export function createReference(deps: ReferenceDeps) {
     getRefStorageKey: () => refStorageKey,
     initSunLight,
     syncSunFromDoc,
+    prepareSunFromDoc,
     applySunLight,
     applyReferenceLighting,
     syncGodRays: applyGodRays,
