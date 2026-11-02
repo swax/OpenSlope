@@ -31,25 +31,34 @@ patched, not of the mountain.
 
 ## The export dialog
 
-**Export map** opens a dialog with no target picker. It shows what the folder will contain — cells painted, the tiles
-they use and how many cells each covers, **what the props cost**, the imported GLB models the props bake from
-(placements × per-copy triangles, with the ~150k baked-triangle flag the export log also raises), and the
-sky's tier and page cost — plus two settings that change what is written:
+**File → Export…** opens one dialog with three destinations, all ZIP downloads:
 
-- **bake lighting** (default on) bakes the authored sun into terrain lightmaps + `Lights.json`, independent of
-  the viewport's sun preview toggle. Off ships no lighting, so a repack keeps the target level's original
-  lights and `_L.ssh` verbatim (`003`).
-- **AI path variation** controls seeded lateral variation across the six required Race/Freeride start routes.
-  Off still writes six safe gate-to-center routes.
+- **Another Slopesmith instance** writes the editable `.slopesmith.zip` mountain and custom assets (`035`).
+- **Snowknife — Custom ISO** writes `<NAME>.snowknife.zip` and shows the command to build a custom PS2 Tricky ISO.
+- **Snowknife — Mod Manager** writes the same portable map archive and shows the command to build an SSX Mod
+  Manager package with `repack --mod-manager`.
+
+Authored-map Snowknife exports always bake the authored lighting into terrain lightmaps and `Lights.json`, independent
+of the viewport's sun preview toggle. AI routes use the same generator and seed as the editor and Test,
+including seeded variation, recorded paths, and the document's **Use auto-generated paths** setting.
+The dialog has no separate lighting or AI overrides and does not request or display a preflight summary.
+The report shown after export lists the files, assets, and build diagnostics.
+
+The dialog shows a copyable build command for the selected destination using this map's
+ZIP filename, plus an always-visible **Import Garibaldi (only needed once)** command and links to get
+[Snowknife](https://github.com/swax/OpenSlope/tree/main/Snowknife) and, when Mod Manager is selected,
+[SSX Mod Manager](https://github.com/GlitcherOG/SSXModManager). Both build commands
+ship in `Repack.md`.
 
 Confirm composes the folder in the browser and lands it: `buildExportFolder` (core) against the browser
-byte provider, then the directory the author picked, or a store-only ZIP where the File System Access API
-is absent (`037`). Nothing is posted; the server's part is the asset bytes the composition asks for.
+byte provider, then a `.snowknife.zip` download on every browser (`037`). The archive contains one named
+map folder. The server supplies the referenced asset bytes. Export never opens a
+directory picker; editable folder autosave remains available separately through **Save to folder…**.
 
 ## Preflight — what the props cost
 
-A prop is three separate costs that run out at different times, so the dialog reports all three rather than a
-placement count, and reads each against the shipped seven (`RETAIL_PROPS`, measured by
+A prop is three separate costs that run out at different times. The preflight API reports all three
+and reads each against the shipped seven (`RETAIL_PROPS`, measured by
 `npm run budget` — `tools/prop-budget.ts`).
 
 | | what it is | who pays | retail band |
@@ -68,7 +77,7 @@ writes one model row, one mesh file and one instance per placement, and `repack`
 243-triangle boulder placed thirty times is 7 290 triangles in the level. The model table grows one row per
 placement with it, which is worth knowing before placing thousands of anything.
 
-The section prices what the EXPORT writes, not what the document lists — trigger volumes carry no geometry
+The preflight data prices what the EXPORT writes, not what the document lists — trigger volumes carry no geometry
 and a group placement bakes as its member models, so both are resolved exactly as `core/export/folder.ts`
 resolves them (`015`). It covers borrowed, authored-cage and imported models alike; imported GLBs keep their
 own section as well, because there the interesting question is which *import* is the heavy one.

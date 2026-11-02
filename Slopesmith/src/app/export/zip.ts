@@ -2,15 +2,13 @@ import type { ExportFile } from '../../core/export/files';
 import { crc32 } from './crc32';
 
 /**
- * A store-only ZIP of the composed map folder — the export's fallback landing.
+ * A store-only ZIP of a composed map folder or editable mountain archive.
  *
- * Nothing is compressed. The folder is mostly PNG pages and WAV clips, which are already compressed and would
- * gain nothing; the text files that would compress are a rounding error beside them. Storing means the writer
- * is a header format rather than a codec, which is the whole reason this can be forty lines in the app instead
- * of a dependency.
+ * Entries are stored without a compression pass. This browser-native writer needs no additional codec;
+ * Snowknife and the mountain importer also accept archives recompressed by an ordinary ZIP utility.
  *
  * Entries are written under `<folderName>/`, so the archive extracts as the map folder itself wherever it is
- * opened — the same shape the directory writer produces under the picked `Maps/`.
+ * opened.
  */
 export function zipStoreOnly(folderName: string, files: readonly ExportFile[]): Blob {
   const encoder = new TextEncoder();

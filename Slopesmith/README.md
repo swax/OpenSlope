@@ -8,6 +8,13 @@ accounts, roles, per-map permissions, live presence, optional voice chat, and a 
 Jukebox. The same site supports desktop, mobile touch and game controllers, and standalone WebXR
 headsets. Slopesmith requires no disc or DCC tool for original authoring.
 
+The map library's three-dot menus include **Export…** for loaded game courses and
+public, private and local mountains. Local map **Delete** and loaded course
+**Unload** actions share that menu. Authored mountains can download either an
+editable `.slopesmith.zip` or a `.snowknife.zip`; imported courses download their
+portable map files for Snowknife. This includes locally loaded
+[SSX Tricky GBA courses](../Snowknife/REPACK.md#gba-courses-exported-by-slopesmith).
+
 ```text
 Slopesmith ──┬──▶ Test mode: ride in the browser
              └──▶ Maps/<NAME>/ ──┬──▶ Snowknife glTF ──▶ Unity
@@ -145,15 +152,15 @@ Each custom map has **Edit**; ISO maps have **Inspect**, which opens the map as 
 an empty editing workspace. Signed-in authors keep the server editor. Signed-out visitors edit locally:
 the published mountain is copied into browser storage, and references come from this device's loaded ISO maps.
 Editing, creating, importing, duplicating, and exporting mountains stay on the device. No server project is
-created or saved and no collaboration session connects. **Export mountain…** downloads an editable ZIP with
+created or saved and no collaboration session connects. **Export… → Another Slopesmith instance** downloads an editable ZIP with
 the custom assets; **Load map → Import from file** on `/` restores one locally. Browser storage is separate from signed-in
 recovery and can be cleared by the browser. **Save to folder…** keeps `mountain.slopesmith.zip` in a folder you
 choose and updates it automatically after browser saves, including custom assets. The save icon distinguishes
 browser, folder, and server saves; click it for the location, last save time, and backup actions. Folder autosave
 requires a browser with the directory picker (such as desktop Chrome or Edge). If folder permission expires,
 choose **Resume folder autosave** from the save icon. The folder copy survives clearing site data; use
-**Load map → Link folder** on `/` to add it back to the library, then choose **Edit**. Other browsers can use Export mountain and Import from file
-for file backups. **Export map…** writes the map files Snowknife uses to repack the course into your ISO.
+**Load map → Link folder** on `/` to add it back to the library, then choose **Edit**. Other browsers can use **Export… → Another Slopesmith instance** and **Import from file**
+for file backups. **Export… → Snowknife — Custom ISO** or **Snowknife — Mod Manager** downloads a `.snowknife.zip` build input.
 The **Home** icon saves
 pending edits and returns to `/`. Its **Local maps** section lists browser-saved mountains, including
 imports, and **New map** starts a new local mountain. Guest edits of public maps create numbered copies such
@@ -238,7 +245,7 @@ offline after the app has finished preparing.
 For a mountain saved on the server, use **File → Save offline copy…** while connected. This opens an
 independent browser copy with its custom assets; subsequent edits stay on this device. Load any desired ISO
 donor maps on this device too. Existing local mountains, imported mountain ZIPs, and folder copies need no
-server. Use **Save to folder** or **Export mountain** to keep a file backup; browser storage remains tied to
+server. Use **Save to folder** or **Export… → Another Slopesmith instance** to keep a file backup; browser storage remains tied to
 this Chrome profile and site address and can be removed through Chrome's site-data settings.
 
 Production builds generate a versioned service worker with all app chunks, built-in riders and importer
@@ -339,7 +346,7 @@ Editable mountains live as revisioned projects under the API-owned, gitignored `
 Use **File → Settings → Server → Local storage** to choose the workspace and `Maps/` locations. See
 [Local Projects](docs/035-local-projects.md).
 
-**File → Export mountain…** downloads the current editable revision and its complete mountain-local asset library as
+**File → Export… → Another Slopesmith instance** downloads the current editable revision and its complete mountain-local asset library as
 `<NAME>-r<REVISION>-<UTC-TIMESTAMP>.slopesmith.zip`. **Load map → Import from file** asks for the new workspace mountain's name, then creates it from
 one of those archives; it never overwrites the source mountain or an existing name. **Duplicate mountain**
 asks for the copy's name and makes the same kind of fork inside one server without sending asset bytes through
@@ -410,8 +417,11 @@ data, dangling effect-node targets are audited and replaced with the SSF format'
 effects survive, structurally corrupt SSFs are reported and omitted as `Effects.json`, and a non-retail sky is
 kept as merged geometry even when it cannot provide editable ring metadata.
 
-**Export map…** writes the canonical `Maps/<NAME>/` folder, a provenance record, and a `Repack.md` with
-target-specific commands. Apart from the explicit offline ZIP importer above, the editor does not bundle or
+**File → Export… → Snowknife — Custom ISO** or **Snowknife — Mod Manager** downloads `<NAME>.snowknife.zip`, containing the
+canonical map files, a provenance record, and a `Repack.md` with build commands. The dialog shows the selected
+destination's command and links to get Snowknife and SSX Mod Manager. Snowknife accepts this ZIP
+directly as the custom-map argument to `repack` for an ISO or, with `--mod-manager`, a mod-manager ZIP.
+All three export choices download ZIPs; **Save to folder…** remains a separate editable autosave destination. Apart from the explicit offline ZIP importer above, the editor does not bundle or
 invoke Snowknife: it produces one portable map, while the separately licensed [Snowknife](../Snowknife/README.md) handles glTF, Unity,
 and disc operations. The boundary is documented in the [export contract](docs/003-export-contract.md)
 and [export preflight guide](docs/011-export-target.md).

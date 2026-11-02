@@ -1,0 +1,71 @@
+.sp-snowknife-commands {
+  margin: 14px 0;
+  padding-top: 10px;
+  border-top: 1px solid #2c455b;
+  color: #cfe0ef;
+}
+.sp-snowknife-commands h4 {
+  margin: 0 0 5px;
+  font-size: 12px;
+}
+.sp-snowknife-commands p {
+  margin: 0 0 8px;
+  color: #a8bfd2;
+  font-size: 11px;
+}
+.sp-command-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.sp-command-tools a {
+  color: #91cbf4;
+}
+.sp-command {
+  margin-top: 9px;
+}
+.sp-command-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.sp-command-head button {
+  padding: 3px 8px;
+  border: 1px solid #3c5e79;
+  border-radius: 4px;
+  color: #d7e3f0;
+  background: #223747;
+  font: inherit;
+  cursor: pointer;
+}
+.sp-command pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px;
+  overflow-x: auto;
+  white-space: pre;
+  background: #0b1520;
+  border: 1px solid #2c455b;
+  border-radius: 4px;
+  font:
+    10.5px/1.5 ui-monospace,
+    Consolas,
+    monospace;
+}
+.sp-command :is(pre, button):focus-visible,
+.sp-command-tools a:focus-visible {
+  outline: 2px solid #65b5ed;
+  outline-offset: 2px;
+}
+.sp-command-feedback {
+  margin-top: 6px;
+  color: #a8bfd2;
+  font-size: 11px;
+}
+.sp-command-feedback:empty {
+  display: none;
+}

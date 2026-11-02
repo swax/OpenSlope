@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +12,8 @@ import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { defaultMountain } from '../src/core/doc/mountain';
+import { createAuthoredModel, modelNumber } from '../src/core/doc/models';
+import type { ImportedPropRecord } from '../src/core/props/imported';
 import { encodePng } from '../src/server/routes/png';
 import { readMountainArchive } from '../src/app/mountain/archive';
 import { MOUNTAIN_FOLDER_FILE } from '../src/app/mountain/folder';
@@ -312,6 +316,39 @@ try {
   const newer = structuredClone(linkedDisk);
   newer.document.name = newer.name = 'EXTERNAL_FOLDER_UPDATE';
   newer.takenAt = new Date().toISOString();
+  const model = createAuthoredModel(newer.document, 'Folder authored panel');
+  model.vertices = [0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 2, 0];
+  model.quads = [[0, 1, 2, 3]];
+  model.texture = 'Custom/snow.png';
+  const packed = (values: Float32Array | Uint32Array) => Buffer.from(values.buffer).toString('base64');
+  const imported: ImportedPropRecord = {
+    id: 5,
+    name: 'Folder imported triangle',
+    tris: 1,
+    materials: [{ id: 0, tex: 'Custom/snow.png' }],
+    subs: [
+      {
+        mat: 0,
+        pos: packed(new Float32Array([0, 0, 0, 100, 0, 0, 0, 0, 200])),
+        uv: packed(new Float32Array([0, 0, 1, 0, 0, 1])),
+        idx: packed(new Uint32Array([0, 1, 2])),
+      },
+    ],
+  };
+  const propBytes = Buffer.from(JSON.stringify(imported));
+  const propHash = createHash('sha256').update(propBytes).digest('hex');
+  newer.assets.push({
+    kind: 'prop',
+    name: 'folder-triangle.json',
+    model: imported.id,
+    hash: propHash,
+    size: propBytes.length,
+  });
+  newer.blobs = { ...newer.blobs, [propHash]: propBytes.toString('base64') };
+  newer.document.props = [
+    { level: '@models', model: modelNumber(model.id), name: model.name, pos: [2, 0, 2], yaw: 0, scale: 1 },
+    { level: '@import', model: imported.id, name: imported.name, pos: [-2, 0, 2], yaw: 0, scale: 1 },
+  ];
   await replaceDisk(newer);
   await linkedCard.getByRole('link', { name: 'Edit BROWSER_AHEAD', exact: true }).click();
   await page.waitForURL('**/editor/EXTERNAL_FOLDER_UPDATE?*');
@@ -325,6 +362,50 @@ try {
   await folderSaved();
   const restored = await diskNamed('EXTERNAL_FOLDER_UPDATE');
   assert.equal(restored.assets[0]?.hash, initial.assets[0].hash, 'recovery retains custom assets');
+  await fileAction('Export…');
+  const exportDialog = page.getByRole('dialog', { name: 'Export', exact: true });
+  await exportDialog.getByLabel('Export for', { exact: true }).selectOption('snowknife-iso');
+  const downloaded = page.waitForEvent('download', { timeout: 90_000 });
+  await exportDialog.getByRole('button', { name: 'Download .snowknife.zip', exact: true }).click();
+  const snowknife = await downloaded;
+  const archive = join(root, 'folder-export.snowknife.zip');
+  await snowknife.saveAs(archive);
+  const contents = spawnSync(
+    'python',
+    [
+      '-c',
+      [
+        'import zipfile,json,sys,hashlib',
+        'z=zipfile.ZipFile(sys.argv[1]); root="EXTERNAL_FOLDER_UPDATE/"',
+        'models=json.loads(z.read(root+"Models.json"))["Models"]',
+        'instances=json.loads(z.read(root+"Instances.json"))["Instances"]',
+        'ids={i for i,m in enumerate(models) if m["ModelName"].startswith(("Model_","Import_"))}',
+        'meshes=[z.read(root+"Meshes/"+mesh["MeshPath"]).decode() for i in ids for obj in models[i]["ModelObjects"] for mesh in obj["MeshData"]]',
+        'faces=sorted(sum(line.startswith("f ") for line in mesh.splitlines()) for mesh in meshes)',
+        'texture=next(name for name in z.namelist() if name.endswith("/Custom_snow.png"))',
+        'print(json.dumps(dict(models=len(ids),instances=sum(i["ModelID"] in ids for i in instances),faces=faces,texture=hashlib.sha256(z.read(texture)).hexdigest())))',
+      ].join('\n'),
+      archive,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(contents.status, 0, contents.stderr);
+  assert.deepEqual(
+    JSON.parse(contents.stdout),
+    {
+      models: 2,
+      instances: 2,
+      faces: [1, 2],
+      texture: initial.assets[0].hash,
+    },
+    'Folder Snowknife export retains authored and embedded prop geometry and original texture bytes',
+  );
+  const missingSourceStatus = await page.evaluate(async () => {
+    const module = '/src/app/net/client.ts';
+    const { clientFetch } = await import(/* @vite-ignore */ module);
+    return (await clientFetch('/api/props?level=MISSING_SOURCE')).status;
+  });
+  assert.equal(missingSourceStatus, 404, 'Missing local prop sources must not return a map catalogue');
   await rename('RESTORED_FROM_FOLDER');
   await diskNamed('RESTORED_FROM_FOLDER');
   await folderSaved();

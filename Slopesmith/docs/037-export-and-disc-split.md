@@ -1,7 +1,7 @@
 # 037 — Export on the client, discs in Snowknife
 
 Where the map folder is written, and who is allowed to know about a PS2 disc. The design in two lines:
-**the editor writes one portable map folder, from the browser, against no particular target**, and
+**the editor downloads a portable map ZIP from the browser, against no particular game slot**, and
 **the disc is built by `snowknife`, which is the only thing holding a target's slot table.** Slopesmith stops
 spawning processes entirely.
 
@@ -20,7 +20,7 @@ which has a node implementation reading the extracted library off disk and a bro
 library over HTTP. `npm run smoke` composes through the node provider and bakes the result with a real
 `snowknife gltf`, so the seam is proven headlessly rather than mocked.
 
-The Slopesmith server resolves assets and stores projects. Every export writes `Repack.md` and a
+The Slopesmith server resolves assets and stores projects. Every Snowknife export includes `Repack.md` and a
 `repack-many.json` stub naming itself, so both the glTF bake and disc build have complete invocations.
 
 ## One export form
@@ -44,8 +44,8 @@ VRAM numbers. The target-aware dry run reports PS2 headroom for the disc being p
 `repack-many` accepts `{Slot, LevelData, Export}` per level, so the export-to-slot mapping has a home
 outside the editor, and one manifest can build several courses into one image.
 
-The export dialog reports what is about the *map* — how many cells are painted, which tiles they use, how
-many triangles each imported model bakes per placement — and nothing about a *disc*.
+The export dialog selects the destination and shows its build command. Map assets and imported-model
+costs are listed in the report after export; the dialog does not fetch or display a preflight summary.
 
 ### Three things that look target-shaped and are not
 
@@ -72,7 +72,7 @@ importing a constant from a disc.
 `repack … --dry-run` runs the real pipeline up to the point of writing bytes and reports what it would do.
 It reads the source ISO's bank, the target level, and the export folder; it produces no `out.iso`.
 
-What it reports is the set the export dialog shows today, sourced from the allocator instead of a model of it:
+It reports target-specific allocation details:
 
 - **Slots** — original slot count, how many are retained (referenced by kept materials and flipbooks, plus
   slot 0000), how many are reusable.
@@ -114,9 +114,15 @@ not browser-only code. That is the difference between moving the export and fork
 | `Sounds/` | `/api/custom-sound` and `/api/effect-sound`, through the same cache |
 | `Skybox/` ring | `/api/skybox/ring` answers the resolved ring level, its `Skybox/` shell, and the complete Snowknife-measured `Ring.json` contract (dimensions, slots, spans, UV radius, and page sizes); `/api/skybox/page` serves a shipped page verbatim. `composeSkybox` (core) then writes the same folder for both providers |
 
-Files land through `showDirectoryPicker()` with the handle persisted in IndexedDB — pick `Maps/` once, write
-`Maps/<NAME>/` on every later export. A store-only ZIP download is the fallback for browsers without it.
-Because a picked directory has no path a browser may read, `Repack.md`'s commands are written relative to it.
+Files always download as `<NAME>.snowknife.zip`, containing the named map folder. The export dialog also
+offers an editable `.slopesmith.zip` for transfer to another Slopesmith instance. No directory picker or
+remembered export-folder handle participates in either export. **Save to folder…** remains an independent
+editable mountain autosave feature.
+
+Snowknife’s `repack` and `texture-plan` accept the archive directly; `repack-many` accepts ZIP paths in
+its `Export` entries. Directory inputs remain supported. Extraction is temporary, bounded, and rejects
+unsafe paths, links, duplicate names and ambiguous map roots. The archive is never modified. The glTF
+and Unity workflows still use the extracted map folder.
 
 ### Music without ffmpeg
 
@@ -129,9 +135,8 @@ and resamples it linearly. Both end in one core PCM16 writer, so the container i
 
 ## Costs
 
-- **Disc and glTF builds are CLI steps.** A browser cannot spawn `snowknife`. Each export writes the exact
+- **Disc and glTF builds are CLI steps.** A browser cannot spawn `snowknife`. Each Snowknife export writes the exact
   invocations and a `repack-many` stub naming that folder.
-- **Firefox and Safari get ZIP only**, so the good path is Chromium-shaped. The export dialog says which one
-  this browser is on rather than quietly downloading.
+- **Both export choices always download ZIPs** on every browser. The suffix identifies the intended consumer.
 - **A headless export stages only uncompressed music.** Nothing on the server decodes an mp3 any more; the
   browser hands its sources to WebAudio, which is where an author's tracks are staged.

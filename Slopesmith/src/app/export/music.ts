@@ -25,6 +25,7 @@ export async function stageRaceMusic(
   selection: string | null | undefined,
   authoredArrangement: RaceMusicArrangement | undefined,
   existingTrack: (path: string) => Promise<boolean>,
+  readSource: (name: string) => Promise<Uint8Array> = name => assetBytes(customMusicUrl(name)),
 ): Promise<StagedRaceMusic> {
   if (selection === undefined)
     return { status: 'legacy', files: [], remove: [], existing: await existingTrack(STAGED_TRACK) };
@@ -37,7 +38,7 @@ export async function stageRaceMusic(
     };
   }
 
-  const source = await assetBytes(customMusicUrl(selection));
+  const source = await readSource(selection);
   const track = encodePcm16Wav(await renderRaceTrack(source), RACE_MUSIC_SAMPLE_RATE);
   const arrangement = normalizeRaceMusicArrangement(authoredArrangement);
   return {

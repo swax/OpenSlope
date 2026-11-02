@@ -178,6 +178,7 @@ export async function forgetReferencePublication(id: string): Promise<void> {
 }
 
 const LEVEL_READS = new Set([
+  '/api/map-files',
   '/api/skybox',
   '/api/level',
   '/api/props',

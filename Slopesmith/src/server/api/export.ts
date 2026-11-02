@@ -4,9 +4,8 @@ import { readJsonBody, RequestBodyTooLargeError, type ApiHandler } from './commo
 /** POST /api/preflight {doc} -> summarise what the doc ships: its tiles, cells, imported models and sky
  *  (docs/011).
  *
- *  There is no export route. The editor composes the map folder in the browser and writes it through the
- *  directory the author picked, so the server's part in an export is the asset bytes the composition asks for
- *  — served by the ordinary library routes — and nothing else. */
+ *  There is no export route. The editor composes and downloads the map ZIP in the browser. The server
+ *  supplies asset bytes through the ordinary library routes. This summary remains available to tooling. */
 export const exportRoutes: Record<string, ApiHandler> = {
   '/api/preflight': async (req, res) => {
     if (req.method !== 'POST') {

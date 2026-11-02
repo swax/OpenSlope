@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'vite';
 import { chromium, type Browser, type Page } from 'playwright-core';
-import { chromiumExecutable } from './browser-test-support';
+import { chromiumExecutable, clickMapAction } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
@@ -211,8 +211,13 @@ try {
   await page.waitForFunction(() => document.title === 'LOCAL_RUN - Slopesmith');
   await ready(page);
   const download = page.waitForEvent('download');
-  await fileAction(page, 'Export mountain…');
+  await fileAction(page, 'Export…');
+  await page
+    .getByRole('dialog', { name: 'Export', exact: true })
+    .getByRole('button', { name: 'Download .slopesmith.zip', exact: true })
+    .click();
   const saved = await download;
+  assert(saved.suggestedFilename().endsWith('.slopesmith.zip'));
   const bundle = await readMountainArchive(new Blob([readFileSync((await saved.path())!)]));
   assert.equal(bundle.document.name, 'LOCAL_RUN');
   assert.equal(
@@ -223,21 +228,27 @@ try {
   assert.equal(bundle.missing?.length ?? 0, 0);
   assert(bundle.blobs?.[bundle.assets[0].hash]);
 
-  await fileAction(page, 'Export map…');
-  await page
-    .locator('.sp-export-modal')
-    .getByText('reading the mountain…', { exact: false })
-    .waitFor({ state: 'hidden' });
-  assert(!/preflight failed/.test(await page.locator('.sp-export-modal').innerText()));
-  await page.locator('.sp-export-modal').getByRole('checkbox', { name: 'bake lighting', exact: true }).uncheck();
+  await page.evaluate(`Object.defineProperty(window, 'showDirectoryPicker', {
+    configurable: true,
+    value: () => { throw new Error('Export must download a ZIP even when folder access is supported'); }
+  })`);
+  await fileAction(page, 'Export…');
+  await page.getByLabel('Export for', { exact: true }).selectOption('snowknife-iso');
+  await page.screenshot({ path: join(root, 'export-snowknife.png') });
   const mapDownload = page.waitForEvent('download', { timeout: 90_000 });
-  await page.locator('.sp-export-modal').getByRole('button', { name: 'Export map', exact: true }).click();
+  await page.locator('.sp-export-modal').getByRole('button', { name: 'Download .snowknife.zip', exact: true }).click();
   const map = await mapDownload;
-  assert.equal(map.suggestedFilename(), 'LOCAL_RUN.zip');
+  assert.equal(map.suggestedFilename(), 'LOCAL_RUN.snowknife.zip');
+  await map.saveAs(join(root, map.suggestedFilename()));
+  console.log('Snowknife export artifact:', join(root, map.suggestedFilename()));
   assert(
     readFileSync((await map.path())!).includes(Buffer.from('Patches.json')),
     'local map export writes the portable map files',
   );
+
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'showDirectoryPicker', { value: undefined, configurable: true });
+  });
 
   const imported = structuredClone(bundle);
   imported.document.name = 'IMPORTED_LOCAL';
@@ -353,10 +364,14 @@ try {
   await page.goto(`${origin}/maps`);
   await localMaps.getByRole('link', { name: 'Edit MOUNTAIN02', exact: true }).waitFor();
   await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
-  const deleteCopy = localMaps.getByRole('button', { name: 'Delete PUBLIC_RUN_REV_2', exact: true });
+  const deleteCopy = localMaps.getByRole('button', {
+    name: 'Delete PUBLIC_RUN_REV_2',
+    exact: true,
+    includeHidden: true,
+  });
   const confirmation = page.getByRole('alertdialog', { name: 'Delete PUBLIC_RUN_REV_2?', exact: true });
   const beforeDelete = requests.length;
-  await deleteCopy.click();
+  await clickMapAction(deleteCopy);
   await confirmation.waitFor();
   assert.equal(
     await confirmation
@@ -366,7 +381,7 @@ try {
   );
   await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
   assert.equal(await localMaps.getByRole('link', { name: 'Edit PUBLIC_RUN_REV_2', exact: true }).count(), 1);
-  await deleteCopy.click();
+  await clickMapAction(deleteCopy);
   await confirmation.waitFor();
   await page.keyboard.press('Escape');
   await confirmation.waitFor({ state: 'hidden' });
@@ -378,11 +393,11 @@ try {
     const project = workspace.list().find((project: { id: string }) => project.id === id);
     Object.assign(window, { localDeleteProbe: { workspace, document: bundle.document, revision: project.revision } });
   }, secondCopyId);
-  await deleteCopy.click();
+  await clickMapAction(deleteCopy);
   await confirmation.waitFor();
   await page.screenshot({ path: join(root, 'local-map-delete-confirmation.png') });
   await confirmation.getByRole('button', { name: 'Delete', exact: true }).click();
-  await deleteCopy.waitFor({ state: 'hidden' });
+  await deleteCopy.waitFor({ state: 'detached' });
   assert.equal(await localMaps.locator('[data-kind=local]').count(), 4);
   assert.equal(await localMaps.getByRole('link', { name: 'Edit LOCAL_RUN', exact: true }).count(), 1);
   const staleSave = await page.evaluate(async id => {
@@ -442,7 +457,11 @@ try {
   assert.equal(await referenceSelect.locator('option:checked').textContent(), 'Garibaldi');
   assert.deepEqual(await referenceSelect.locator('option').allTextContents(), ['(none)', 'Garibaldi']);
   const referenceDownload = page.waitForEvent('download');
-  await fileAction(page, 'Export mountain…');
+  await fileAction(page, 'Export…');
+  await page
+    .getByRole('dialog', { name: 'Export', exact: true })
+    .getByRole('button', { name: 'Download .slopesmith.zip', exact: true })
+    .click();
   const referenceBundle = await readMountainArchive(
     new Blob([readFileSync((await (await referenceDownload).path())!)]),
   );
@@ -512,13 +531,13 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
   const memberDeleteRequests = requests.length;
-  const memberDelete = localMaps.getByRole('button', { name: 'Delete MOUNTAIN02', exact: true });
-  await memberDelete.click();
+  const memberDelete = localMaps.getByRole('button', { name: 'Delete MOUNTAIN02', exact: true, includeHidden: true });
+  await clickMapAction(memberDelete);
   await page
     .getByRole('alertdialog', { name: 'Delete MOUNTAIN02?', exact: true })
     .getByRole('button', { name: 'Delete', exact: true })
     .click();
-  await memberDelete.waitFor({ state: 'hidden' });
+  await memberDelete.waitFor({ state: 'detached' });
   assert.equal(
     requests.length,
     memberDeleteRequests,

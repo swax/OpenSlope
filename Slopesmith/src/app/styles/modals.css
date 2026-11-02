@@ -16,7 +16,50 @@
   width: 100%;
 }
 .sp-modal.sp-export-modal {
-  width: 430px;
+  width: 460px;
+  box-sizing: border-box;
+  max-height: 92vh;
+  overflow: auto;
+  padding: 18px;
+  background: #101b26;
+  color: #d7e3f0;
+  border: 1px solid #2c455b;
+  border-radius: 8px;
+  box-shadow: 0 16px 60px #000b;
+  font:
+    12px/1.5 system-ui,
+    sans-serif;
+}
+.sp-export-modal h3 {
+  margin: 0 0 14px;
+  color: #eef6ff;
+  font-size: 16px;
+}
+.sp-export-modal > label {
+  display: block;
+  font-weight: 600;
+  color: #a8bfd2;
+}
+.sp-export-modal select {
+  display: block;
+  width: 100%;
+  margin: 6px 0 12px;
+  padding: 8px;
+  color-scheme: dark;
+  background: #0b1520;
+  color: #edf5fc;
+  border: 1px solid #3c5e79;
+  border-radius: 4px;
+  font: inherit;
+}
+.sp-export-modal select:focus-visible {
+  outline: 2px solid #65b5ed;
+  outline-offset: 2px;
+}
+.sp-export-modal > .sp-modal-note {
+  margin: 0 0 14px;
+  color: #b4c7d7;
+  line-height: 1.6;
 }
 .sp-modal-actions {
   display: flex;
@@ -748,66 +791,6 @@
   z-index: 3;
   color: #8fc0a8;
   background: #0e2119;
-}
-/* export preflight summary (docs/011): what the map folder ships, under the export settings */
-.sp-preflight {
-  background: #101a24;
-  border: 1px solid #24384b;
-  border-radius: 6px;
-  margin: 7px 0 0;
-  padding: 9px 11px;
-  font:
-    11.5px/1.45 ui-sans-serif,
-    system-ui,
-    sans-serif;
-  color: #cfe0ef;
-  max-height: 48vh;
-  overflow: auto;
-}
-.sp-preflight .pf-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #eaf2f9;
-  margin-bottom: 5px;
-}
-.sp-preflight .pf-status {
-  color: #79bca4;
-  font-size: 10px;
-  font-weight: 600;
-}
-.sp-preflight .pf-line {
-  white-space: normal;
-}
-.sp-preflight .pf-dim {
-  color: #8aa0b4;
-}
-.sp-preflight .pf-warn {
-  color: #f0c674;
-}
-.sp-preflight .pf-more {
-  margin-top: 7px;
-  padding-top: 5px;
-  border-top: 1px solid #24384b;
-}
-.sp-preflight .pf-more > summary {
-  color: #8fa7ba;
-  cursor: pointer;
-  user-select: none;
-}
-.sp-preflight .pf-more-body {
-  padding-top: 5px;
-}
-.sp-preflight .pf-detail {
-  margin-top: 5px;
-  padding-top: 5px;
-  border-top: 1px solid #24384b;
-  color: #8aa0b4;
-  font:
-    10.5px/1.5 ui-monospace,
-    Consolas,
-    monospace;
 }
 .sp-gui-notitle > .lil-title {
   display: none;

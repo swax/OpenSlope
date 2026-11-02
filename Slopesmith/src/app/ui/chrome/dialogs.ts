@@ -12,14 +12,12 @@ import {
   starterCourse,
 } from '../../../core/doc/mountain';
 import { buildQuadMesh } from '../../../core/mesh/topology';
-import { RETAIL_PROPS, type Preflight, type TileClass } from '../../../core/export/preflight';
 import { exportFolderName } from '../../../core/export/folder';
-import { canPickDirectory, pickMapsDirectory, type ExportTarget } from '../../export/landing';
 import { exportMapFolder, resolveExportTarget } from '../../export/run';
+import { createSnowknifeCommands, snowknifeTarget } from '../../export/commands';
 import { createMountainArchive } from '../../mountain/archive';
 import { safeDataName } from '../../../core/export/names';
 import { tip } from '../components/gui';
-import { escapeHtml as esc } from '../components/html-escape';
 import { infoBadge } from '../components/info';
 import { toast } from '../components/toast';
 import { modal } from '../components/modal';
@@ -35,14 +33,13 @@ import {
   type RevertRequest,
 } from '../../state/project-sync';
 import type { ProjectBundle } from '../../../core/project/transfer';
-import { clientFetch } from '../../net/client';
 import { isLocalWorkspace } from '../../net/workspace';
 
 /**
  * The editor's modal dialogs + file actions (docs/011): loft a New mountain, borrow a reference level's course
  * line through that same generator, import / export an editable
  * mountain ZIP, the History panel over the project's checkpoints and the conflict resolution behind a refused
- * save, and the Export map flow with its summary of what the folder ships. These are the file-menu / Scene-panel actions; they mutate the
+ * save, and the Export map flow. These are the file-menu / Scene-panel actions; they mutate the
  * document through the injected setDoc + re-run loadMountain, and read the loaded reference through getters
  * so the reference subsystem stays owned by the shell.
  */
@@ -1157,68 +1154,28 @@ export function createDialogs(deps: DialogDeps) {
     );
   }
 
-  /**
-   * The export dialog (docs/011): what this mountain ships, and the two settings that change what is written.
-   * There is no target — the folder is written against none, and the disc step is `snowknife`, which holds the
-   * slot table and reports its own allocation plan (`repack --dry-run`). The exported folder carries that
-   * invocation, so the summary here is about the MAP.
-   */
-  async function exportDialog() {
+  /** Choose an editable Slopesmith mountain or a compiled-map input archive for Snowknife. */
+  function exportDialog() {
     const d = getDoc();
-    const state = { lighting: true, aiPaths: false };
-
     const { host, close } = modal();
     host.classList.add('sp-export-modal');
-    const gTop = new GUI({ container: host, title: `Export map — ${d.name}` });
-    banner(
-      host,
-      'Export map writes the files Snowknife uses to repack this course into your ISO. To back up your editable work, use Export mountain or Save to folder.',
-      'info',
-    );
-    tip(
-      gTop.add(state, 'lighting').name('bake lighting'),
-      'Bake the map’s sun into terrain lightmaps + Lights.json.',
-      'Baked regardless of the viewport sun toggle. Off ships no lighting, so a repack keeps the target ' +
-        'level’s original lighting and the terrain reads flat.',
-    );
-    tip(
-      gTop.add(state, 'aiPaths').name('AI path variation'),
-      'Give the six required race routes seeded lateral variation.',
-      'Scene ▸ Show AI paths previews it. Off still ships six safe gate-to-center routes; Race mode requires ' +
-        'exactly six AIP start entries.',
-    );
-    // `banner` inserts at the top, so these read bottom-up: what happens after the export, then where it lands.
-    banner(
-      host,
-      'Slopesmith writes the portable map folder and stops there. Repack.md beside it carries the ' +
-        '“snowknife gltf” command that bakes it for Unity, and the “repack” command that builds a ' +
-        'playable PS2 ISO for PCSX2 or hardware.',
-      'info',
-    );
-    if (canPickDirectory()) {
-      banner(
-        host,
-        `Writes ${exportFolderName(d)}/ into the Maps folder you pick. You are asked for it once ` +
-          'and it is remembered, so every later export lands beside your reference maps.',
-        'info',
-      );
-      tip(
-        gTop.add({ choose: () => void chooseMapsFolder() }, 'choose').name('Change Maps folder…'),
-        'Pick a different folder to export into. The current one is remembered until you change it.',
-      );
-    } else {
-      banner(
-        host,
-        'This browser has no File System Access API — Firefox and Safari do not implement it — so ' +
-          `the map folder comes down as ${exportFolderName(d)}.zip instead. Unpack it into your Maps folder. ` +
-          'A Chromium browser writes it there directly.',
-        'info',
-      );
-    }
+    host.setAttribute('role', 'dialog');
+    host.setAttribute('aria-label', 'Export');
+    host.setAttribute('aria-modal', 'true');
 
-    const summary = document.createElement('div');
-    summary.className = 'sp-preflight';
-    host.appendChild(summary); // sits between the settings and the action buttons
+    const title = document.createElement('h3');
+    title.textContent = `Export — ${d.name}`;
+    const label = document.createElement('label');
+    label.textContent = 'Export for';
+    const purpose = document.createElement('select');
+    purpose.setAttribute('aria-label', 'Export for');
+    purpose.add(new Option('Another Slopesmith instance', 'slopesmith'));
+    purpose.add(new Option('Snowknife — Custom ISO', 'snowknife-iso'));
+    purpose.add(new Option('Snowknife — Mod Manager', 'snowknife-mod-manager'));
+    label.appendChild(purpose);
+    const description = document.createElement('p');
+    description.className = 'sp-modal-note';
+    const commands = createSnowknifeCommands(exportFolderName(d));
     const actions = document.createElement('div');
     actions.className = 'sp-modal-actions';
     const cancel = document.createElement('button');
@@ -1227,70 +1184,37 @@ export function createDialogs(deps: DialogDeps) {
     cancel.onclick = close;
     const go = document.createElement('button');
     go.className = 'sp-btn accent';
-    go.textContent = 'Export map';
     go.onclick = () => {
+      const snowknife = snowknifeTarget(purpose.value) !== null;
       close();
-      void runExport(d, state.lighting, state.aiPaths);
+      if (snowknife) void runExport(d);
+      else void exportMountain();
     };
     actions.append(cancel, go);
-    host.appendChild(actions);
+    host.append(title, label, description, commands.element, actions);
+    purpose.onchange = updatePurpose;
+    updatePurpose();
+    purpose.focus();
 
-    summary.innerHTML = '<div class="pf-dim">reading the mountain…</div>';
-    try {
-      const res = await clientFetch('/api/preflight', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ doc: d }),
-      });
-      // The /api/preflight middleware registers only at server start. If the running dev server predates it,
-      // Vite serves index.html here (or a 404) instead of JSON — the fix is a dev-server restart, not the app.
-      if (!res.ok || !(res.headers.get('content-type') ?? '').includes('application/json')) {
-        summary.innerHTML =
-          '<div class="pf-warn">preflight endpoint missing — restart the dev server (Ctrl+C, <code>npm run dev</code>) to pick it up.</div>';
-        return;
-      }
-      const pf = (await res.json()) as Preflight;
-      if ((pf as unknown as { error?: string }).error) {
-        summary.innerHTML = `<div class="pf-warn">preflight failed — ${esc((pf as unknown as { error: string }).error.split('\n')[0])}</div>`;
-        return;
-      }
-      renderPreflight(summary, pf);
-    } catch (e) {
-      summary.innerHTML = `<div class="pf-warn">preflight failed — ${esc(e instanceof Error ? e.message : String(e))}</div>`;
+    function updatePurpose() {
+      const target = snowknifeTarget(purpose.value);
+      const snowknife = target !== null;
+      commands.setTarget(target);
+      go.textContent = snowknife ? 'Download .snowknife.zip' : 'Download .slopesmith.zip';
+      description.textContent = snowknife
+        ? `Downloads ${exportFolderName(d)}.snowknife.zip. Use Snowknife locally to build ${target === 'iso' ? 'a custom PS2 Tricky ISO' : 'a ZIP for SSX Mod Manager'}.`
+        : 'Download an editable .slopesmith.zip mountain with its custom assets. On another Slopesmith instance, choose Load map → Import from file to continue editing.';
     }
   }
 
-  /** Re-point the folder every export writes into. */
-  async function chooseMapsFolder() {
-    const picked = await pickMapsDirectory();
-    if (picked) toast(`Exports will be written into ${picked.name}/.`, 'ok');
-  }
-
-  /**
-   * Compose the map folder here in the browser and land it. One portable form, against no target: authored
-   * coordinates are written as-is (editorFromRaw <-> toRaw are exact inverses), so a mountain authored in a
-   * reference level's frame lands back in its coordinates, and the folder's own Repack.md carries the
-   * commands that bake it for Unity and build a disc from it.
-   */
-  async function runExport(d: EditDoc, lighting = true, aiPaths = false) {
-    let target: ExportTarget | null;
-    // Resolved first, because picking a folder may prompt and the prompt belongs to this click.
-    try {
-      target = await resolveExportTarget(d);
-    } catch (e) {
-      toast('Export failed — see details', 'err');
-      log(`export failed: ${e instanceof Error ? e.message : e}`);
-      return;
-    }
-    if (!target) {
-      toast('No folder chosen — pick your Maps folder to export into.', 'info', 5000);
-      return;
-    }
+  /** Compose and download the Snowknife map archive entirely in the browser. */
+  async function runExport(d: EditDoc) {
+    const target = resolveExportTarget(d);
     toast(`Exporting ${d.name}…`, 'info', 0);
     try {
-      const result = await exportMapFolder(d, target, { lighting, aiPaths });
+      const result = await exportMapFolder(d, target);
       toast(`✓ Exported ${d.name} → ${result.destination}`, 'ok', 6000);
-      log(`${result.destination}\n\n${result.log}`); // the full export report remains available in the panel
+      log(`${result.destination}\n\n${result.log}`);
     } catch (e) {
       toast('Export failed — see details', 'err');
       log(`EXPORT FAILED\n${e instanceof Error ? (e.stack ?? e.message) : e}`);
@@ -1313,137 +1237,3 @@ export function createDialogs(deps: DialogDeps) {
 }
 
 export type Dialogs = ReturnType<typeof createDialogs>;
-
-/** Sum the cells covered by the tiles of one class. */
-function classCells(pf: Preflight, cls: TileClass): number {
-  return pf.tiles.filter(t => t.cls === cls).reduce((n, t) => n + t.cells, 0);
-}
-
-const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? '' : 's'}`;
-
-/** Render the preflight into the dialog (docs/011): what the folder will contain — cells painted, the tiles
- *  they use, the models the props bake from, and the sky. Nothing here is target-relative; a disc's own
- *  numbers come from `snowknife repack --dry-run`, which the exported folder's Repack.md spells out.
- *
- *  The panel is assembled as markup, so every document-supplied string — tile refs, model and sky names —
- *  goes through `esc`: they are values any editor of the mountain can set, and this dialog is opened by
- *  whoever exports, admins included. */
-function renderPreflight(el: HTMLElement, pf: Preflight) {
-  // Diagnostics stay collapsed by default; preserve the user's choice across a re-render.
-  const detailsOpen = !!el.querySelector<HTMLDetailsElement>('details.pf-more')?.open;
-  const rows: string[] = [];
-  const c = pf.counts;
-  rows.push('<div class="pf-head"><b>Portable map folder</b><span class="pf-status">Unity + disc</span></div>');
-  rows.push(
-    `<div class="pf-line">${plural(pf.cells.painted, 'painted cell')} · ${plural(pf.tiles.length, 'tile')}` +
-      ` · ${plural(pf.cells.unpainted, 'procedural cell')}</div>`,
-  );
-  if (pf.props) {
-    const p = pf.props;
-    rows.push(
-      `<div class="pf-line">${plural(p.placements, 'prop')} · ${plural(p.models, 'model')}` +
-        ` · ${p.bakedTris.toLocaleString()} baked triangles · ${plural(p.pages.length, 'prop page')}</div>`,
-    );
-  }
-
-  const detail: string[] = [];
-  if (c.real)
-    detail.push(
-      `<div class="pf-line">🟢 ${plural(c.real, 'extracted tile')} · ` +
-        `${plural(classCells(pf, 'real'), 'cell')} — shipped flattened and verbatim</div>`,
-    );
-  if (c.custom)
-    detail.push(
-      `<div class="pf-line">🔴 ${plural(c.custom, 'custom tile')} · ` +
-        `${plural(classCells(pf, 'custom'), 'cell')} — your own art, encoded when a disc is built</div>`,
-    );
-  detail.push(
-    ...pf.tiles.map(
-      t =>
-        `<div class="pf-line pf-dim">${t.cls === 'custom' ? '🔴' : '🟢'} ${esc(t.ref)} · ${plural(t.cells, 'cell')}</div>`,
-    ),
-  );
-  if (pf.sky) detail.push(skyLine(pf.sky));
-  if (pf.props) detail.push(propRows(pf.props));
-  if (pf.importedModels?.length) detail.push(importedModelRows(pf));
-  rows.push(
-    `<details class="pf-more"><summary>What ships</summary><div class="pf-more-body">${detail.join('')}</div></details>`,
-  );
-  el.innerHTML = rows.join('');
-  if (detailsOpen) el.querySelector<HTMLDetailsElement>('details.pf-more')?.toggleAttribute('open', true);
-}
-
-/** The sky's bank cost (docs/025) — its OWN `_sky.ssh`, so it gets its own line. A donor sky lifts verbatim
- *  (free); a custom one encodes forced type-5 pages, exactly priced: standard ≈ a retail day sky's native
- *  ~0.85 MB (the proven zone), high unproven. */
-function skyLine(sky: NonNullable<Preflight['sky']>): string {
-  if (sky.kind === 'level') {
-    return `<div class="pf-line pf-dim">Sky: ${esc(sky.level)}’s own — its bank lifts verbatim, no VRAM change.</div>`;
-  }
-  const mb = (sky.bytes / 1048576).toFixed(1);
-  return sky.tier === 'high'
-    ? `<div class="pf-line">Sky: ★ ${esc(sky.name)} · high tier · ${sky.pages}-page type-5 _sky.ssh ≈ ${mb} MB ` +
-        '<span class="pf-warn">— ~4× a retail sky; this tier’s hardware budget is unproven. Standard is the safe pick.</span></div>'
-    : `<div class="pf-line pf-dim">Sky: ★ ${esc(sky.name)} · standard tier · ${sky.pages}-page type-5 _sky.ssh ≈ ${mb} MB ` +
-        '(its own bank — on par with a retail day sky’s native ~0.85 MB).</div>';
-}
-
-/**
- * What the props cost, read against the shipped seven (`RETAIL_PROPS`, measured by `npm run budget`).
- *
- * **Pages** run out first: a repacked level's bank is a fixed list and every tile a prop material names
- * claims a slot, flipbook frames included, however many times the model is placed. **Baked** triangles are
- * what the level actually ships — the export writes one model, one mesh and one instance per placement, so
- * this is the disc's geometry as well as Unity's, and it is read against retail's DISTINCT-geometry band
- * rather than its baked one. **Geometry** is the distinct art in use, which says how modular the map is.
- */
-function propRows(p: NonNullable<Preflight['props']>): string {
-  const band = (range: readonly [number, number] | readonly number[]) =>
-    `${range[0].toLocaleString()}–${range[1].toLocaleString()}`;
-  const rows = p.rows
-    .slice(0, 12)
-    .map(
-      r =>
-        `▪ ${esc(r.source)}/${esc(r.name)} · ${r.placements} × ${r.tris.toLocaleString()} tris · ` +
-        `${plural(r.pages, 'page')}`,
-    );
-  if (p.rows.length > rows.length) rows.push(`<span class="pf-dim">…and ${p.rows.length - rows.length} more</span>`);
-  for (const gone of p.missing)
-    rows.push(`<span class="pf-warn">⚠ ${esc(gone)} — model not found; the bake will warn</span>`);
-  const overPages = p.pages.length > RETAIL_PROPS.pages[1];
-  const overBaked = p.bakedTris > RETAIL_PROPS.geomTris[1];
-  rows.push(
-    `<span class="pf-dim">${p.geomTris.toLocaleString()} triangles of distinct art in use across` +
-      ` ${plural(p.models, 'model')}</span>`,
-  );
-  rows.push(
-    `<span class="${overBaked ? 'pf-warn' : 'pf-dim'}">${p.bakedTris.toLocaleString()} baked — one` +
-      ` mesh per placement, so this is what the level carries; retail levels carry` +
-      ` ${band(RETAIL_PROPS.geomTris)}${overBaked ? ' — over the heaviest shipped level' : ''}</span>`,
-  );
-  rows.push(
-    `<span class="${overPages ? 'pf-warn' : 'pf-dim'}">${plural(p.pages.length, 'page')} claimed by prop` +
-      ` art — a retail bank holds ${band(RETAIL_PROPS.pages)} between terrain and props</span>`,
-  );
-  rows.push(`<span class="pf-dim">${p.pages.map(esc).join(' · ')}</span>`);
-  return `<div class="pf-detail"><b>Props</b><br>${rows.join('<br>')}</div>`;
-}
-
-/** The imported GLB models the doc places (docs/032): one row per model — placements × per-copy tris — with a
- *  baked-triangle total that goes loud at the export log's own ~150k flag point. Geometry bakes once per
- *  placement, so this is where a heavy generated prop is legible as a model rather than as a texture row. */
-function importedModelRows(pf: Preflight): string {
-  const models = pf.importedModels ?? [];
-  const rows = models.map(m =>
-    m.missing
-      ? `⚠ ${esc(m.name)} · ${plural(m.placements, 'placement')} · record missing — bakes as a warning`
-      : `▪ ${esc(m.name)} · ${m.placements} × ${m.tris.toLocaleString()} tris`,
-  );
-  const baked = models.reduce((n, m) => n + m.placements * m.tris, 0);
-  const heavy = baked > 150_000; // the export log's own imported-density flag point (docs/032)
-  rows.push(
-    `<span class="${heavy ? 'pf-warn' : 'pf-dim'}">${baked.toLocaleString()} baked triangle(s) total` +
-      `${heavy ? ' — heavy; the export log will flag this' : ''}</span>`,
-  );
-  return `<div class="pf-detail"><b>Imported models</b><br>${rows.join('<br>')}</div>`;
-}

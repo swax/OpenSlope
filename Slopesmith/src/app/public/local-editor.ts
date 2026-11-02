@@ -33,7 +33,7 @@ const packed = (bytes: Uint8Array): string => {
 };
 
 /** Copy only the published document and its original assets. All subsequent editor requests stay local. */
-async function publicBundle(course: PublicCourse): Promise<ProjectBundle> {
+export async function publicBundle(course: PublicCourse): Promise<ProjectBundle> {
   const response = await fetch(`/api/public/project?id=${encodeURIComponent(course.id)}`);
   if (!response.ok) throw new Error('This public mountain is no longer available.');
   const { document } = (await response.json()) as { document: EditDoc };
@@ -364,7 +364,10 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
         },
       });
     }
-    if (localOnly && path === '/api/props') return json({ levels: cached });
+    if (localOnly && path === '/api/props')
+      return level
+        ? json({ error: `The prop source ${level} is not available on this device.` }, { status: 404 })
+        : json({ levels: cached });
     if (localOnly && path === '/api/custom-props') {
       const bundle = projects?.current();
       return json(bundle ? bundleProps(bundle) : { level: '@import', models: [], materials: [], instances: [] });

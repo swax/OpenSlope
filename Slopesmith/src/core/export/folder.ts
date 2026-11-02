@@ -82,7 +82,7 @@ export interface ExportFolderOptions {
 }
 
 /** The folder name a document exports under: its own name in the extracted-data alphabet, upper-cased. */
-export function exportFolderName(doc: EditDoc): string {
+export function exportFolderName(doc: Pick<EditDoc, 'name'>): string {
   return (doc.name || 'SLOPE01').replace(/[^A-Za-z0-9_-]/g, '').toUpperCase() || 'SLOPE01';
 }
 

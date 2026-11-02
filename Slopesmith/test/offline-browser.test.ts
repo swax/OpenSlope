@@ -185,7 +185,11 @@ try {
   await editorReady();
   const savedEditorUrl = page!.url();
   const download = page!.waitForEvent('download');
-  await fileAction('Export mountain…');
+  await fileAction('Export…');
+  await page!
+    .getByRole('dialog', { name: 'Export', exact: true })
+    .getByRole('button', { name: 'Download .slopesmith.zip', exact: true })
+    .click();
   const exported = await readMountainArchive(new Blob([readFileSync((await (await download).path())!)]));
   assert.equal(exported.document.name, 'OFFLINE_SAVED');
   assert.equal(exported.blobs?.[hash], art.toString('base64'), 'custom art survives offline edits and export');

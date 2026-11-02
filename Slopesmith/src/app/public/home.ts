@@ -31,6 +31,14 @@ import { createReferenceLibrary } from './reference-library';
 import { showNewMapDialog, showImportMountainDialog } from './new-map';
 import { createActionMenu } from './game-actions';
 
+function exportMenu(course: PublicCourse, actions: HTMLButtonElement[] = []) {
+  const button = element('button', '', 'Export…');
+  button.type = 'button';
+  button.setAttribute('aria-label', `Export ${course.name}`);
+  button.onclick = () => { void import('./export-map').then(({ showMapExportDialog }) => showMapExportDialog(course)); };
+  return createActionMenu([button, ...actions], { label: '⋯', name: `Map actions for ${course.name}`, className: 'library-map-actions', iconOnly: true }).el;
+}
+
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
   document.getElementById('load-status')?.classList.remove('show');
@@ -289,7 +297,7 @@ export async function showPublicHome(): Promise<void> {
       edit.href = courseEditorUrl(privateCourse(project));
       edit.setAttribute('aria-label', `Edit ${displayName}`);
       edit.prepend(publicGlyph('editor'));
-      controls.append(play, edit);
+      controls.append(play, edit, exportMenu(privateCourse(project)));
       card.append(courseHeading(displayName, 'mountain', project.id), metadata, controls);
       privateGrid.append(card);
     }
@@ -346,7 +354,7 @@ export async function showPublicHome(): Promise<void> {
       remove.addEventListener('click', () => {
         void deleteSavedMap(project, remove);
       });
-      controls.append(open, edit, remove);
+      controls.append(open, edit, exportMenu(localCourses().find(course => course.id === project.id)!, [remove]));
       card.append(controls);
       savedGrid.append(card);
     }
@@ -404,6 +412,7 @@ export async function showPublicHome(): Promise<void> {
           manageIso.prepend(publicGlyph('load'));
           controls.append(manageIso);
         }
+        if (course.kind === 'project' || !missing) controls.append(exportMenu(course));
         card.append(controls);
         grid.append(card);
       }
@@ -429,7 +438,7 @@ export async function showPublicHome(): Promise<void> {
       savedNote.textContent = `Could not delete ${project.name}: ${error instanceof Error ? error.message : String(error)}`;
     } finally {
       button.disabled = false;
-      if (button.isConnected) button.focus();
+      if (button.isConnected) (button.closest('details')?.querySelector('summary') ?? button).focus();
     }
   }
   renderCourses();

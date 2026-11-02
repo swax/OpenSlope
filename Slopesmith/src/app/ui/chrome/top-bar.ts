@@ -76,7 +76,6 @@ export type TopBarDeps = {
   hasConflict: () => boolean;
   duplicateMountain: () => void;
   deleteMountain: () => void;
-  exportMountain: () => void;
   saveToFolder?: () => void;
   saveOfflineCopy?: () => void;
   exportDialog: () => void;
@@ -135,7 +134,6 @@ export function createTopBar(deps: TopBarDeps) {
     hasConflict,
     duplicateMountain,
     deleteMountain,
-    exportMountain,
     exportDialog,
     settingsDialog,
     exitEditor,
@@ -459,9 +457,9 @@ export function createTopBar(deps: TopBarDeps) {
         },
         {
           group: currentMountain,
-          label: 'Export mountain…',
-          desc: 'Download an editable mountain ZIP with its mountain-local assets.',
-          onClick: exportMountain,
+          label: 'Export…',
+          desc: 'Download a ZIP for another Slopesmith instance or for Snowknife to build an ISO or mod package.',
+          onClick: exportDialog,
         },
         ...(!isLocalWorkspace() && deps.saveOfflineCopy
           ? [
@@ -480,18 +478,12 @@ export function createTopBar(deps: TopBarDeps) {
                 label: 'Save to folder…',
                 desc: canSaveMountainFolder()
                   ? 'Keep an editable mountain copy in a folder, updated automatically as you work.'
-                  : 'Folder autosave is unavailable in this browser. Export mountain for a ZIP backup.',
+                  : 'Folder autosave is unavailable in this browser. Use Export for a ZIP backup.',
                 disabled: !canSaveMountainFolder(),
                 onClick: deps.saveToFolder,
               },
             ]
           : []),
-        {
-          group: currentMountain,
-          label: 'Export map…',
-          desc: 'Write the map files Snowknife uses to repack this course into your ISO.',
-          onClick: exportDialog,
-        },
         {
           group: currentMountain,
           label: 'Delete mountain…',

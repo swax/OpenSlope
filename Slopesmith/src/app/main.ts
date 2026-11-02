@@ -2545,7 +2545,6 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     hasConflict: () => !!projectSync.conflict(),
     duplicateMountain,
     deleteMountain,
-    exportMountain,
     saveOfflineCopy: () => {
       void saveOfflineCopy();
     },

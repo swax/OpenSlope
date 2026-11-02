@@ -95,7 +95,7 @@ try {
   await page.getByRole('button', { name: 'File menu', exact: true }).click();
   for (const name of ['New mountain…', 'Open mountain…', 'Import mountain…'])
     assert.equal(await page.getByRole('button', { name, exact: true }).count(), 0);
-  assert(await page.getByRole('button', { name: 'Export mountain…', exact: true }).isVisible());
+  assert(await page.getByRole('button', { name: 'Export…', exact: true }).isVisible());
   const library = page.locator('.sp-menu-pop').getByRole('button').first();
   assert.equal(await library.innerText(), 'Library');
   await library.click();

@@ -38,7 +38,7 @@ execFileSync(
       "manifest=name.encode().ljust(64,b'\\0')+struct.pack('<4I',name_hash(name),data_size,index_size,strings_size)",
       "Path(sys.argv[4]).write_bytes(raw_bin(disc({BOOT:b'fixture','DATA/E942715C.DAT':manifest,f'DATA/{name_hash(name):X}.DAT':pak,'MUSIC/MUSIC.MET':music_bank()})))",
       'from ssx_gba_import_test import rom as gba_rom',
-      'Path(sys.argv[5]).write_bytes(gba_rom(unpaired=True))',
+      'Path(sys.argv[5]).write_bytes(gba_rom(unpaired=True, separate=True, hill_height=35))',
     ].join('\n'),
     resolve('../Native/tests'),
     tricky,
@@ -423,6 +423,34 @@ try {
   await gbaGaribaldi
     .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
     .waitFor({ state: 'attached', timeout: 90_000 });
+  // A map cached before all-quad fitting must be regenerated from the saved ROM.
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('slopesmith-local-disc', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const marker = await new Promise<{ course: string; version: number }>((resolve, reject) => {
+        const request = db.transaction('courses').objectStore('courses').get('SSXGBA_GARIBALDI');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('courses', 'readwrite');
+        transaction.objectStore('courses').put({ ...marker, version: 8 });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
+  await page.reload();
+  await gbaGaribaldi.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
+  await gbaGaribaldi
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
   // Fresh native exports must be skyward. Recreate an older cache to cover its read-time repair too.
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -436,9 +464,41 @@ try {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
-      const data = JSON.parse(await file.blob.text()) as { Patches: { Points: number[][]; UVPoints: number[][] }[] };
+      const data = JSON.parse(await file.blob.text()) as {
+        Patches: { Points: number[][]; UVPoints: number[][]; SourceRecords?: number[] }[];
+      };
+      if (data.Patches.length !== 5)
+        throw new Error('GBA terrain must retain compact patches without three-way subdivision');
+      if (data.Patches.filter(patch => patch.SourceRecords?.length === 2).length !== 3)
+        throw new Error('GBA fixture must retain three joined quads and two single unmatched faces');
+      if (
+        !data.Patches.some(patch =>
+          [1, 2].some(i =>
+            [1, 2].some(j => {
+              const u = i / 3,
+                v = j / 3,
+                p = patch.Points;
+              const bilinear =
+                p[0][2] * (1 - u) * (1 - v) + p[12][2] * u * (1 - v) + p[3][2] * (1 - u) * v + p[15][2] * u * v;
+              return Math.abs(p[i * 4 + j][2] - bilinear) > 0.01;
+            }),
+          ),
+        )
+      )
+        throw new Error('GBA worker must retain fitted interior curvature');
+      const snowPoints = data.Patches.slice(0, 2).flatMap(patch => patch.Points);
+      if (
+        [0, 1].some(
+          k => Math.abs(Math.max(...snowPoints.map(p => p[k])) - Math.min(...snowPoints.map(p => p[k])) - 3125) > 1e-6,
+        )
+      )
+        throw new Error('GBA cache regeneration must enlarge the 200-unit source terrain to 31.25 metres');
+      if (data.Patches.some(patch => patch.Points.some(point => point.some(value => !Number.isFinite(value)))))
+        throw new Error('GBA terrain has invalid control points');
       for (const patch of data.Patches) {
         const p = patch.Points;
+        if (new Set([0, 12, 3, 15].map(i => JSON.stringify(p[i]))).size !== (patch.SourceRecords ? 4 : 3))
+          throw new Error('Only unmatched GBA faces use triangular patches');
         const du = [0, 1].map(k => p[12][k] + p[15][k] - p[0][k] - p[3][k]);
         const dv = [0, 1].map(k => p[3][k] + p[15][k] - p[0][k] - p[12][k]);
         if (du[0] * dv[1] - du[1] * dv[0] < 0) throw new Error('Fresh GBA terrain faces downward');
@@ -466,6 +526,38 @@ try {
   await page.screenshot({ path: join(root, 'gba-courses-loaded.png') });
   await gbaGaribaldi.getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
   await page.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  const importedProps = await page.evaluate(async () => {
+    const fetchPath = '/src/app/net/fetch-json.ts';
+    const propsPath = '/src/core/reference/props.ts';
+    const adoptPath = '/src/core/props/adopt.ts';
+    const { fetchJson } = (await import(/* @vite-ignore */ fetchPath)) as typeof import('../src/app/net/fetch-json');
+    const { decodeProps } = (await import(
+      /* @vite-ignore */ propsPath
+    )) as typeof import('../src/core/reference/props');
+    const { recordFromReferenceProp } = (await import(
+      /* @vite-ignore */ adoptPath
+    )) as typeof import('../src/core/props/adopt');
+    const props = decodeProps(
+      await fetchJson<import('../src/core/reference/props').PropsPayload>(
+        '/api/props?level=SSXGBA_GARIBALDI&mapSource=local',
+      ),
+    );
+    return props.instances
+      .filter(instance => instance.visible)
+      .map(instance => {
+        const model = props.models.find(model => model.id === instance.model)!;
+        const { record } = recordFromReferenceProp(props, model, model.name);
+        return { id: model.id, name: record.name, triangles: record.tris, collision: Boolean(record.collision) };
+      });
+  });
+  assert.equal(importedProps.length, 2, 'Nearby GBA objects remain separate selectable reference props');
+  assert.equal(new Set(importedProps.map(prop => prop.id)).size, 2);
+  assert.equal(new Set(importedProps.map(prop => prop.name)).size, 2);
+  assert.deepEqual(
+    importedProps.map(prop => prop.triangles).sort((a, b) => a - b),
+    [2, 4],
+  );
+  assert.equal(importedProps.filter(prop => prop.collision).length, 1, 'A copied prop retains its own collision');
   await page.evaluate(async () => {
     const path = '/src/app/ride/session.ts';
     const { TestRide } = (await import(/* @vite-ignore */ path)) as typeof import('../src/app/ride/session');

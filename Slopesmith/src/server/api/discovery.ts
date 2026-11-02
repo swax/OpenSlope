@@ -196,6 +196,11 @@ async function levelBranch(level: string): Promise<Record<string, unknown>> {
       link('root', '/api'),
       link('level', `/api/level?name=${name}`, 'Terrain patches, course line, splines, AI paths, sun and world record'),
       link(
+        'portable-files',
+        `/api/map-files?level=${name}`,
+        'Portable course file list; add &path=<file> to read its bytes for browser export',
+      ),
+      link(
         'level-textures',
         `/api/textures?level=${name}`,
         'The tiles it ships; paint one as the q/<quadId>/tex register "<LEVEL>/<file>.png"',

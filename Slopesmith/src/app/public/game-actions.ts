@@ -85,7 +85,9 @@ export function createActionMenu(
   panel.addEventListener('click', event => {
     if (event.target instanceof Element && event.target.closest('button')) {
       event.stopPropagation();
-      close(true);
+      // A synchronous action may already have focused a confirmation dialog. Keep that focus;
+      // otherwise return to the trigger before hiding the menu's focused button.
+      close(panel.contains(document.activeElement));
     }
   });
   const dismissOutside = (event: Event) => {

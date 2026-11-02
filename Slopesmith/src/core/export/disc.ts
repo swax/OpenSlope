@@ -12,6 +12,8 @@ export const DISC_SLOT = 'GARI';
 export interface DiscRecipePaths {
   /** This export folder. */
   exportDir: string;
+  /** Browser ZIP input accepted directly by repack and texture-plan. */
+  archive?: string;
   /** The slot's extracted level-data folder. */
   levelData: string;
   /** The same folder relative to this export — the form the manifest stores, since its paths resolve from
@@ -21,6 +23,20 @@ export interface DiscRecipePaths {
 
 /** Quote only when a path needs it, so the common case pastes clean. */
 const arg = (value: string) => (/\s/.test(value) ? `"${value}"` : value);
+
+/** The same commands shown at download time and saved in Repack.md. */
+export function snowknifeBuildCommands(
+  name: string,
+  paths: Pick<DiscRecipePaths, 'exportDir' | 'archive' | 'levelData'>,
+) {
+  const source = paths.archive ?? paths.exportDir;
+  const repack = ['snowknife', 'repack', 'ssx-tricky.iso', DISC_SLOT, arg(paths.levelData), arg(source)];
+  return {
+    prepare: `snowknife import ssx-tricky.iso ${DISC_SLOT} ${arg(paths.levelData)}`,
+    iso: `${repack.join(' ')} ${arg(`ssx-tricky-${name.toLowerCase()}.iso`)} --texture-type2 --bare-slot --no-skycolor`,
+    modManager: `${repack.join(' ')} ${arg(`${name.toLowerCase()}.zip`)} --mod-manager --texture-type2 --bare-slot`,
+  };
+}
 
 /**
  * What to run on this folder, written into it: the exact `snowknife` invocations, and a `repack-many` manifest
@@ -57,7 +73,8 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     ) + '\n';
 
   const here = paths.exportDir;
-  const repack = ['repack', arg(inputIso), DISC_SLOT, arg(paths.levelData), arg(here), arg(outputIso)];
+  const input = paths.archive ?? here;
+  const commands = snowknifeBuildCommands(name, paths);
   const notes = [
     `# Building from ${name}`,
     '',
@@ -69,6 +86,13 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     '',
     'Writes `gltf/` inside this folder — the terrain, props and collision meshes `snowknife unity` builds a',
     'bundle from.',
+    ...(paths.archive
+      ? [
+          '',
+          'Extract this archive before using the glTF or repack-many commands. `repack` and',
+          '`texture-plan` accept the .snowknife.zip file directly, as shown below.',
+        ]
+      : []),
     '',
     '## Building a disc',
     '',
@@ -81,16 +105,24 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     "follows the retail game's mode and the current memory-card progress, so verify the chosen slot from a",
     'clean save before publishing it as the default route.',
     '',
+    '## Prepare the destination slot',
+    '',
+    'Import the original destination course once, using the same clean PS2 ISO you will build from:',
+    '',
+    '```',
+    commands.prepare,
+    '```',
+    '',
     '## How the pages resolve — no disc needed',
     '',
     '```',
-    `snowknife texture-plan ${arg(here)} ${DISC_SLOT}`,
+    `snowknife texture-plan ${arg(input)} ${DISC_SLOT}`,
     '```',
     '',
     '## The whole allocation plan, against a real image, writing nothing',
     '',
     '```',
-    `snowknife ${repack.join(' ')} --texture-type2 --bare-slot --no-skycolor --dry-run`,
+    `${commands.iso} --dry-run`,
     '```',
     '',
     'Slots retained and reusable, pages installed in allocation order (reuse or append), bytes, the custom-page',
@@ -99,12 +131,28 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     '## Build it',
     '',
     '```',
-    `snowknife ${repack.join(' ')} --texture-type2 --bare-slot --no-skycolor`,
+    commands.iso,
     '```',
     '',
-    'This default command selects no executable feature and passes `--no-skycolor`, so Snowknife leaves the',
-    'supplied boot executable byte-for-byte unchanged. The course data is replaced in the new image; the clean',
+    'This command passes `--no-skycolor` and selects no optional executable feature. Dense courses receive',
+    'the required terrain-buffer fix automatically. The course data is replaced in the new image; the clean',
     'source image is read only.',
+    '',
+    '## Package for SSX Mod Manager',
+    '',
+    'With a clean NTSC-U PS2 Tricky ISO and matching extracted slot data, the same export can build a mod ZIP:',
+    '',
+    '```',
+    commands.modManager,
+    '```',
+    '',
+    'Add `--mod-name "My Mountain" --mod-author "Your Name" --mod-version "1.0.0"` to set the package metadata.',
+    "Copy the ZIP into the manager's `Mods/SSX Tricky NTSC PS2/` folder, refresh, enable it and apply mods.",
+    'Snowknife compiles loose course files and audio insertion instructions; the manager prepares the executable.',
+    'This mode skips sky-colour executable edits and does not support `--patches`. It creates no output ISO.',
+    'The compiled package may retain donor/borrowed retail data and follows the local/private disc-backed workflow.',
+    '',
+    '## Texture format and donor scenery',
     '',
     'The recipe uses retail-shaped type-2 pages so a prop-heavy build stays inside the measured GS-VRAM',
     'budget. Remove `--texture-type2` (or set `TextureType2` false in the manifest) only when the dry-run',

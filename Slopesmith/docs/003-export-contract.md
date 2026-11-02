@@ -169,8 +169,8 @@ which gives the board's ride-onto-`SurfaceType 0` reset a path back onto the cou
 
 The **AIP start routes** are the Race/Freeride field ([Trailmap: 250-paths-aip-sop]):
 `StartPosList` must name exactly six valid paths, one per rider slot. Without recorded trails, each route
-begins at its gate and rides the whole course. With **AI path variation** off, all six converge on and follow the centerline;
-with it on they carry independent seeded lateral wander bounded by the run floor
+begins at its gate and rides the whole course. Snowknife exports carry independent seeded lateral wander bounded by the run floor,
+matching the generated routes in the editor and Test
 (`core/doc/course.ts` `aiPathLines`). The routes are derived from the course plus the document's
 `aiSeed`; editing the course re-derives them. The editor offers no re-roll: a document without a seed uses
 `DEFAULT_AI_SEED`, and one that carries a seed keeps it. Generated paths have no events.
@@ -181,8 +181,8 @@ Six 25 m gate lead-ins seed the field; generated routes become
 overlapping 230 m fallback sections so riders can reselect into a recording during the run. `StartPosList`
 then names the gate lead-ins at their actual indices rather than assuming indices 0–5. Recorded points are
 converted to raw centimetres and delta encoded; event stations use horizontal centimetres, jump values keep
-the packed target speed / trick bits, and cruise values remain whole km/h. The variation option affects only
-generated routes. `core/doc/ai-paths.ts` supplies the shared Test/export network.
+the packed target speed / trick bits, and cruise values remain whole km/h. Generated variation leaves
+recorded geometry unchanged. `core/doc/ai-paths.ts` supplies the shared Test/export network.
 
 When the document's **Use auto-generated paths** option is off (`autoAiPaths: false`), both files carry only
 recorded paths: no gate lead-ins, fallback sections or generated respawn spine. Six start slots select the
@@ -290,9 +290,9 @@ intensity (`A_S`); **RGB** carries the colour residual: the Unity terrain shader
 reconstructs `lit = (0.5·C_D − C_S)·(A_S·255/128)`, and the bake folds in each patch's **diffuse base** `C_D`
 (its SurfaceType tile, sampled at the texel UV) as `C_S = C_D·(0.5 − Lc/(A_S·255/128))` — so the shader
 reproduces **`C_D·Lc`** (texture × light, correct over dark rock / ice as well as white snow). A painted real
-/ keyed tile (no pixels in core) bakes the white base `C_S = 0.5 − Lc/(A_S·255/128)`. The bake is gated by
-the **export dialog's lighting setting** (default on), not the viewport's sun preview toggle — the sun
-settings author the light either way. With lighting off, no pages are written and terrain ships white-lit
+/ keyed tile (no pixels in core) bakes the white base `C_S = 0.5 − Lc/(A_S·255/128)`. Authored-map Snowknife
+exports always bake this lighting, independent of the viewport's sun preview toggle. The low-level builder
+still accepts a lighting override for tooling; with it off, no pages are written and terrain ships white-lit
 (an ISO repack then keeps the target level's original lights + `_L.ssh` verbatim).
 
 **`Lights.json` — the sun in engine-native form.** Alongside the baked lightmaps (which light the

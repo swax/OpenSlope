@@ -424,6 +424,10 @@ try {
       );
       const recipe = readFileSync(join(outDir, 'Repack.md'), 'utf8');
       check(
+        /snowknife repack .*\.zip --mod-manager --texture-type2 --bare-slot/.test(recipe),
+        'export: the standard mountain includes a mod-manager package recipe',
+      );
+      check(
         /repack .*--texture-type2 --bare-slot --no-skycolor --dry-run/.test(recipe) &&
           /repack .*--texture-type2 --bare-slot --no-skycolor/.test(recipe) &&
           !/^snowknife repack .*--patches/m.test(recipe) &&

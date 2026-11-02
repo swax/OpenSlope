@@ -445,7 +445,11 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         );
       else loadMaps([slot]);
     };
-    const menu = createActionMenu([reference], {
+    const exportMap = element('button', '', 'Export…');
+    exportMap.type = 'button';
+    let exportCourse: PublicCourse = course;
+    exportMap.onclick = () => { void import('./export-map').then(({ showMapExportDialog }) => showMapExportDialog(exportCourse)); };
+    const menu = createActionMenu([exportMap, reference], {
       label: '⋯', name: `Map actions for ${discCourseName(slot)}`,
       className: 'library-map-actions', iconOnly: true,
     });
@@ -470,6 +474,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       open,
       inspect,
       reference,
+      exportMap,
       menu,
       controls,
       progress,
@@ -477,6 +482,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       online,
       title: heading.querySelector('h3')!,
       setReference: (value: ServerReference | undefined) => { installedReference = value; },
+      setExportCourse: (value: PublicCourse) => { exportCourse = value; },
     };
   }
 
@@ -618,7 +624,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         card = createCard(slot);
         cards.set(key, card);
       }
-      const { row, badge, button, message, open, inspect, reference, menu, controls, progress, course, title } = card;
+      const { row, badge, button, message, open, inspect, reference, exportMap, menu, controls, progress, course, title } = card;
       const name = entry.name;
       row.setAttribute('aria-label', name);
       row.dataset.disc = String(entry.disc || entry.loaded);
@@ -674,6 +680,10 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       if (inspectable) inspect.href = courseEditorUrl(inspectable);
       const state = loads.state(slot);
       const pending = state?.phase === 'queued' || state?.phase === 'loading';
+      exportMap.hidden = !loaded && !installed;
+      exportMap.disabled = busy || pending || (!loaded && !(('user' in account) || (account.accounts === 'open' && !account.offline)) && entry.publication?.retailData !== false);
+      exportMap.setAttribute('aria-label', `Export ${name}`);
+      card.setExportCourse(loaded ? { ...course, name, source: 'iso' } : { ...course, id: installed?.name ?? slot, name, source: 'server', isoCourses: [] });
       const phase = state?.phase ?? (loaded ? 'loaded' : 'missing');
       row.dataset.state = phase;
       row.hidden = !visibleMaps.includes(key);
@@ -682,7 +692,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       if (unloadInMenu) {
         if (button.parentElement !== menu.panel) menu.panel.prepend(button);
       } else if (button.parentElement !== controls) controls.prepend(button);
-      menu.el.hidden = !unloadInMenu && reference.hidden;
+      menu.el.hidden = !unloadInMenu && reference.hidden && exportMap.hidden;
       if (row.hidden || menu.el.hidden) menu.close();
       row.setAttribute('aria-busy', String(state?.phase === 'loading' || upload?.phase === 'uploading'));
       badge.className = `public-iso-badge ${phase}`;

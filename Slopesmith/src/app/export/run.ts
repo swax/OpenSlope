@@ -4,14 +4,7 @@ import { browserExportProvider } from './provider';
 import { assetVersionsIn } from '../../core/reference/asset-version';
 import { pinDocumentAssets } from '../net/asset-versions';
 import { isLocalWorkspace } from '../net/workspace';
-import {
-  canPickDirectory,
-  directoryTarget,
-  downloadTarget,
-  pickMapsDirectory,
-  rememberedMapsDirectory,
-  type ExportTarget,
-} from './landing';
+import { downloadTarget, type ExportTarget } from './landing';
 
 /**
  * An export, end to end, in the browser: compose the map folder against the HTTP byte provider, then land it.
@@ -29,34 +22,19 @@ export interface BrowserExportResult {
   log: string;
 }
 
-/**
- * Where this export should land, resolved before any bytes are fetched.
- *
- * A browser with the File System Access API writes into the folder the author picked — asked for once, then
- * remembered — so the resolution can prompt and must be reached from the click that started the export.
- * Null means the picker was dismissed: nothing was chosen, so nothing is exported.
- */
-export async function resolveExportTarget(doc: EditDoc): Promise<ExportTarget | null> {
-  const folderName = exportFolderName(doc);
-  if (!canPickDirectory()) return downloadTarget(folderName);
-  const remembered = await rememberedMapsDirectory();
-  if (remembered) return directoryTarget(remembered, folderName);
-  const picked = await pickMapsDirectory();
-  return picked ? directoryTarget(picked, folderName) : null;
+/** Every Snowknife export downloads a ZIP, on every browser. */
+export function resolveExportTarget(doc: EditDoc): ExportTarget {
+  return downloadTarget(exportFolderName(doc));
 }
 
-export async function exportMapFolder(
-  doc: EditDoc,
-  target: ExportTarget,
-  opts?: { lighting?: boolean; aiPaths?: boolean },
-): Promise<BrowserExportResult> {
+export async function exportMapFolder(doc: EditDoc, target: ExportTarget): Promise<BrowserExportResult> {
   await pinDocumentAssets(doc, isLocalWorkspace() ? 'local' : 'server');
   const provider = browserExportProvider({
     assetLevels: assetVersionsIn(doc),
     folderName: target.folderName,
     existingFile: path => target.existingFile(path),
   });
-  const folder = await buildExportFolder(doc, provider, { lighting: opts?.lighting, aiPaths: opts?.aiPaths });
+  const folder = await buildExportFolder(doc, provider, { lighting: true, aiPaths: true });
   const landed = await target.land(folder);
   return {
     folderName: target.folderName,

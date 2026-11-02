@@ -38,6 +38,11 @@
   border-radius: 6px;
   font: inherit;
 }
+.public-export-map-dialog input[type='checkbox'] {
+  display: inline-block;
+  width: auto;
+  margin-right: 6px;
+}
 .public-new-map-dialog :is(input, select, button):focus-visible {
   outline: 2px solid #eebc7b;
   outline-offset: 2px;

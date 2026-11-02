@@ -832,23 +832,17 @@ since `setPropLight` runs first and has no lit terrain to sample yet.
 
 ### What the exporter tells you about imported models
 
-The export dialog's texture details carry an **Imported models** section — one row per placed model:
-placements × per-copy triangles, plus its texture pages priced in the currently selected size/format mode
-(the same pages also appear in Installed pages under their "(imported)" labels; this is the view BY MODEL,
-so a heavy generated prop is legible as a model rather than as an anonymous texture row). A total
-baked-triangle line goes loud at the same ~150k point the export log flags. The summary is attached by the
-server route (`withImportedModels`), which owns the record store the pure classifier cannot read.
-
-The export log mirrors it: after the aggregate "baked N imported GLB placement(s)" line, one
+The report after export lists imported models: after the aggregate "baked N imported GLB placement(s)" line, one
 `imported "<name>": count × tris = baked` line per model — because the aggregate hides *which* import is
-the heavy one, and geometry bakes once per placement.
+the heavy one, and geometry bakes once per placement. The preflight API also retains per-model summaries
+for tooling (`withImportedModels`); the export dialog no longer displays them.
 
 Beyond that, the log will tell you:
 
 - **A placement whose record is gone.** Delete a JSON from the mountain's `assets/props/` and its placements stay in the
   document — still visible in the editor. The bake names them rather than dropping them silently, since a
-  level quietly missing something you can still see is the worse failure — and the dialog's Imported models
-  section shows the same placement as a flagged row.
+  level quietly missing something you can still see is the worse failure. The preflight API also flags the
+  same missing placement for tooling.
 - **Triangle density.** `MAX_IMPORT_TRIS` is an *editor* cap; the browser viewport holds far more than a PS2
   does. There is no measured triangle ceiling for a repacked level the way there is a proven-clean VRAM
   footprint, so past ~150k baked imported triangles the log flags it as a place to look — the reference point

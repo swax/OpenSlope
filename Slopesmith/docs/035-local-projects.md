@@ -116,7 +116,7 @@ document out from under an author mid-edit.
 
 ## Portable mountain archives
 
-**Export mountain** is a source transfer, not a map export. It flushes the open mountain, asks the project
+**File → Export… → Another Slopesmith instance** is the editable source-transfer option. It flushes the open mountain, asks the project
 service for that durable revision and the complete mountain-local asset catalogue, and downloads
 `<NAME>-r<REVISION>-<UTC-TIMESTAMP>.slopesmith.zip`:
 
@@ -142,7 +142,8 @@ for the copy's name too. A complete self-contained
 mountain is quick to transfer because this path does not tessellate terrain, bake lighting, compose AI paths or
 perform any other map-export work. **Duplicate mountain** is faster again because the server copies the source
 project directly without sending those bytes through the browser. The `Maps/<NAME>/` artifact remains the separate
-**Export map** operation.
+**File → Export… → Snowknife — Custom ISO** or **Snowknife — Mod Manager** option,
+downloaded as `<NAME>.snowknife.zip` with build instructions for the selected destination.
 
 A history checkpoint is stored internally as a gzipped `mountain.slope.json`, not as a portable archive. The
 History panel's **Export as mountain…** action wraps that historical document in the same `.slopesmith.zip`

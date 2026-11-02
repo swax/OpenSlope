@@ -19,6 +19,8 @@ import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { encodePng as browserEncodePng } from '../src/app/export/png';
 import { zipStoreOnly } from '../src/app/export/zip';
+import { downloadTarget } from '../src/app/export/landing';
+import { discRecipeFiles } from '../src/core/export/disc';
 import { createMountainArchive, readMountainArchive } from '../src/app/mountain/archive';
 import { decodePng, encodePng as nodeEncodePng } from '../src/server/routes/png';
 import { blankMountain } from '../src/core/doc/mountain';
@@ -199,13 +201,25 @@ try {
     'WAV: a mono source folds up to both sides, as -ac 2 did',
   );
 
-  // ---- ZIP: the platform unzips what the fallback writes -------------------------------------------------
+  // ---- Snowknife ZIP: download naming and the independent ZIP reader agree -------------------------------
+  check(downloadTarget('MOUNTAIN').label === 'MOUNTAIN.snowknife.zip', 'Snowknife exports use a distinct ZIP suffix');
+  const recipe = discRecipeFiles('MOUNTAIN', {
+    exportDir: 'MOUNTAIN',
+    archive: 'MOUNTAIN.snowknife.zip',
+    levelData: 'Maps/TRICKY_GARI',
+    levelDataRelative: '../Maps/TRICKY_GARI',
+  });
+  const instructions = new TextDecoder().decode(recipe.files.find(file => file.path === 'Repack.md')!.bytes);
+  check(
+    instructions.includes('Maps/TRICKY_GARI MOUNTAIN.snowknife.zip'),
+    'Snowknife recipes pass the downloaded ZIP directly to repack',
+  );
   const files = [
     { path: 'Patches.json', bytes: new TextEncoder().encode('{"Patches":[]}\n') },
     { path: 'Textures/snow.png', bytes: nodeEncodePng({ w: 2, h: 2, data: new Uint8Array(16).fill(180) }) },
     { path: 'Skybox/Meshes/0.obj', bytes: new TextEncoder().encode('v 0 0 0\n') },
   ];
-  const archive = join(work, 'MOUNTAIN.zip');
+  const archive = join(work, 'MOUNTAIN.snowknife.zip');
   writeFileSync(archive, Buffer.from(await zipStoreOnly('MOUNTAIN', files).arrayBuffer()));
   const unpacked = join(work, 'unpacked');
   mkdirSync(unpacked);

@@ -10,10 +10,20 @@ export type MountainDirectory = FileSystemDirectoryHandle & {
 
 export const canSaveMountainFolder = () => typeof window !== 'undefined' && !!window.showDirectoryPicker;
 
+declare global {
+  interface Window {
+    showDirectoryPicker?: (options?: {
+      id?: string;
+      mode?: 'read' | 'readwrite';
+      startIn?: FileSystemHandle | string;
+    }) => Promise<FileSystemDirectoryHandle>;
+  }
+}
+
 /** Call from the click itself, before composing the mountain or looking up browser storage. */
 export async function pickMountainFolder(): Promise<MountainDirectory | null> {
   if (!window.showDirectoryPicker)
-    throw new Error('Folder autosave is unavailable in this browser. Use Export mountain for a ZIP backup.');
+    throw new Error('Folder autosave is unavailable in this browser. Use Export for a ZIP backup.');
   try {
     return await window.showDirectoryPicker({ id: 'slopesmith-mountain', mode: 'readwrite' });
   } catch (error) {
