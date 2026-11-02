@@ -53,6 +53,35 @@ const errors: string[] = [];
 page.on('pageerror', error => errors.push(error.message));
 const original = await serverMapAssetVersion('TRICKY_GARI');
 const missing = `asset1:ssx-tricky:TRICKY_GARI:${'f'.repeat(64)}/tile.png`;
+const paletteKey = 'slopesmith-scratch-v1';
+const paletteSeed = {
+  pads: [
+    [
+      { ref: `${original.id}/tile.png`, surface: 13, rot: 3, mirror: true },
+      { ref: missing, surface: 1, rot: 0, mirror: false },
+      { ref: 'GARI/tile.png', surface: 12, rot: 1, mirror: false },
+      { ref: 'Custom/mine.png', surface: 1, rot: 0, mirror: false },
+    ],
+    [],
+    [{ ref: `${original.id}/tile.png`, surface: 14, rot: 2, mirror: false }],
+  ],
+  pad: 0,
+  view: 'texture',
+};
+await page.addInitScript(
+  ({ key, seed }) => {
+    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(seed));
+  },
+  { key: paletteKey, seed: paletteSeed },
+);
+async function waitForPalette() {
+  await page.waitForFunction(
+    key => JSON.parse(localStorage.getItem(key) ?? '{}').pads?.[0]?.[0]?.ref?.startsWith('asset2:'),
+    paletteKey,
+    { timeout: 90_000 },
+  );
+  return page.evaluate(key => JSON.parse(localStorage.getItem(key)!), paletteKey);
+}
 const mountain = meshFromNet(
   {
     rows: 2,
@@ -87,6 +116,24 @@ try {
     { timeout: 90_000 },
   );
   const saved = (await (await fetch(`${api.url}/api/projects/${project.id}`)).json()) as { document: EditDoc };
+  const upgradedPalette = await waitForPalette();
+  assert.deepEqual(
+    upgradedPalette.pads[0][0],
+    { ...paletteSeed.pads[0][0], ref: saved.document.quadTex![0] },
+    'automatic palette upgrades preserve surface and orientation',
+  );
+  assert.equal(upgradedPalette.pads[2][0].ref, saved.document.quadTex![0], 'hidden palette slots upgrade too');
+  assert.equal(upgradedPalette.pads[0][2].ref, saved.document.quadTex![0], 'matching legacy names upgrade');
+  assert.equal(upgradedPalette.pads[0][1].ref, missing, 'missing originals remain untouched');
+  assert.equal(upgradedPalette.pads[0][3].ref, 'Custom/mine.png');
+  // A map already saved as asset2 must still repair old browser palette entries on the next open.
+  await page.evaluate(({ key, seed }) => localStorage.setItem(key, JSON.stringify(seed)), {
+    key: paletteKey,
+    seed: paletteSeed,
+  });
+  await page.reload();
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  await waitForPalette();
   assert(saved.document.quadTex![2].startsWith('asset2:'), 'unversioned assets also upgrade after their bytes match');
   assert.equal(saved.document.quadTex![1], missing, 'a same-name replacement is never automatically selected');
   await page.getByRole('button', { name: 'File menu', exact: true }).click();
@@ -159,9 +206,20 @@ try {
     },
   );
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }));
+  await page.evaluate(({ key, seed }) => localStorage.setItem(key, JSON.stringify(seed)), {
+    key: paletteKey,
+    seed: paletteSeed,
+  });
   await page.route('**/api/**', route => route.abort());
   await page.goto(`${origin}/editor/LOCAL_AUTO_ASSETS?local=${localId}`);
   await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  const offlinePalette = await waitForPalette();
+  assert.deepEqual(
+    offlinePalette.pads[0][0],
+    upgradedPalette.pads[0][0],
+    'signed-out local palettes upgrade without server APIs',
+  );
+  assert.equal(offlinePalette.pads[0][1].ref, missing);
   await page.waitForFunction(
     async id => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -193,6 +251,7 @@ try {
   await page.keyboard.press('Escape');
   await page.reload();
   await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  assert.deepEqual(await waitForPalette(), offlinePalette, 'all saved palette slots survive offline reload');
   const reloaded = await page.evaluate(async id => {
     const url = '/src/app/state/local-projects.ts';
     const { readLocalProject } = await import(/* @vite-ignore */ url);
@@ -208,7 +267,7 @@ try {
   assert.deepEqual(errors, [], 'automatic upgrades must not raise browser errors');
   await page.screenshot({ path: join(root, 'local-upgraded.png') });
   console.log(
-    `ASSET UPGRADES BROWSER PASS: real shared/server save, local IndexedDB save and reload without APIs, exact/matching-only selection, props, and admin-only review menu. Artifacts: ${root}`,
+    `ASSET UPGRADES BROWSER PASS: automatic map and all-slot palette upgrades, palette-only catch-up, local IndexedDB save and reload without APIs, exact/matching-only selection, props, and admin-only review menu. Artifacts: ${root}`,
   );
 } catch (error) {
   await page.screenshot({ path: join(root, 'failed.png') }).catch(() => {});

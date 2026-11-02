@@ -425,6 +425,45 @@ export class Palette {
     return s;
   }
 
+  /** All saved slots participate in automatic exact-match upgrades, including slots not currently visible. */
+  textureReferences(): string[] {
+    return [
+      ...new Set([
+        ...this.pads.flatMap(pad => pad.flatMap(cell => (cell ? [cell.ref] : []))),
+        ...(this.current ? [this.current.ref] : []),
+      ]),
+    ];
+  }
+
+  /** Apply only the verified identities supplied by the background pass, retaining newer choices and settings. */
+  upgradeReferences(replacements: ReadonlyMap<string, string>): number {
+    let count = 0;
+    for (const pad of this.pads)
+      for (const cell of pad) {
+        const ref = cell && replacements.get(cell.ref);
+        if (!cell || !ref || ref === cell.ref) continue;
+        cell.ref = ref;
+        count++;
+      }
+    let previewChanged = false;
+    for (const cell of [this.current, this.inspect]) {
+      const ref = cell && replacements.get(cell.ref);
+      if (cell && ref && ref !== cell.ref) {
+        cell.ref = ref;
+        previewChanged = true;
+      }
+    }
+    if (count) {
+      this.save();
+      this.cb.onContentsChange?.();
+    }
+    if (count || previewChanged) {
+      this.renderGrid();
+      this.renderPreview();
+    }
+    return count;
+  }
+
   /**
    * Repoint every staged cell wearing `from` to `to`, or clear them when `to` is null — a Custom tile was
    * renamed or deleted out from under the pad. Without this the pad keeps rendering a ref whose file has
@@ -469,8 +508,13 @@ export class Palette {
       return;
     }
     this.cb.onResolving?.();
+    const current = this.current;
+    const currentRef = current?.ref;
     void normalizeReusedTexture(brush.ref).then(ref => {
       if (generation !== this.brushGeneration) return;
+      // The background pass may have verified this held swatch while its own lookup was still pending.
+      if (current && currentRef === brush.ref && this.current === current && current.ref !== brush.ref)
+        ref = current.ref;
       if (ref !== brush.ref) {
         if (this.current?.ref === brush.ref) this.current.ref = ref;
         for (const pad of this.pads) for (const cell of pad) if (cell?.ref === brush.ref) cell.ref = ref;

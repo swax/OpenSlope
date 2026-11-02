@@ -174,6 +174,114 @@ await Promise.all([oldRequest, newRequest]);
 assert.equal(oldDocument.quadTex.exact, `${original.id}/tile.png`);
 assert.equal(document.quadTex.exact, texture.id, 'a queued request checks the newest project after a switch');
 assert.equal(writes, 3);
+
+// Palette-only legacy references join the same verification pass without creating another map revision.
+let palette = [`${original.id}/tile.png`, 'GARI/tile.png', `${missing.id}/tile.png`, 'Custom/mine.png'];
+let paletteWrites = 0;
+const verifications: string[] = [];
+document = makeDoc();
+const together = createAssetUpgrades({
+  getDoc: () => document,
+  context: () => context,
+  writable: () => writable,
+  sources: () => ({
+    ...sources,
+    verify: async (...args) => {
+      verifications.push(`${args[0].level}/${args[0].kind}/${args[0].key}`);
+      return sources.verify!(...args);
+    },
+  }),
+  changed: () => {
+    writes++;
+  },
+  palette: {
+    references: () => palette,
+    upgrade: replacements => {
+      palette = palette.map(ref => replacements.get(ref) ?? ref);
+      paletteWrites++;
+    },
+  },
+});
+await together.request();
+assert.deepEqual(palette, [texture.id, texture.id, `${missing.id}/tile.png`, 'Custom/mine.png']);
+assert.equal(writes, 4);
+assert.equal(
+  verifications.filter(key => key === 'GARI/texture/tile.png').length,
+  1,
+  'map and palette copies of a reference are verified together',
+);
+palette = [`${original.id}/tile.png`];
+const alreadyUpgraded = JSON.stringify(document);
+await together.request();
+assert.equal(palette[0], texture.id, 'old palettes catch up even when the map itself is already asset2');
+assert.equal(JSON.stringify(document), alreadyUpgraded);
+assert.equal(writes, 4, 'palette-only changes do not save the map');
+
+let resume!: () => void;
+const waiting = new Promise<void>(resolve => {
+  resume = resolve;
+});
+const delayed = createAssetUpgrades({
+  getDoc: () => document,
+  context: () => context,
+  writable: () => writable,
+  sources: () => ({
+    ...sources,
+    maps: async () => {
+      await waiting;
+      return sources.maps();
+    },
+  }),
+  changed: () => {
+    writes++;
+  },
+  palette: {
+    references: () => palette,
+    upgrade: replacements => {
+      palette = palette.map(ref => replacements.get(ref) ?? ref);
+      paletteWrites++;
+    },
+  },
+});
+palette = [`${original.id}/tile.png`];
+const changedPalette = delayed.request();
+await Promise.resolve();
+palette = ['Custom/new-choice.png'];
+resume();
+await changedPalette;
+assert.deepEqual(palette, ['Custom/new-choice.png'], 'a palette edit made during discovery survives');
+const beforeContextChange = paletteWrites;
+let resumeContext!: () => void;
+const contextGate = new Promise<void>(resolve => {
+  resumeContext = resolve;
+});
+const switched = createAssetUpgrades({
+  getDoc: () => document,
+  context: () => context,
+  writable: () => true,
+  sources: () => ({
+    ...sources,
+    maps: async () => {
+      await contextGate;
+      return sources.maps();
+    },
+  }),
+  changed: () => {
+    writes++;
+  },
+  palette: {
+    references: () => [`${original.id}/tile.png`],
+    upgrade: () => {
+      paletteWrites++;
+    },
+  },
+});
+const oldPaletteRequest = switched.request();
+await Promise.resolve();
+context = 'another-project';
+resumeContext();
+await oldPaletteRequest;
+assert.equal(paletteWrites, beforeContextChange, 'a stale project cannot change saved palette entries');
 console.log(
-  'ASSET UPGRADES PASS: exact-only automatic upgrades, persistent callbacks, concurrent edits, project/workspace switches, read-only/preview guards, retries and idempotence.',
+  'ASSET UPGRADES PASS: exact-only automatic map/palette upgrades, deduplication, palette-only persistence, concurrent edits, project/workspace switches, read-only/preview guards, retries and idempotence.',
 );

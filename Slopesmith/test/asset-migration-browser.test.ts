@@ -136,6 +136,39 @@ try {
     const unresolvedPick = await secondPalette;
     const storedPalette = JSON.parse(localStorage.getItem('slopesmith-scratch-v1')!);
     palette.el.remove();
+    // A verified background upgrade must survive an older, still-pending swatch lookup failing offline.
+    const { clearAssetCatalogue } = await import(/* @vite-ignore */ versionsUrl);
+    let releaseLookup!: () => void;
+    const lookupGate = new Promise<void>(resolve => {
+      releaseLookup = resolve;
+    });
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
+      if (url.pathname === '/api/levels') {
+        await lookupGate;
+        return new Response('', { status: 503 });
+      }
+      return originalFetch(input, init);
+    };
+    clearAssetCatalogue();
+    localStorage.setItem(
+      'slopesmith-scratch-v1',
+      JSON.stringify({ cells: [{ ref: `${bankId}/tile.png`, surface: 13, rot: 2, mirror: true }] }),
+    );
+    let finishBrush!: (brush: any) => void;
+    const resumedBrush = new Promise<any>(resolve => {
+      finishBrush = resolve;
+    });
+    const pendingPalette = new Palette({ onSelect: (brush: any) => finishBrush(brush) });
+    document.body.append(pendingPalette.el);
+    (pendingPalette.el.querySelector('.sc-cell') as HTMLElement).click();
+    pendingPalette.upgradeReferences(new Map([[`${bankId}/tile.png`, texture]]));
+    releaseLookup();
+    const backgroundBrush = await resumedBrush;
+    pendingPalette.el.remove();
+    globalThis.fetch = originalFetch;
+    clearAssetCatalogue();
     library.el.remove();
     const { createStore } = await import(/* @vite-ignore */ storeUrl);
     const { createPropOps } = await import(/* @vite-ignore */ propsUrl);
@@ -250,6 +283,7 @@ try {
       unresolvedPick,
       unavailable,
       storedPalette,
+      backgroundBrush,
       renderedMembers,
       ghostMembers,
       prop: structuredClone(store.armedProp),
@@ -295,6 +329,15 @@ try {
   assert.equal(automatic.renderedMembers, 2, 'frozen groups render every independently pinned member');
   assert.equal(automatic.ghostMembers, 2, 'the placement ghost uses the same member identities');
   assert.equal(automatic.palettePick.ref, automatic.texture);
+  assert.equal(
+    automatic.backgroundBrush.ref,
+    automatic.texture,
+    'an old pending lookup cannot restore an upgraded brush to asset1',
+  );
+  assert.deepEqual(
+    [automatic.backgroundBrush.surface, automatic.backgroundBrush.rot, automatic.backgroundBrush.mirror],
+    [13, 2, true],
+  );
   assert.deepEqual(
     [automatic.palettePick.surface, automatic.palettePick.rot, automatic.palettePick.mirror],
     [13, 2, true],

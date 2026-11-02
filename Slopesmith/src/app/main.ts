@@ -1140,6 +1140,21 @@ const assetUpgrades = createAssetUpgrades({
     !projectSync.conflict() &&
     (isLocalWorkspace() || session.mayWrite()),
   sources: assetMigrationSources,
+  palette: {
+    references: () => palette.textureReferences(),
+    upgrade: replacements => {
+      const count = palette.upgradeReferences(replacements);
+      const brush = store.paintBrush;
+      const ref = brush && replacements.get(brush.ref);
+      if (brush && ref && ref !== brush.ref) {
+        store.paintBrush = { ...brush, ref };
+        viewport.setPaintBrush(store.paintBrush);
+        library.highlightRef(ref);
+      }
+      if (count)
+        console.info(`[Slopesmith] Auto-upgraded ${count} saved palette reference${count === 1 ? '' : 's'} to asset2.`);
+    },
+  },
   changed: count => {
     persistDocumentEdit();
     console.info(
