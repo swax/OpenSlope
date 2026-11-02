@@ -100,6 +100,7 @@ export type ArmedProp = {
   model: number;
   name: string;
   group?: string;
+  groupDefinition?: import('../../core/reference/groups').GroupDef;
   /** Retain a special prop's inspector and export behavior when making another placement. */
   specialKind?: PlacedProp['specialKind'];
   /** What every stamp copies (docs/069): contact, surface, mode layer, sounds, self-lighting — always with a

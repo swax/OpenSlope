@@ -213,7 +213,25 @@ export class PropPreview {
     props: LevelProps | undefined,
     group?: GroupDef | null,
     instance?: string | null,
+    levels?: ReadonlyMap<string, LevelProps>,
   ) {
+    if (group?.props.some(member => member.level)) {
+      this.showSet(
+        name,
+        group.props.map(member => ({
+          level: member.level ?? level,
+          model: member.model,
+          name: member.name,
+          props: levels?.get(member.level ?? level) ?? (member.level === level ? props : undefined),
+          pos: member.relPos,
+          yaw: member.relYaw,
+          scale: 1,
+        })),
+        group.lights,
+        instance,
+      );
+      return;
+    }
     this.sourceLevels = [level];
     this.sourceModels = (group?.props ?? [{ model }]).map(member => ({ level, model: member.model }));
     this.sourceTextures = this.modelTextures(level, model, props, group);

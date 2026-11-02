@@ -4775,7 +4775,7 @@ export class Viewport {
       }
       // A group loops per member, at the member, as the export writes it (docs/069): a member with an entry of
       // its own by that entry, under its own key; otherwise only the leader carries the placement's loop.
-      for (const m of this.assets.membersOf(prop.level, prop.model, prop.name, prop.group)) {
+      for (const m of this.assets.membersOf(prop.level, prop.model, prop.name, prop.group, prop.groupDefinition)) {
         const own = !!prop.memberBehaviour?.[String(m.model)];
         push(
           prop.id,

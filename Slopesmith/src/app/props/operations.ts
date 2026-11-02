@@ -8,6 +8,7 @@ import { placeGemProp, promoteGem } from '../../core/props/gem';
 import { dropOrphanedAssemblyLights, wholeAssembly } from '../../core/props/assembly';
 import {
   applyBehaviour,
+  behaviourRecords,
   groupMemberDefaults,
   instanceBehaviour,
   resolvePropDefaults,
@@ -46,6 +47,8 @@ import { toast } from '../ui/components/toast';
 import { fetchJson, postJson } from '../net/fetch-json';
 import { createPropLevelLoader, type PropLoadOptions } from './level-loader';
 import { pinAssetMap, pinReferenceAsset } from '../net/asset-versions';
+import { normalizeReusedReferences } from '../net/reference-reuse';
+import { parseAssetVersion } from '../../core/reference/asset-version';
 
 /**
  * Placed-prop ops (docs/012 + 015): the prop domain around a placement — the model geometry caches (base
@@ -84,6 +87,7 @@ export function createPropOps(deps: PropOpsDeps) {
   const groupDefsByLevel = new Map<string, Promise<GroupDef[]>>(); // /api/groups fetches, one per level (docs/015)
   const loadedGroupLevels = new Set<string>(); // includes successfully loaded empty group catalogues
   const pickedDefaults = new Map<string, ResolvedPropDefaults>();
+  let armGeneration = 0;
   const propLoader = createPropLevelLoader({
     levels: propLevels,
     url: level =>
@@ -111,6 +115,7 @@ export function createPropOps(deps: PropOpsDeps) {
     behaviour?: PropBehaviour;
     sourceIndex?: number;
     placementId?: string;
+    groupDefinition?: GroupDef;
     preset?: ReturnType<typeof boostPadPreset>;
   };
 
@@ -191,6 +196,16 @@ export function createPropOps(deps: PropOpsDeps) {
    * for anything that reads the placement whole. Members that would all behave alike carry no per-member record.
    */
   function groupDefaults(level: string, def: GroupDef): StampBehaviour {
+    if (def.props.some(member => member.level)) {
+      const members = Object.fromEntries(
+        def.props.map(member => [
+          String(member.model),
+          structuredClone(propDefaults(member.level ?? level, member.model).behaviour),
+        ]),
+      );
+      const leader = members[String(def.props[0].model)];
+      return { ...leader, memberBehaviour: members };
+    }
     const members = groupMemberDefaults(
       level,
       def.props.map(m => m.model),
@@ -308,7 +323,65 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** The mined def a group placement references, or null while its level's defs are still loading. */
   function defOfPlaced(pp: PlacedProp): GroupDef | null {
-    return pp.group ? (groupDefIdx.get(`${pp.level}:${pp.group}`) ?? null) : null;
+    return pp.group ? (pp.groupDefinition ?? groupDefIdx.get(`${pp.level}:${pp.group}`) ?? null) : null;
+  }
+
+  /** Keep the actual layout and lights; a leader's hash alone cannot identify the other members. */
+  async function freezeGroup(level: string, def: GroupDef): Promise<GroupDef> {
+    const result = structuredClone(def);
+    await Promise.all(
+      result.props.map(async member => {
+        member.level = await pinReferenceAsset(member.level ?? level, 'prop', String(member.model));
+        await ensurePropLevel(member.level);
+      }),
+    );
+    result.level = result.props[0].level!;
+    return result;
+  }
+
+  /** Clipboard and old line templates get the same exact-match policy as texture reuse. */
+  async function prepareReferences<T>(value: T): Promise<T> {
+    const result = structuredClone(value);
+    async function visit(node: unknown): Promise<void> {
+      if (!node || typeof node !== 'object' || ArrayBuffer.isView(node)) return;
+      const prop = node as Partial<PlacedProp>;
+      const source = typeof prop.level === 'string' ? parseAssetVersion(prop.level) : null;
+      if (prop.group && !prop.groupDefinition && source && !source.kind) {
+        try {
+          const def = (await ensureGroupDefs(prop.level!)).find(entry => entry.id === prop.group);
+          if (def) {
+            const frozen = await freezeGroup(prop.level!, def);
+            prop.groupDefinition = frozen;
+            prop.level = frozen.level;
+            console.info(
+              `[assets] Auto-updated ${frozen.props.length} exact group member reference(s) to asset2 while reusing content.`,
+            );
+          }
+        } catch {
+          // Retain the bank and group together when the original layout cannot be verified.
+        }
+      }
+      await Promise.all(Object.values(node).map(visit));
+    }
+    await visit(result);
+    const normalized = await normalizeReusedReferences(result);
+    const levels = new Set<string>();
+    function collect(node: unknown): void {
+      if (!node || typeof node !== 'object' || ArrayBuffer.isView(node)) return;
+      const owner = node as Record<string, unknown>;
+      if (
+        typeof owner.level === 'string' &&
+        parseAssetVersion(owner.level)?.kind &&
+        (typeof owner.model === 'number' || typeof owner.body === 'number')
+      )
+        levels.add(owner.level);
+      Object.values(node).forEach(collect);
+    }
+    collect(normalized);
+    // A line's footprint must be available before it replaces its old members. Missing geometry keeps its
+    // normal missing-asset handling; an exact identity never becomes permission to substitute other art.
+    await Promise.all([...levels].map(level => ensurePropLevel(level).catch(() => undefined)));
+    return normalized;
   }
 
   /**
@@ -335,11 +408,11 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** A placement's seating offset: a group seats on its LOWEST member (the assembly's base), a plain prop on
    *  its own model — how far the bottom sits above the placement origin, editor metres. */
-  function placedBaseOffset(pp: { level: string; model: number; group?: string }): number {
-    const def = pp.group ? groupDefIdx.get(`${pp.level}:${pp.group}`) : undefined;
+  function placedBaseOffset(pp: Pick<PlacedProp, 'level' | 'model' | 'group' | 'groupDefinition'>): number {
+    const def = pp.group ? (pp.groupDefinition ?? groupDefIdx.get(`${pp.level}:${pp.group}`)) : undefined;
     if (!def) return propBaseOffset(pp.level, pp.model);
     let min = Infinity;
-    for (const m of def.props) min = Math.min(min, propBaseOffset(pp.level, m.model) + m.relPos[1]);
+    for (const m of def.props) min = Math.min(min, propBaseOffset(m.level ?? pp.level, m.model) + m.relPos[1]);
     return Number.isFinite(min) ? min : 0;
   }
 
@@ -393,10 +466,19 @@ export function createPropOps(deps: PropOpsDeps) {
     const modelProps = (store.mdoc.props ?? []).filter(p => !isEffectTriggerProp(p));
     const levels = new Set([
       ...modelProps.map(p => p.level),
-      ...modelProps.flatMap(p => p.nativeCollision?.physicsSource?.level ?? []),
-      ...(store.mdoc.propLines ?? []).flatMap(line => line.template.nativeCollision?.physicsSource?.level ?? []),
+      ...modelProps.flatMap(p => p.groupDefinition?.props.map(member => member.level ?? p.level) ?? []),
+      ...(store.mdoc.propLines ?? []).flatMap(line => [
+        line.template.level,
+        ...(line.template.groupDefinition?.props.map(member => member.level ?? line.template.level) ?? []),
+      ]),
+      ...modelProps.flatMap(p =>
+        behaviourRecords(p).flatMap(value => value.nativeCollision?.physicsSource?.level ?? []),
+      ),
+      ...(store.mdoc.propLines ?? []).flatMap(line =>
+        behaviourRecords(line.template).flatMap(value => value.nativeCollision?.physicsSource?.level ?? []),
+      ),
     ]);
-    const defLevels = new Set(modelProps.filter(p => p.group).map(p => p.level));
+    const defLevels = new Set(modelProps.filter(p => p.group && !p.groupDefinition).map(p => p.level));
     const loads = [
       ...[...levels].filter(l => l !== AUTHORED_MODEL_LEVEL && !propLevels.has(l)).map(level => ensurePropLevel(level)),
       ...[...defLevels].filter(l => !loadedGroupLevels.has(l)).map(ensureGroupDefs),
@@ -576,6 +658,8 @@ export function createPropOps(deps: PropOpsDeps) {
       target.name = armed.name;
       if (armed.group) target.group = armed.group;
       else delete target.group;
+      if (armed.groupDefinition) target.groupDefinition = structuredClone(armed.groupDefinition);
+      else delete target.groupDefinition;
       if (armed.specialKind) target.specialKind = armed.specialKind;
       else delete target.specialKind;
       applyBehaviour(target, armed.behaviour);
@@ -607,6 +691,8 @@ export function createPropOps(deps: PropOpsDeps) {
    *  any placed-prop selection (so the preview shows what you're now holding), and jump to Props mode. The
    *  viewport shows it as a ghost under the cursor; a click drops it, Esc puts it down. */
   async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
+    const generation = ++armGeneration;
+    const doc = store.mdoc;
     const request = isReplacingProp() ? replacement : null;
     let defaults: ReturnType<typeof armBehaviour>;
     try {
@@ -631,6 +717,7 @@ export function createPropOps(deps: PropOpsDeps) {
       toast(`props load failed: ${e}`, 'err');
       return;
     }
+    if (store.mdoc !== doc || generation !== armGeneration) return;
     const armed: ArmedProp = { level, model, name, ...defaults };
     if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
@@ -728,36 +815,55 @@ export function createPropOps(deps: PropOpsDeps) {
    *  assembly for placement — the ghost previews every member; a click drops ONE placement that carries them
    *  all (docs/015). The armed leader model is what the placement stores / previews. */
   async function armGroupById(level: string, id: string, from: ArmFrom = {}) {
+    const generation = ++armGeneration;
     const request = isReplacingProp() ? replacement : null;
+    const doc = store.mdoc;
     let def: GroupDef | undefined;
+    let armed: ArmedProp;
     try {
-      level = await pinAssetMap(level);
-      await ensurePropLevel(level); // members render from the same level payload
-      def = (await ensureGroupDefs(level)).find(d => d.id === id);
+      if (from.groupDefinition) def = structuredClone(from.groupDefinition);
+      else {
+        level = await pinAssetMap(level);
+        await ensurePropLevel(level);
+        def = (await ensureGroupDefs(level)).find(d => d.id === id);
+      }
+      if (!def) throw new Error(`no group "${id}" in ${level}`);
+      const behaviour = structuredClone(
+        from.behaviour ? stampBehaviour(level, from.behaviour) : groupDefaults(level, def),
+      );
+      const groupDefinition = await freezeGroup(level, def);
+      async function pinBodies(value: PropBehaviour) {
+        const physics = value.nativeCollision?.physicsSource;
+        if (physics) {
+          physics.level = await pinReferenceAsset(physics.level, 'body', String(physics.body));
+          await ensurePropLevel(physics.level);
+        }
+        await Promise.all(Object.values(value.memberBehaviour ?? {}).map(pinBodies));
+      }
+      await pinBodies(behaviour);
+      for (const member of groupDefinition.props) {
+        const inherited = structuredClone(propDefaults(from.groupDefinition ? member.level! : level, member.model));
+        await pinBodies(inherited.behaviour);
+        pickedDefaults.set(`${member.level}:${member.model}`, inherited);
+      }
+      armed = {
+        level: groupDefinition.level,
+        model: def.props[0].model,
+        name: def.name,
+        group: def.id,
+        groupDefinition,
+        behaviour,
+        from: from.behaviour ? 'placement' : 'defaults',
+        ...(from.behaviour ? withEffect(placementEffect(from.placementId)) : {}),
+      };
     } catch (e) {
       toast(`groups load failed: ${e}`, 'err');
       return;
     }
-    if (!def) {
-      toast(`no group "${id}" in ${level}`, 'err');
-      return;
-    }
+    if (store.mdoc !== doc || generation !== armGeneration) return;
     const leader = def.props[0];
     // A group gets no effect default: until an effect can attach to one member, it would attach to the whole
     // group, which Test plays as one prop and the ISO as one copy per member. A copied group keeps its own.
-    const armed: ArmedProp = {
-      level,
-      model: leader.model,
-      name: def.name,
-      group: def.id,
-      ...(from.behaviour
-        ? {
-            behaviour: stampBehaviour(level, from.behaviour),
-            from: 'placement' as const,
-            ...withEffect(placementEffect(from.placementId)),
-          }
-        : { behaviour: groupDefaults(level, def), from: 'defaults' as const }),
-    };
     if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
     store.armedProp = armed;
@@ -773,10 +879,11 @@ export function createPropOps(deps: PropOpsDeps) {
     viewport.setGemArmed(false);
     store.trickTool = null;
     viewport.setPropArmed({
-      level,
+      level: armed.level,
       model: leader.model,
-      baseOffset: placedBaseOffset({ level, model: leader.model, group: def.id }),
+      baseOffset: placedBaseOffset(armed),
       group: def.id,
+      groupDefinition: armed.groupDefinition,
     });
     if (store.currentMode !== 'props') setMode('props');
     else {
@@ -792,6 +899,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** Put the held prop down (Esc in placement mode): back to select mode, where clicks grab placed props. */
   function disarmProp() {
+    armGeneration++;
     cancelPropReplacement();
     if (!store.armedProp) return;
     store.armedProp = null;
@@ -909,6 +1017,7 @@ export function createPropOps(deps: PropOpsDeps) {
       propLevels.get(p.level),
       defOfPlaced(p),
       p.id ?? `#${index}`,
+      propLevels,
     );
   }
 
@@ -964,6 +1073,7 @@ export function createPropOps(deps: PropOpsDeps) {
     rebuildAuthoredRig,
     defOfPlaced,
     ensureGroupDefs,
+    prepareReferences,
     placedBaseOffset,
     ensurePropLevel,
     prefetchPropLevel,

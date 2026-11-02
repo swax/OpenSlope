@@ -36,6 +36,7 @@ import { GameMapSelect } from '../ui/components/game-map-select';
 import type { MapSourceChoice } from '../../core/reference/map-game';
 import { isLocalWorkspace } from '../net/workspace';
 import { pinAssetMap, pinReferenceAssets, pinReferenceAsset, referenceLibraryBank } from '../net/asset-versions';
+import { normalizeReusedTexture } from '../net/reference-reuse';
 import { parseAssetVersion } from '../../core/reference/asset-version';
 import { setAssetBackground } from '../net/asset-images';
 import { askName, confirmAction } from '../ui/components/prompts';
@@ -55,6 +56,7 @@ export type { TexturePick } from './texture-pick';
 export interface PaletteCallbacks {
   /** A texture was selected — the brush carries the ride feel chosen at the top of the panel. */
   onBrush(brush: Brush, sampled?: boolean): void;
+  onResolving?(): void;
   /** A pick finished (answered or cancelled) — the host reapplies its normal per-mode show/hide rule. */
   onPickEnd?(): void;
   /** The panel's size or visibility changed — re-place overlays that sit above it. */
@@ -157,6 +159,7 @@ export class TextureLibrary {
   private selKey = ''; // highlighted brush key
   private open = false;
   private loadGeneration = 0;
+  private sampleGeneration = 0;
   private loadError = '';
   private pick: TexturePick | null = null; // the live "choose a texture" request, if any
   private pickKeys: ((e: KeyboardEvent) => void) | null = null; // its Esc handler, while it's up
@@ -282,6 +285,7 @@ export class TextureLibrary {
    * Esc / Cancel / ✕ cancel. Exactly one pick can be live; opening a second cancels the first.
    */
   openPick(req: TexturePick) {
+    this.sampleGeneration++;
     this.cancelPick();
     this.pick = req;
     this.selKey = req.current ? `tile:${req.current}` : '';
@@ -359,10 +363,12 @@ export class TextureLibrary {
    *  passes the picked surface and the tile's D4 orientation relative to the patch (see pickTexture). The
    *  ride feel is otherwise chosen per-cell in the Palette's Surface mode. */
   private emitTile(ref: TexRef, surface: number = DEFAULT_SURFACE, rot = 0, mirror = false, sampled = false) {
+    this.sampleGeneration++;
     this.cb.onBrush({ kind: 'tile', ref, surface, rot, mirror }, sampled);
   }
 
   async init(preferredLevel?: string) {
+    this.sampleGeneration++;
     try {
       const { levels, maps } = await fetchJson<{ levels: string[]; maps?: MapSourceChoice[] }>('/api/textures');
       this.levelSel.innerHTML = '';
@@ -462,6 +468,8 @@ export class TextureLibrary {
    *  and its D4 orientation relative to the patch (the green frame-F → pink art-F turn, passed in by the
    *  viewport), and scroll the tile into view. Painting the brush reproduces that orientation. */
   async pickTexture(ref: TexRef, surfaceHint: number | null, rot = 0, mirror = false): Promise<string> {
+    const generation = ++this.sampleGeneration;
+    this.cb.onResolving?.();
     const { level, name } = parseTexRef(ref);
     // Bare refs are legacy authored paint. The catalogue selection is available without opening the library,
     // so it remains the backfill source after metadata loading became lazy.
@@ -472,14 +480,17 @@ export class TextureLibrary {
       this.sources.select(resolvedLevel);
       if (!pinned) resolvedLevel = this.levelSel.value;
     }
+    const fullRef = pinned
+      ? await normalizeReusedTexture(makeTexRef(resolvedLevel, name))
+      : makeTexRef(await pinReferenceAsset(resolvedLevel, 'texture', name), name);
+    if (generation !== this.sampleGeneration) return 'texture pick superseded';
+    resolvedLevel = parseTexRef(fullRef).level;
     if (resolvedLevel !== this.tex?.level && (pinned || this.sources.has(resolvedLevel))) {
-      if (!(await this.loadLevel(resolvedLevel)))
+      if (!(await this.loadLevel(resolvedLevel)) && !pinned)
         throw new Error(this.loadError || `could not load ${resolvedLevel} textures`);
     }
-    resolvedLevel = await pinAssetMap(resolvedLevel);
-    if (!pinned) resolvedLevel = await pinReferenceAsset(resolvedLevel, 'texture', name);
+    if (generation !== this.sampleGeneration) return 'texture pick superseded';
     if (pinned) this.sources.select(resolvedLevel);
-    const fullRef = makeTexRef(resolvedLevel, name);
     this.selKey = `tile:${fullRef}`;
     const picked = this.tex?.tiles.find(t => t.name === name);
     // reveal a sampled tile that a filter would otherwise hide
@@ -507,6 +518,7 @@ export class TextureLibrary {
 
   /** Light up the swatch for `ref` (or clear) without emitting a brush — mirrors the Palette's active tile. */
   highlightRef(ref: TexRef | null) {
+    this.sampleGeneration++;
     const key = ref ? `tile:${ref}` : '';
     if (key === this.selKey) return;
     this.selKey = key;

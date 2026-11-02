@@ -30,6 +30,7 @@ import { setImageAsset } from '../net/asset-images';
  * bucketize / edgeDiff / drawSeams).
  */
 import { parseTexRef, type Brush, type TexRef } from '../../core/paint/textures';
+import { hasAsset1References, normalizeReusedTexture } from '../net/reference-reuse';
 import { orientCss, orientText, turnD4 } from '../../core/paint/orientation';
 import { DEFAULT_SURFACE, SURFACE_TYPES, surfaceStyle } from '../../core/doc/types';
 import { DRAG_CELL, DRAG_TILE } from './drag-drop';
@@ -108,6 +109,7 @@ const DEFAULT_FLIPBOOK_EFFECT: TextureFlipEffect = {
 export interface PaletteCallbacks {
   /** The active brush changed (a cell was placed / selected / rotated) — paint terrain with this. */
   onSelect(brush: Brush, preserveInspection?: boolean): void;
+  onResolving?(): void;
   /** The staged set of tiles changed (placed / cleared / dropped) — e.g. so the Library can re-filter. */
   onContentsChange?(): void;
   /** The "Texture Library" toggle was pressed — show / hide the bottom Texture Library panel. */
@@ -273,6 +275,7 @@ export class Palette {
   }
   private view: View = 'texture';
   private current: Cell | null = null; // active brush combo (from the Library, a sampled surface, or a cell)
+  private brushGeneration = 0;
   private inspect: PreviewCell | null = null; // a terrain cell being INSPECTED (paint select mode) — preview-only, never the brush
   private inspectFrame = 0; // selected frame within an inspected prop flipbook
   private inspectFlip: TextureFlipPlayback | null = null;
@@ -449,6 +452,7 @@ export class Palette {
 
   /** Adopt the app's current paint brush as the thing that drops into a blank cell (and the preview). */
   setCurrent(brush: Brush, preserveInspection = false) {
+    this.brushGeneration++;
     this.current = { ref: brush.ref, surface: brush.surface, rot: brush.rot, mirror: brush.mirror };
     if (!preserveInspection) this.clearInspection(); // a sampled surface keeps its details until painting starts
     this.selCell = null;
@@ -457,8 +461,30 @@ export class Palette {
     this.flashRef(brush.ref); // flash any pad duplicates of the picked tile
   }
 
+  /** Verify saved swatches before they create new paint; a later pick or Esc cancels a pending result. */
+  private emitBrush(brush: Brush, preserveInspection?: boolean) {
+    const generation = ++this.brushGeneration;
+    if (!hasAsset1References(brush.ref)) {
+      this.cb.onSelect(brush, preserveInspection);
+      return;
+    }
+    this.cb.onResolving?.();
+    void normalizeReusedTexture(brush.ref).then(ref => {
+      if (generation !== this.brushGeneration) return;
+      if (ref !== brush.ref) {
+        if (this.current?.ref === brush.ref) this.current.ref = ref;
+        for (const pad of this.pads) for (const cell of pad) if (cell?.ref === brush.ref) cell.ref = ref;
+        this.save();
+        this.renderGrid();
+        this.renderPreview();
+      }
+      this.cb.onSelect({ ...brush, ref }, preserveInspection);
+    });
+  }
+
   /** Put the brush down (Esc left placement mode): nothing held, the preview empties until the next pick. */
   clearCurrent() {
+    this.brushGeneration++;
     this.current = null;
     this.selCell = null;
     this.renderGrid();
@@ -539,7 +565,7 @@ export class Palette {
     const c = this.previewCell();
     if (!c) return;
     this.current = { ref: this.previewRef(c), surface: c.surface ?? DEFAULT_SURFACE, rot: c.rot, mirror: c.mirror };
-    this.cb.onSelect(this.brushOf(this.current), this.inspect !== null);
+    this.emitBrush(this.brushOf(this.current), this.inspect !== null);
     this.flashRef(this.current.ref);
   }
 
@@ -642,7 +668,7 @@ export class Palette {
     this.selCell = i;
     this.renderGrid();
     this.renderPreview();
-    this.cb.onSelect(this.brushOf(this.current));
+    this.emitBrush(this.brushOf(this.current));
     this.flashMatching(i);
   }
   /** Briefly flash every cell sharing cell `i`'s texture (so you can spot its duplicates). Only the focused
@@ -712,7 +738,7 @@ export class Palette {
     c.surface = surface;
     if (this.selCell === i && this.current) {
       this.current.surface = surface;
-      this.cb.onSelect(this.brushOf(c));
+      this.emitBrush(this.brushOf(c));
     }
     this.save();
     this.renderGrid();
@@ -731,7 +757,7 @@ export class Palette {
     this.save();
     this.renderGrid();
     this.renderPreview();
-    this.cb.onSelect(this.brushOf(c), true); // a turn edits the held tile, so a sampled source keeps its outline
+    this.emitBrush(this.brushOf(c), true); // a turn edits the held tile, so a sampled source keeps its outline
   }
   private clearCell(i: number) {
     this.cells[i] = null;
@@ -767,7 +793,7 @@ export class Palette {
         this.save();
         this.renderGrid();
         this.renderPreview();
-        this.cb.onSelect(this.brushOf(this.cells[i]!));
+        this.emitBrush(this.brushOf(this.cells[i]!));
         this.cb.onContentsChange?.();
         this.flashMatching(i);
       } catch {
@@ -1055,7 +1081,7 @@ export class Palette {
     Object.assign(this.current, turnD4(this.current, dir, flip));
     this.renderGrid();
     this.renderPreview();
-    this.cb.onSelect(this.brushOf(this.current), true); // as above: turning is not a new pick
+    this.emitBrush(this.brushOf(this.current), true); // as above: turning is not a new pick
     return true;
   }
 

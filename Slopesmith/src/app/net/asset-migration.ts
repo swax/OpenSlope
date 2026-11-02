@@ -7,8 +7,8 @@ import { imageAssetUrl } from './asset-images';
 import { workspaceFetch } from './workspace';
 
 /** Manual review and automatic upgrades use the same current workspace and hash checks. */
-export function assetMigrationSources(): AssetMigrationSources {
-  clearAssetCatalogue();
+export function assetMigrationSources(refresh = true): AssetMigrationSources {
+  if (refresh) clearAssetCatalogue();
   return {
     maps: availableAssetMaps,
     manifest: readAssetManifestAt,

@@ -52,7 +52,7 @@ export interface PasteTransform {
 /** One placement of the paste ghost, posed relative to the anchor. */
 export type PasteGhostPlacement = Pick<
   PlacedProp,
-  'level' | 'model' | 'group' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale'
+  'level' | 'model' | 'group' | 'groupDefinition' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale'
 >;
 
 type PropDoc = Pick<QuadMeshDoc, 'name' | 'props' | 'lights' | 'screens' | 'effects' | 'models'>;
@@ -140,6 +140,7 @@ export function pasteGhost(doc: PropDoc, clip: PropClipboard): PasteGhostPlaceme
     level: prop.level,
     model: prop.model,
     ...(prop.group ? { group: prop.group } : {}),
+    ...(prop.groupDefinition ? { groupDefinition: prop.groupDefinition } : {}),
     ...(prop.pitch ? { pitch: prop.pitch } : {}),
     ...(prop.roll ? { roll: prop.roll } : {}),
     ...carried(prop, clip.anchor, { pos: [0, 0, 0], yaw: 0, scale: 1 }),

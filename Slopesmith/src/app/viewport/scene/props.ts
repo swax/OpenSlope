@@ -41,7 +41,7 @@ import {
   type PropModelClip,
 } from '../../../core/reference/props';
 import { facingArrowMaterial, facingArrowSegments } from './facing-arrows';
-import type { GroupPropDef } from '../../../core/reference/groups';
+import type { GroupDef, GroupPropDef } from '../../../core/reference/groups';
 import { propRigGlow } from '../../../core/reference/lights';
 import { EFFECT_PROP_OVERLAY_RENDER_ORDER, PROP_RIG_MAX_BOOST } from '../constants';
 import { placementQuat } from '../../../core/props/pose';
@@ -74,6 +74,7 @@ export type PropArm = {
   model: number;
   baseOffset: number;
   group?: string;
+  groupDefinition?: GroupDef;
   paste?: readonly PasteGhostPlacement[];
   pasteLights?: readonly Omit<AuthoredLight, 'id'>[];
 };
@@ -157,8 +158,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     props
       .map(prop =>
         assets
-          .membersOf(prop.level, prop.model, prop.name, prop.group)
-          .map(member => propLoadState(prop.level, member.model))
+          .membersOf(prop.level, prop.model, prop.name, prop.group, prop.groupDefinition)
+          .map(member => propLoadState(member.level ?? prop.level, member.model))
           .join(','),
       )
       .join(';');
@@ -274,7 +275,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         propArm.pasteLights !== arm.pasteLights ||
         propArm.level !== arm.level ||
         propArm.model !== arm.model ||
-        propArm.group !== arm.group);
+        propArm.group !== arm.group ||
+        propArm.groupDefinition !== arm.groupDefinition);
     propArm = arm;
     if (rearming && arm.paste) {
       pendingYaw = 0;
@@ -302,7 +304,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         const placed = new THREE.Group();
         placed.matrixAutoUpdate = false;
         placed.matrix.copy(placementPose(placement));
-        if (addGhostModel(placed, placement.level, placement.model, placement.group)) g.add(placed);
+        if (addGhostModel(placed, placement.level, placement.model, placement.group, placement.groupDefinition))
+          g.add(placed);
       }
       const positions: number[] = [],
         colors: number[] = [];
@@ -326,7 +329,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         propGhostMats.push(material);
         g.add(lines);
       }
-    } else addGhostModel(g, propArm.level, propArm.model, propArm.group);
+    } else addGhostModel(g, propArm.level, propArm.model, propArm.group, propArm.groupDefinition);
     if (!g.children.length) return;
     stage.worldRoot.add(g);
     propGhost = g;
@@ -335,11 +338,17 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   /** One model's (or group's) ghost meshes under `parent`, in the placement's own frame. False when none of
    *  its geometry is cached — the host loads geometry before arming, so a miss just means no ghost for it. */
-  function addGhostModel(parent: THREE.Group, level: string, model: number, group?: string): boolean {
+  function addGhostModel(
+    parent: THREE.Group,
+    level: string,
+    model: number,
+    group?: string,
+    definition?: GroupDef,
+  ): boolean {
     let tris = 0; // renderable triangles across the members — 0 with cached geometry = surfaceless model
     let added = false;
-    for (const member of assets.membersOf(level, model, '', group)) {
-      const subs = assets.propGeom.get(`${level}:${member.model}`);
+    for (const member of assets.membersOf(level, model, '', group, definition)) {
+      const subs = assets.propGeom.get(`${member.level ?? level}:${member.model}`);
       if (!subs) continue;
       const child = new THREE.Group();
       child.matrixAutoUpdate = false;
@@ -855,15 +864,17 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       };
       decoration.add(line);
     }
-    for (const m of isEffectTriggerProp(pp) ? [] : assets.membersOf(pp.level, pp.model, pp.name, pp.group)) {
-      const subs = assets.propGeom.get(`${pp.level}:${m.model}`);
+    for (const m of isEffectTriggerProp(pp)
+      ? []
+      : assets.membersOf(pp.level, pp.model, pp.name, pp.group, pp.groupDefinition)) {
+      const subs = assets.propGeom.get(`${m.level ?? pp.level}:${m.model}`);
       if (!subs) continue;
       const child = new THREE.Group();
       child.matrixAutoUpdate = false;
       child.matrix.copy(assets.memberLocalMatrix(m));
       const geoms = subs.map(s => s.geometry);
-      const featureEdges = assets.propEdges(pp.level, m.model, geoms);
-      const triangleWires = assets.propWireEdges(pp.level, m.model, geoms);
+      const featureEdges = assets.propEdges(m.level ?? pp.level, m.model, geoms);
+      const triangleWires = assets.propWireEdges(m.level ?? pp.level, m.model, geoms);
       for (let i = 0; i < Math.max(featureEdges.length, triangleWires.length); i++) {
         for (const [geometry, topology] of [
           [featureEdges[i], 'feature'],
@@ -882,7 +893,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       if (single) {
         const pts = facingArrowSegments(
           subs.map(s => s.geometry),
-          assets.propLocalBox(pp.level, m.model),
+          assets.propLocalBox(m.level ?? pp.level, m.model),
         );
         if (pts.length) {
           const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
@@ -1030,7 +1041,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const pp = props[i];
       if (hiddenIndices?.has(i)) continue; // e.g. the edited model's own placements, which the substrate shows
       const worldEffect = authoredPropMaterialEffects(effects, pp.id);
-      const members = assets.membersOf(pp.level, pp.model, pp.name, pp.group);
+      const members = assets.membersOf(pp.level, pp.model, pp.name, pp.group, pp.groupDefinition);
       // a placement is a pose Group of per-member child Groups of textured submeshes; the selected prop
       // keeps its tiles and gains an amber edge outline over them (lines ride the gizmo drag / rebuilds)
       const group = new THREE.Group();
@@ -1074,12 +1085,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         tris = 12;
       }
       for (const m of isEffectTriggerProp(pp) ? [] : members) {
-        const modelKey = `${pp.level}:${m.model}`;
+        const modelKey = `${m.level ?? pp.level}:${m.model}`;
         const subs = assets.propGeom.get(modelKey);
         if (!subs) {
           const box = new THREE.Mesh(
             placeholderGeo,
-            propLoadState(pp.level, m.model) === 'missing' ? missingPropMat : placeholderMat,
+            propLoadState(m.level ?? pp.level, m.model) === 'missing' ? missingPropMat : placeholderMat,
           );
           box.position.fromArray(m.relPos);
           box.rotation.y = (m.relYaw * Math.PI) / 180;
@@ -1100,7 +1111,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         if (own) {
           child.userData.propMember = m.model;
           child.userData[PROP_SHADE_TINT] = propContactTint(
-            collisionProfileContactState(placedPropCollisionProfile({ level: pp.level, ...own })),
+            collisionProfileContactState(placedPropCollisionProfile({ level: m.level ?? pp.level, ...own })),
             own.surface,
           );
         }
@@ -1343,15 +1354,17 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         group.add(line);
         tris = 12;
       }
-      for (const m of isEffectTriggerProp(pp) ? [] : assets.membersOf(pp.level, pp.model, pp.name, pp.group)) {
-        const subs = assets.propGeom.get(`${pp.level}:${m.model}`);
+      for (const m of isEffectTriggerProp(pp)
+        ? []
+        : assets.membersOf(pp.level, pp.model, pp.name, pp.group, pp.groupDefinition)) {
+        const subs = assets.propGeom.get(`${m.level ?? pp.level}:${m.model}`);
         if (!subs) continue;
         const child = new THREE.Group();
         child.matrixAutoUpdate = false;
         child.matrix.copy(assets.memberLocalMatrix(m));
         for (const sub of subs) tris += sub.geometry.index?.count ?? 0;
         for (const eg of assets.propEdges(
-          pp.level,
+          m.level ?? pp.level,
           m.model,
           subs.map(s => s.geometry),
         )) {

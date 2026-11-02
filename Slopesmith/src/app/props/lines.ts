@@ -32,6 +32,7 @@ import type { PropOps } from './operations';
 import { dropScreensForProp } from './screens';
 import { toast } from '../ui/components/toast';
 import { pinTextureReference } from '../net/asset-versions';
+import { hasAsset1References } from '../net/reference-reuse';
 
 /**
  * Prop lines (docs/070): the app half of a path that owns a row of placements.
@@ -67,6 +68,8 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
   const { store, viewport, propOps, groupDefIdx, setPropLibWanted, scheduleRebuild, rebuildTools, updateCmdSheet } =
     deps;
   let drawing: Drawing | null = null;
+  const verifiedTemplates = new WeakMap<object, string>();
+  const verifyingTemplates = new WeakSet<object>();
 
   /** The line with this id — in the document, or the one still being drawn. */
   function lineById(id: string | null): (PropLine & { id: string }) | undefined {
@@ -101,10 +104,10 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
       const box = propOps.authoredBoxOf(template.level, template.model);
       return box ? footprintOfRawBox(box) : null;
     }
-    const def = groupDefIdx.get(`${template.level}:${template.group}`);
+    const def = template.groupDefinition ?? groupDefIdx.get(`${template.level}:${template.group}`);
     if (!def) return null;
     const members = def.props.map(member => {
-      const box = propOps.authoredBoxOf(template.level, member.model);
+      const box = propOps.authoredBoxOf(member.level ?? template.level, member.model);
       return box ? { footprint: footprintOfRawBox(box), relPos: member.relPos, relYaw: member.relYaw } : null;
     });
     return members.every(member => member) ? groupFootprint(members as NonNullable<(typeof members)[number]>[]) : null;
@@ -175,6 +178,41 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
    * its siblings share — or, on a line still being drawn, the held prop's.
    */
   function relayout(line: PropLine & { id: string }): boolean {
+    const template = line.template;
+    const signature = JSON.stringify(template);
+    if (hasAsset1References(template) && verifiedTemplates.get(template) !== signature) {
+      if (!verifyingTemplates.has(template)) {
+        verifyingTemplates.add(template);
+        const doc = store.mdoc;
+        void propOps
+          .prepareReferences(template)
+          .then(normalized => {
+            if (
+              store.mdoc !== doc ||
+              line.template !== template ||
+              JSON.stringify(template) !== signature ||
+              !displayLines().includes(line)
+            )
+              return;
+            line.template = normalized;
+            verifiedTemplates.set(normalized, JSON.stringify(normalized));
+            relayout(line);
+            verifiedTemplates.delete(normalized); // retry an unresolved original on the next edit/import
+            scheduleRebuild();
+          })
+          .finally(() => {
+            verifyingTemplates.delete(template);
+            if (
+              store.mdoc === doc &&
+              line.template === template &&
+              JSON.stringify(template) !== signature &&
+              displayLines().includes(line)
+            )
+              relayout(line);
+          });
+      }
+      return false;
+    }
     const members = line.sheet ? sheetMembers(line as PropLine & { id: string; sheet: PropSheet }) : copyMembers(line);
     if (!members) return false;
     const props = (store.mdoc.props ??= []);
@@ -222,6 +260,7 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
         model: armed.model,
         name: armed.name,
         ...(armed.group ? { group: armed.group } : {}),
+        ...(armed.groupDefinition ? { groupDefinition: structuredClone(armed.groupDefinition) } : {}),
       },
       armed.behaviour,
     );
@@ -448,6 +487,7 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
           model: armed.model,
           name: armed.name,
           ...(armed.group ? { group: armed.group } : {}),
+          ...(armed.groupDefinition ? { groupDefinition: structuredClone(armed.groupDefinition) } : {}),
         },
         armed.behaviour,
       );

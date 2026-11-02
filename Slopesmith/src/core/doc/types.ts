@@ -868,10 +868,11 @@ export interface PlacedProp {
   /** Exact editable collision profile. Absent only in legacy documents, where the old Solid/effect rules are
    *  inferred until the first collision edit materializes this record. */
   nativeCollision?: NativeCollisionProfile;
-  /** Group-def id when this placement is a GROUP (docs/015): `model` is the leader; the sibling member
-   *  models and the group's lights DERIVE from the def (mined per level via /api/groups) at render /
-   *  export time, so they follow the one placement. Absent = a plain single prop. */
+  /** Group-def id when this placement is a GROUP (docs/015): `model` is the leader. Members and lights follow
+   *  `groupDefinition`, or the source bank's mined definition for older saves. Absent = a plain single prop. */
   group?: string;
+  /** Frozen layout of a borrowed group, with each member pinned independently. Older groups re-mine their bank. */
+  groupDefinition?: import('../reference/groups').GroupDef;
   /** The PROP LINE (`PropLine.id`) this placement is a member of (docs/070). The line lays its members out,
    *  so selecting one selects the line, and a re-layout replaces them. Absent = placed on its own. */
   line?: string;

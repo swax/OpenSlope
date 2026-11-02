@@ -590,6 +590,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         yaw,
         scale,
         ...(store.armedProp.group ? { group: store.armedProp.group } : {}),
+        ...(store.armedProp.groupDefinition
+          ? { groupDefinition: structuredClone(store.armedProp.groupDefinition) }
+          : {}),
       };
       props.push(applyBehaviour(placed, store.armedProp.behaviour));
       // …then the held effect and whatever the model declared for itself (docs/069 · Effects).
@@ -725,7 +728,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       // The copy carries everything the placement does — its sounds and self-lighting too, not only contact.
       const behaviour = { ...behaviourOf(p), nativeCollision: structuredClone(placedPropCollisionProfile(p)) };
       const from = { behaviour, ...(p.id ? { placementId: p.id } : {}) }; // …and shares its effect (docs/069)
-      if (p.group) void propOps().armGroupById(p.level, p.group, from);
+      if (p.group) void propOps().armGroupById(p.level, p.group, { ...from, groupDefinition: p.groupDefinition });
       else void propOps().armProp(p.level, p.model, p.name, from);
     },
     onSelectReferenceProp(level, model, modelName, inst) {

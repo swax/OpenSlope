@@ -22,10 +22,9 @@ import { applyBehaviour, memberBehaviour, memberLegacyContact } from '../props/d
  *    arm of each `StreetLight_Tall`, rotating with its yaw). Expressing each nearby light in each instance's
  *    local frame and clustering the offsets recovers that attachment.
  *
- * A placed group is stored as a single `PlacedProp` carrying `group: <def id>` — the leader model plus the
- * def id; the sibling member models and the lights are DERIVED from the def at render / bake / export time
- * (the same philosophy as the derived billboard sign lights, docs/013). Move the placement, everything
- * follows; delete it, everything's gone.
+ * A compact group carries `group: <def id>`. New picks also freeze `groupDefinition`, including each member's
+ * asset2 identity and the light layout. Older saves re-mine the definition from their source bank. Ordinary
+ * drops unpack into an authored assembly; compact replacements and prop lines retain the frozen layout.
  *
  * Mining is pure (parsed JSON in, defs out) so it's shared verbatim by the dev-server endpoint
  * (`/api/groups`, server/routes/groups.ts) and the export (server/routes/export.ts) — the def a placement references is
@@ -35,6 +34,8 @@ import { applyBehaviour, memberBehaviour, memberLegacyContact } from '../props/d
 /** One prop member of a group, relative to the group origin. Mined members carry relPos [0,0,0] / relYaw 0
  *  (the shipped assemblies co-place members exactly); the fields exist so hand-authored groups can offset. */
 export interface GroupPropDef {
+  /** Exact source for a frozen member. Mined legacy definitions inherit the placement's bank. */
+  level?: string;
   model: number;
   name: string;
   /** Member origin relative to the group origin, editor metres (pre-scale, pre-yaw). */
@@ -358,7 +359,7 @@ export function expandGroupProps(pp: PlacedProp, def: GroupDef): PlacedProp[] {
   // export bakes and stamps per member is what Test collides with per member.
   return def.props.map(m => {
     const member: PlacedProp = {
-      level: pp.level,
+      level: m.level ?? pp.level,
       model: m.model,
       name: m.name,
       pos: memberWorldPos(pp, m.relPos),

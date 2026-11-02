@@ -1443,7 +1443,7 @@ export function createPropTools(ctx: ToolsContext) {
     );
     const host: BehaviourHost = {
       target: entry,
-      level: group.level,
+      level: def.props.find(member => member.model === model)?.level ?? group.level,
       key: `${group.key}-member`,
       placement: group.placement ? groupMemberProp({ ...group.placement, memberBehaviour: entries }, model) : undefined,
       changed: () => {
@@ -1962,7 +1962,7 @@ export function createPropTools(ctx: ToolsContext) {
    */
   function buildHeldPropTools(armed: ArmedProp) {
     const resolved = propDefaults(armed.level, armed.model);
-    const def = armed.group ? groupDefIdx.get(`${armed.level}:${armed.group}`) : undefined;
+    const def = armed.group ? (armed.groupDefinition ?? groupDefIdx.get(`${armed.level}:${armed.group}`)) : undefined;
     // A held group's members are set up like a placed one's, against a stand-in placement built from the hold;
     // every write still lands on the held behaviour itself.
     const groupKey = heldGroupKey(armed);
@@ -1974,6 +1974,7 @@ export function createPropTools(ctx: ToolsContext) {
       yaw: 0,
       scale: 1,
       ...armed.behaviour,
+      groupDefinition: armed.groupDefinition,
     };
     const member = openMemberOf(groupKey, def);
     if (def && member) {
@@ -2184,7 +2185,7 @@ export function createPropTools(ctx: ToolsContext) {
         addPropMaterials(
           materialSection,
           materialsHost,
-          prop.level,
+          member.level ?? prop.level,
           member.model,
           (store.mdoc.props ?? []).filter(
             p =>
@@ -2877,7 +2878,9 @@ export function createPropTools(ctx: ToolsContext) {
     const template = line.template;
     const name = shortPropName(template.name);
     const members = (store.mdoc.props ?? []).filter(p => p.line === line.id);
-    const def = template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : undefined;
+    const def = template.group
+      ? (template.groupDefinition ?? groupDefIdx.get(`${template.level}:${template.group}`))
+      : undefined;
     const changed = () => propLines.changed(line);
     const settled = () => {
       propLines.changed(line);
@@ -3249,8 +3252,15 @@ export function createPropTools(ctx: ToolsContext) {
     ) => {
       const member = openMemberOf(groupKey, def);
       if (member)
-        propPreview.show(level, member.model, shortPropName(member.name), propLevels.get(level), null, instance);
-      else propPreview.show(level, model, name, propLevels.get(level), def ?? null, instance);
+        propPreview.show(
+          member.level ?? level,
+          member.model,
+          shortPropName(member.name),
+          propLevels.get(member.level ?? level),
+          null,
+          instance,
+        );
+      else propPreview.show(level, model, name, propLevels.get(level), def ?? null, instance, propLevels);
     };
     // Every card for a PLACED prop names which placement it is, the same way the box-selection list already
     // did: the Effects panel identifies a prop by its number, so clicking one has to answer that question too
@@ -3281,7 +3291,7 @@ export function createPropTools(ctx: ToolsContext) {
           template.level,
           first?.model ?? template.model,
           shortPropName(template.name),
-          template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : null,
+          template.group ? (template.groupDefinition ?? groupDefIdx.get(`${template.level}:${template.group}`)) : null,
           lineGroupKey(line),
           store.selectedLine,
         );
@@ -3292,7 +3302,9 @@ export function createPropTools(ctx: ToolsContext) {
         store.armedProp.level,
         store.armedProp.model,
         shortPropName(store.armedProp.name),
-        store.armedProp.group ? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`) : null,
+        store.armedProp.group
+          ? (store.armedProp.groupDefinition ?? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`))
+          : null,
         heldGroupKey(store.armedProp),
       );
     // A reference pick's number is its native Instances[] row — the exact value Effects mode labels "Prop

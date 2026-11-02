@@ -224,8 +224,14 @@ export function createPropAssets() {
 
   /** A placement's member list: the group def's props (leader first), or the placement's own model as a
    *  one-member list. A group whose def isn't registered yet renders just its leader until the fetch lands. */
-  function membersOf(level: string, model: number, name: string, group?: string): GroupPropDef[] {
-    const def = group ? groupDefs.get(`${level}:${group}`) : undefined;
+  function membersOf(
+    level: string,
+    model: number,
+    name: string,
+    group?: string,
+    definition?: GroupDef,
+  ): GroupPropDef[] {
+    const def = group ? (definition ?? groupDefs.get(`${level}:${group}`)) : undefined;
     return def?.props ?? [{ model, name, relPos: [0, 0, 0], relYaw: 0 }];
   }
 

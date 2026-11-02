@@ -125,9 +125,10 @@ export async function buildExportFolder(
     : [await provider.soundIndex()];
   for (const index of soundIndexes) registerCollisionSoundIndex(index);
 
-  // group placements (docs/015): re-mine their source levels' defs (cached) so each placement expands into
-  // its member models + light members — the same defs the editor placed with, reproducible from level data
-  const defIdx = await provider.groupDefs([...new Set((doc.props ?? []).filter(p => p.group).map(p => p.level))]);
+  // New groups carry their frozen member identities and lights. Only older groups need source-bank mining.
+  const defIdx = await provider.groupDefs([
+    ...new Set((doc.props ?? []).filter(p => p.group && !p.groupDefinition).map(p => p.level)),
+  ]);
 
   // Every model the document places, plus every group member any placement expands into. The geometry is
   // fetched once, together, and answered as a synchronous lookup: the sign-light boxes and the prop bakes
@@ -136,8 +137,8 @@ export async function buildExportFolder(
   const wantModel = (level: string, model: number) => modelKeys.set(`${level}:${model}`, { level, model });
   for (const p of doc.props ?? []) {
     wantModel(p.level, p.model);
-    const def = p.group ? defIdx.get(`${p.level}:${p.group}`) : undefined;
-    for (const m of def?.props ?? []) wantModel(p.level, m.model);
+    const def = p.group ? (p.groupDefinition ?? defIdx.get(`${p.level}:${p.group}`)) : undefined;
+    for (const m of def?.props ?? []) wantModel(m.level ?? p.level, m.model);
   }
   const geometryOf = await provider.modelGeometry([...modelKeys.values()]);
 
@@ -150,7 +151,10 @@ export async function buildExportFolder(
 
   const signLights = authoredSignLights(doc.props, boxOf);
   const freeLights = authoredFreeLights(doc.lights);
-  const groupLights = authoredGroupLights(doc.props, pp => defIdx.get(`${pp.level}:${pp.group}`) ?? null);
+  const groupLights = authoredGroupLights(
+    doc.props,
+    pp => pp.groupDefinition ?? defIdx.get(`${pp.level}:${pp.group}`) ?? null,
+  );
   const lights = [...signLights, ...freeLights, ...groupLights];
 
   // The imported catalogue is read at most once per export, and only when the document actually places an
@@ -192,11 +196,11 @@ export async function buildExportFolder(
     return off;
   };
   // a group seats on its LOWEST member (the assembly's base), exactly as the editor placed it
-  const placedBaseOffset = (pp: { level: string; model: number; group?: string }): number => {
-    const def = pp.group ? defIdx.get(`${pp.level}:${pp.group}`) : undefined;
+  const placedBaseOffset = (pp: Pick<PlacedProp, 'level' | 'model' | 'group' | 'groupDefinition'>): number => {
+    const def = pp.group ? (pp.groupDefinition ?? defIdx.get(`${pp.level}:${pp.group}`)) : undefined;
     if (!def) return modelBaseOffset(pp.level, pp.model);
     let min = Infinity;
-    for (const m of def.props) min = Math.min(min, modelBaseOffset(pp.level, m.model) + m.relPos[1]);
+    for (const m of def.props) min = Math.min(min, modelBaseOffset(m.level ?? pp.level, m.model) + m.relPos[1]);
     return Number.isFinite(min) ? min : 0;
   };
 
@@ -316,7 +320,7 @@ export async function buildExportFolder(
     // Each member is ALSO registered under its own member key, which is what its per-member tuning (docs/069)
     // joins on; effects, poses and clips keep joining on the placement id.
     const expanded = refPlacements.flatMap(pp => {
-      const def = pp.group ? defIdx.get(`${pp.level}:${pp.group}`) : undefined;
+      const def = pp.group ? (pp.groupDefinition ?? defIdx.get(`${pp.level}:${pp.group}`)) : undefined;
       return def
         ? expandGroupProps(pp, def).map(member => ({
             ...member,
@@ -555,7 +559,7 @@ export async function buildExportFolder(
    */
   const tuningUnits = (doc.props ?? []).flatMap((pp): { key: string; prop: PlacedProp }[] => {
     if (!pp.id) return [];
-    const def = pp.group ? defIdx.get(`${pp.level}:${pp.group}`) : undefined;
+    const def = pp.group ? (pp.groupDefinition ?? defIdx.get(`${pp.level}:${pp.group}`)) : undefined;
     return def
       ? expandGroupProps(pp, def).map(member => ({ key: groupMemberKey(pp.id!, member.model), prop: member }))
       : [{ key: pp.id, prop: pp }];
@@ -1057,7 +1061,10 @@ export async function buildExportFolder(
       const source = ref ? parseTexRef(ref) : undefined;
       const bytes = source
         ? await provider.referenceTexture(source.level, source.name)
-        : await provider.particleTexture('fog0.png', particleDonorLevel(doc.particleVolumes?.filter(volume => !volume.texture)));
+        : await provider.particleTexture(
+            'fog0.png',
+            particleDonorLevel(doc.particleVolumes?.filter(volume => !volume.texture)),
+          );
       if (sharedFog && (sharedFog.length !== bytes.length || sharedFog.some((value, index) => value !== bytes[index])))
         throw new Error('Folder export has one fog0 slot; use the same fog sprite for all volumes.');
       sharedFog = bytes;

@@ -208,7 +208,8 @@ export function memberLegacyContact(pp: PlacedProp, model: number): Pick<PlacedP
 
 /** A group placement as one member sees it: the same placement, with that member's behaviour in place of its own. */
 export function groupMemberProp(pp: PlacedProp, model: number): PlacedProp {
-  const out = applyBehaviour({ ...pp, model }, memberBehaviour(pp, model));
+  const level = pp.groupDefinition?.props.find(member => member.model === model)?.level ?? pp.level;
+  const out = applyBehaviour({ ...pp, level, model }, memberBehaviour(pp, model));
   delete out.solid;
   delete out.bounce;
   return Object.assign(out, memberLegacyContact(pp, model));

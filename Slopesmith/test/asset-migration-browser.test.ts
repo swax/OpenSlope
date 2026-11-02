@@ -109,9 +109,110 @@ try {
     const legacySample = brush;
     await library.pickTexture(texture, 1);
     const individualSample = brush;
+    const paletteUrl = '/src/app/paint/palette.ts';
+    const { Palette } = await import(/* @vite-ignore */ paletteUrl);
+    const unavailable = bankId.replace(/:[a-f0-9]{64}$/, ':' + '0'.repeat(64)) + '/tile.png';
+    localStorage.setItem(
+      'slopesmith-scratch-v1',
+      JSON.stringify({
+        cells: [
+          { ref: `${bankId}/tile.png`, surface: 13, rot: 2, mirror: true },
+          { ref: unavailable, surface: 1, rot: 0, mirror: false },
+        ],
+      }),
+    );
+    let selected: (brush: { ref: string; surface: number; rot: number; mirror: boolean }) => void = () => {};
+    const palette = new Palette({ onSelect: (brush: any) => selected(brush) });
+    document.body.append(palette.el);
+    const waitPalette = () =>
+      new Promise<any>(resolve => {
+        selected = resolve;
+      });
+    const firstPalette = waitPalette();
+    (palette.el.querySelectorAll('.sc-cell')[0] as HTMLElement).click();
+    const palettePick = await firstPalette;
+    const secondPalette = waitPalette();
+    (palette.el.querySelectorAll('.sc-cell')[1] as HTMLElement).click();
+    const unresolvedPick = await secondPalette;
+    const storedPalette = JSON.parse(localStorage.getItem('slopesmith-scratch-v1')!);
+    palette.el.remove();
     library.el.remove();
     const { createStore } = await import(/* @vite-ignore */ storeUrl);
     const { createPropOps } = await import(/* @vite-ignore */ propsUrl);
+    // Render a frozen group without registering a bank's mined definitions. Each mesh lives under its own
+    // asset identity; its placed view and placement ghost must both contain the two members.
+    const assetsUrl = '/src/app/viewport/scene/prop-assets.ts',
+      layerUrl = '/src/app/viewport/scene/props.ts',
+      threeUrl = '/node_modules/three/build/three.module.js';
+    const { createPropAssets } = await import(/* @vite-ignore */ assetsUrl);
+    const { createPropsLayer } = await import(/* @vite-ignore */ layerUrl);
+    const { Group } = await import(/* @vite-ignore */ threeUrl);
+    const renderAssets = createPropAssets();
+    const renderLevels = [
+      'asset2:ssx-tricky:TRICKY_GARI:prop:0:' + '1'.repeat(64),
+      'asset2:ssx-tricky:TRICKY_GARI:prop:1:' + '2'.repeat(64),
+    ];
+    renderLevels.forEach((level, model) =>
+      renderAssets.registerPropModels({
+        level,
+        models: [
+          {
+            id: model,
+            name: 'Part',
+            subs: [
+              {
+                mat: -1,
+                positions: new Float32Array([0, 0, 0, 100, 0, 0, 0, 100, 100]),
+                indices: new Uint32Array([0, 1, 2]),
+                uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
+              },
+            ],
+          },
+        ],
+        materials: new Map(),
+        instances: [],
+        crowdFrames: [],
+      }),
+    );
+    const definition = {
+      id: 'fixture',
+      level: renderLevels[0],
+      name: 'Fixture',
+      occurrences: 3,
+      lights: [],
+      props: renderLevels.map((level, model) => ({ level, model, name: 'Part', relPos: [model, 0, 0], relYaw: 0 })),
+    };
+    const renderLayer = createPropsLayer(
+      { scene: new Group(), worldRoot: new Group() },
+      { ...renderAssets },
+      { authoredLights: [] },
+    );
+    renderLayer.setPlacedProps(
+      [
+        {
+          level: renderLevels[0],
+          model: 0,
+          group: 'fixture',
+          groupDefinition: definition,
+          id: 'prop:fixture',
+          name: 'Fixture',
+          pos: [0, 0, 0],
+          yaw: 0,
+          scale: 1,
+        },
+      ],
+      null,
+    );
+    const renderedMembers = renderLayer.placedPropMeshes[0].children.length;
+    renderLayer.setArmed({
+      level: renderLevels[0],
+      model: 0,
+      group: 'fixture',
+      groupDefinition: definition,
+      baseOffset: 0,
+    });
+    const ghostMembers = renderLayer.propGhost.children.length;
+    renderLayer.stopAssetWatching();
     const selectionDoc = { ...defaultMountain(), quadTex: { 0: 'GARI/tile.png' } };
     const selectionBefore = JSON.stringify(selectionDoc),
       store = createStore({ mdoc: selectionDoc, currentMode: 'props', storedUi: {} });
@@ -145,6 +246,12 @@ try {
       legacySample,
       bankId,
       individualSample,
+      palettePick,
+      unresolvedPick,
+      unavailable,
+      storedPalette,
+      renderedMembers,
+      ghostMembers,
       prop: structuredClone(store.armedProp),
       defaults: ops.propDefaults(bankId, 0).behaviour,
       individualDefaults: ops.propDefaults(store.armedProp.level, 0),
@@ -181,10 +288,23 @@ try {
     assert.equal(ref, automatic.texture);
   assert.equal(
     automatic.legacySample,
-    `${automatic.bankId}/tile.png`,
-    'sampling an existing bank reference preserves it',
+    automatic.texture,
+    'sampling an existing bank reference pins the exact individual texture',
   );
   assert.match(automatic.prop?.level ?? '', /^asset2:.*:prop:0:/);
+  assert.equal(automatic.renderedMembers, 2, 'frozen groups render every independently pinned member');
+  assert.equal(automatic.ghostMembers, 2, 'the placement ghost uses the same member identities');
+  assert.equal(automatic.palettePick.ref, automatic.texture);
+  assert.deepEqual(
+    [automatic.palettePick.surface, automatic.palettePick.rot, automatic.palettePick.mirror],
+    [13, 2, true],
+  );
+  assert.equal(automatic.unresolvedPick.ref, automatic.unavailable, 'unverified saved swatches remain unchanged');
+  assert.equal(
+    automatic.storedPalette.pads[0][0].ref,
+    automatic.texture,
+    'verified saved palette entries retain asset2 on reload',
+  );
   assert.deepEqual(
     automatic.prop.behaviour,
     automatic.defaults,

@@ -484,6 +484,10 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('xrpanels'))
 // The Palette (paint mode): a staging grid of tile + ride-feel + orientation combos.
 // Selecting a cell makes it the terrain brush; its .el is mounted under the Tools panel (below).
 const palette = new Palette({
+  onResolving() {
+    store.paintBrush = null;
+    viewport.setPaintBrush(null);
+  },
   onSelect(b, preserveInspection) {
     store.paintBrush = b; // painting terrain uses this exact tile + ride feel + orientation
     library.highlightRef(b.ref); // mirror the active tile in the Texture Library
@@ -504,6 +508,11 @@ const palette = new Palette({
 
 // The bottom Texture Library panel (class TextureLibrary): the level's texture tiles, the drag source.
 const library = new TextureLibrary({
+  onResolving() {
+    palette.clearCurrent();
+    store.paintBrush = null;
+    viewport.setPaintBrush(null);
+  },
   onBrush(b, sampled) {
     store.paintBrush = b;
     palette.setCurrent(b, sampled); // a viewport sample keeps its clicked-surface details visible
@@ -594,11 +603,12 @@ function retargetDocTex(from: string, to: string | null): void {
     }
   }
   // Renames/replacements follow the chosen art. Deletion keeps fog's broken reference available for repair.
-  if (to) for (const volume of store.mdoc.particleVolumes ?? []) {
-    if (volume.texture !== from) continue;
-    volume.texture = to;
-    changed++;
-  }
+  if (to)
+    for (const volume of store.mdoc.particleVolumes ?? []) {
+      if (volume.texture !== from) continue;
+      volume.texture = to;
+      changed++;
+    }
   palette.retargetRef(from, to); // the staging pad holds refs too, and is not part of the document
   propLib.invalidateThumbnails();
   if (changed) commit(); // history derives its own summary by diffing the doc (describeChange)

@@ -324,6 +324,7 @@ function sourceDoc(): Doc {
         return null as never;
       },
       ensureGroupDefs: async () => [],
+      prepareReferences: async value => structuredClone(value),
     },
     deleteSelectedLight: () => {
       store.mdoc.lights = store.mdoc.lights?.filter(light => light.id !== store.selectedLight);

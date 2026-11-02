@@ -37,6 +37,7 @@ export type PropClipboardDeps = {
     | 'shortPropName'
     | 'ensurePropLevel'
     | 'ensureGroupDefs'
+    | 'prepareReferences'
   >;
   deleteSelectedLight: () => void;
   /** Pasted props arrive under the move gizmo, whatever tool the last selection left it on. */
@@ -164,9 +165,12 @@ export function createPropClipboard(deps: PropClipboardDeps) {
   /** Put the clipboard on the cursor. */
   async function paste() {
     if (!canPaste() || !clipboard) return;
-    const clip = clipboard;
+    const original = clipboard;
+    const doc = store.mdoc;
     const mode = store.currentMode,
       mountain = store.mdoc.name;
+    const clip = await propOps.prepareReferences(original);
+    if (clipboard !== original || store.mdoc !== doc || store.currentMode !== mode) return;
     const ghost = pasteGhost(store.mdoc, clip);
     const ghostLights = pasteLightGhost(clip);
     if (!ghost.length && !ghostLights.length) {
@@ -176,14 +180,27 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     // The ghost draws from loaded geometry, and a set copied on another mountain can name levels not loaded here.
     try {
       await Promise.all([
-        ...[...new Set(ghost.map(p => p.level))].map(level => propOps.ensurePropLevel(level)),
-        ...[...new Set(ghost.filter(p => p.group).map(p => p.level))].map(level => propOps.ensureGroupDefs(level)),
+        ...[
+          ...new Set(
+            ghost.flatMap(p => [p.level, ...(p.groupDefinition?.props.map(member => member.level ?? p.level) ?? [])]),
+          ),
+        ].map(level => propOps.ensurePropLevel(level)),
+        ...[...new Set(ghost.filter(p => p.group && !p.groupDefinition).map(p => p.level))].map(level =>
+          propOps.ensureGroupDefs(level),
+        ),
       ]);
     } catch (e) {
       toast(`props load failed: ${e}`, 'err');
       return;
     }
-    if (!canPaste() || clipboard !== clip || store.currentMode !== mode || store.mdoc.name !== mountain) return;
+    if (
+      !canPaste() ||
+      clipboard !== original ||
+      store.currentMode !== mode ||
+      store.mdoc !== doc ||
+      store.mdoc.name !== mountain
+    )
+      return;
     if (store.currentMode !== 'props') setMode('props');
     propOps.disarmProp(); // the paste is what is in hand now
     viewport.setLightArmed(false); // …a held light included
