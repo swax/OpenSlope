@@ -1,5 +1,10 @@
 import { assetMapKey, parseAssetVersion, type AssetVersion } from '../../core/reference/asset-version';
-import type { AssetManifest, ReferenceAsset, ReferenceAssetKind } from '../../core/reference/asset-manifest';
+import type {
+  AssetManifest,
+  CrowdAssetManifest,
+  ReferenceAsset,
+  ReferenceAssetKind,
+} from '../../core/reference/asset-manifest';
 import { assetRequestCovered, manifestAsset, propAssetPayload } from '../../core/reference/asset-manifest';
 import type { MapSourceChoice } from '../../core/reference/map-game';
 import { mapSourceId, splitMapSource } from '../../core/reference/map-source';
@@ -12,6 +17,7 @@ export type AssetTransport = (input: RequestInfo | URL, init?: RequestInit) => P
 /** A source is only a candidate. Its descriptor must match before it can supply an immutable identity. */
 export function createAssetReader(transport: AssetTransport, bind: (id: string, location: string) => void = () => {}) {
   const metadata = new Map<string, Promise<AssetVersion | AssetManifest>>();
+  const crowds = new Map<string, Promise<CrowdAssetManifest>>();
   let catalogue: Promise<MapSourceChoice[]> | undefined;
   async function maps() {
     catalogue ??= transport('/api/levels')
@@ -66,6 +72,24 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
       ]),
     ].sort((a, b) => Number(splitMapSource(b).source === 'local') - Number(splitMapSource(a).source === 'local'));
   }
+  async function crowdDescriptor(location: string): Promise<CrowdAssetManifest> {
+    let pending = crowds.get(location);
+    if (!pending) {
+      pending = (async () => {
+        const response = await transport(`/api/map-asset-manifest?level=${encodeURIComponent(location)}&crowd=1`);
+        if (!response.ok) throw new Error('Crowd frame metadata is unavailable.');
+        const value = (await response.json()) as CrowdAssetManifest;
+        if (value.schema !== 'openslope-crowd-assets/v1' || !value.props || !value.frames)
+          throw new Error('The source returned an invalid crowd descriptor.');
+        return value;
+      })();
+      crowds.set(location, pending);
+      void pending.catch(() => {
+        if (crowds.get(location) === pending) crowds.delete(location);
+      });
+    }
+    return pending;
+  }
   return {
     maps,
     manifest: (location: string) => descriptor(location, true) as Promise<AssetManifest>,
@@ -73,13 +97,33 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
     clear() {
       catalogue = undefined;
       metadata.clear();
+      crowds.clear();
     },
     /** Crowd animation belongs to the shared frame bank, not the model's ordinary material closure. */
     async crowdFrames(id: string, names: readonly string[]): Promise<string[]> {
       const expected = parseAssetVersion(id);
-      if (expected?.kind !== 'prop' || !names.length) return [...names];
+      if (
+        expected?.kind !== 'prop' ||
+        !names.length ||
+        names.every(name => parseAssetVersion(name)?.kind === 'texture')
+      )
+        return [...names];
       for (const location of await locations(expected)) {
         try {
+          if (splitMapSource(location).source === 'server' && !metadata.has(`true:${location}`)) {
+            try {
+              const crowd = await crowdDescriptor(location);
+              if (
+                crowd.game !== expected.game ||
+                crowd.map !== expected.map ||
+                crowd.props[expected.key!] !== expected.hash
+              )
+                continue;
+              return names.map(name => crowd.frames[name.toLowerCase()] ?? name);
+            } catch {
+              // Older servers do not have the compact view. Local banks use their in-process manifest too.
+            }
+          }
           const manifest = (await descriptor(location, true)) as AssetManifest;
           if (!manifest.assets.some(asset => asset.id === id)) continue;
           return names.map(name => manifestAsset(manifest, 'texture', name)?.id ?? name);

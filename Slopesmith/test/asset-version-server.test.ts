@@ -8,7 +8,8 @@ import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { responseCache } from '../src/server/response-cache';
 import { encodePng } from '../src/server/routes/png';
 import type { AssetVersion } from '../src/core/reference/asset-version';
-import { manifestAsset, type AssetManifest } from '../src/core/reference/asset-manifest';
+import { manifestAsset, type AssetManifest, type CrowdAssetManifest } from '../src/core/reference/asset-manifest';
+import { invalidateReferenceLevel } from '../src/server/api/common';
 import { prepareServerAssetVersions, resolveVersionedApiUrl } from '../src/server/asset-versions';
 import { serverMapName } from '../src/core/reference/map-source';
 import { defaultMountain } from '../src/core/doc/mountain';
@@ -52,6 +53,9 @@ for (const [file, value] of Object.entries({
   writeFileSync(join(bank, file), JSON.stringify(value));
 const png = (r: number) => encodePng({ w: 1, h: 1, data: new Uint8Array([r, 0, 0, 255]) });
 writeFileSync(join(bank, 'Textures/tile.png'), png(255));
+const crowdNames = Array.from({ length: 16 }, (_, i) => `crowd-cd${String(i).padStart(2, '0')}.png`);
+writeFileSync(join(bank, 'Crowd.json'), JSON.stringify({ Schema: 'openslope-crowd/v1', Frames: crowdNames }));
+for (const name of crowdNames) writeFileSync(join(bank, 'Textures', name), png(7));
 const api = await startApiService({ host: '127.0.0.1', port: 0 });
 const get = (path: string) => fetch(api.url + path);
 try {
@@ -67,6 +71,47 @@ try {
   const individualTile = manifestAsset(assetManifest, 'texture', 'tile.png')!;
   const individualProp = manifestAsset(assetManifest, 'prop', '0')!;
   assert(individualTile && individualProp);
+  const crowdUrl = '/api/map-asset-manifest?level=TRICKY_GARI&crowd=1';
+  const crowdResponse = await get(crowdUrl);
+  assert.equal(crowdResponse.status, 200);
+  assert.equal(crowdResponse.headers.get('cache-control'), 'private, no-cache');
+  assert(crowdResponse.headers.get('content-encoding'), 'the compact JSON supports HTTP compression');
+  const crowd = (await crowdResponse.json()) as CrowdAssetManifest;
+  assert.equal(crowd.schema, 'openslope-crowd-assets/v1');
+  assert.equal(crowd.props['0'], individualProp.hash);
+  assert(crowdNames.every(name => name in crowd.frames));
+  assert.equal(
+    crowd.frames['tile.png'],
+    individualTile.id,
+    'older cached frame names remain independently addressable',
+  );
+  assert.deepEqual(
+    crowdNames.map(name => crowd.frames[name]),
+    crowdNames.map(name => manifestAsset(assetManifest, 'texture', name)!.id),
+  );
+  assert(
+    JSON.stringify(crowd).length < JSON.stringify(assetManifest).length / 2,
+    'crowd lookup omits full asset records',
+  );
+  const revalidated = await fetch(api.url + crowdUrl, {
+    headers: { 'if-none-match': crowdResponse.headers.get('etag')! },
+  });
+  assert.equal(revalidated.status, 304, 'repeat loads revalidate without downloading the descriptor again');
+  writeFileSync(join(bank, 'Textures', crowdNames[0]), png(8));
+  invalidateReferenceLevel('TRICKY_GARI');
+  const updatedCrowd = (await (await get(crowdUrl)).json()) as CrowdAssetManifest;
+  assert.notEqual(
+    updatedCrowd.frames[crowdNames[0]],
+    crowd.frames[crowdNames[0]],
+    'changed crowd textures refresh the cached mapping',
+  );
+  assert.equal(
+    updatedCrowd.props['0'],
+    individualProp.hash,
+    'crowd art stays independent from the reusable prop identity',
+  );
+  writeFileSync(join(bank, 'Textures', crowdNames[0]), png(7));
+  invalidateReferenceLevel('TRICKY_GARI');
   const migrated = defaultMountain();
   migrated.name = 'INDIVIDUAL_EXPORT';
   migrated.quadTex = { 0: individualTile.id, 1: `${individualTile.id}/tile.png` };

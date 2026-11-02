@@ -5,7 +5,7 @@ import { buildLevelPropsUncached } from '../src/shared/map-props';
 import { decodeProps } from '../src/core/reference/props';
 import type { MapDataSource } from '../src/shared/map-data';
 import { createAssetReader } from '../src/app/net/asset-reader';
-import { referenceAssetId, type AssetManifest } from '../src/core/reference/asset-manifest';
+import { crowdAssetManifest, referenceAssetId, type AssetManifest } from '../src/core/reference/asset-manifest';
 
 const native = Array.from({ length: 16 }, (_, i) => `crowd-cd${String(i).padStart(2, '0')}.png`);
 const legacy = Array.from({ length: 16 }, (_, i) => `cd${i}.png`);
@@ -96,4 +96,52 @@ assert.deepEqual(
   'old prop IDs resolve frames through independent texture identities',
 );
 assert.deepEqual(await reader.crowdFrames(propId, crowdIds), crowdIds, 'already resolved frames remain stable');
+const compact = crowdAssetManifest(manifest);
+assert.deepEqual(compact.props, { 48: 'a'.repeat(64) });
+assert.deepEqual(Object.values(compact.frames), crowdIds);
+assert(!('assets' in compact), 'the crowd view omits full asset dependency records');
+const otherProp = referenceAssetId('ssx-tricky', 'TRICKY_MERQUER', 'prop', '49', 'b'.repeat(64));
+Object.assign(compact.props, { 49: 'b'.repeat(64) });
+let compactReads = 0;
+const compactReader = createAssetReader(async input => {
+  const url = new URL(String(input), 'http://localhost');
+  if (url.pathname === '/api/levels') return Response.json({ levels: ['server:TRICKY_MERQUER'] });
+  if (url.searchParams.get('level')?.startsWith('local:')) return new Response('', { status: 404 });
+  assert.equal(url.searchParams.get('crowd'), '1', 'cached props never need the full server manifest');
+  compactReads++;
+  return Response.json(compact);
+});
+const resolved = await Promise.all([
+  compactReader.crowdFrames(propId, native),
+  compactReader.crowdFrames(
+    otherProp,
+    [...native].reverse().map(name => name.toUpperCase()),
+  ),
+]);
+assert.deepEqual(resolved, [crowdIds, [...crowdIds].reverse()], 'compact lookup preserves frame identity and order');
+assert.equal(compactReads, 1, 'different props share one compact bank lookup');
+const unavailable = referenceAssetId('ssx-tricky', 'TRICKY_MERQUER', 'prop', '48', 'f'.repeat(64));
+assert.deepEqual(
+  await compactReader.crowdFrames(unavailable, native),
+  native,
+  'a different prop version cannot supply frames',
+);
+const offline = createAssetReader(async () => {
+  throw new Error('Resolved frame identities must not need any metadata or catalogue request.');
+});
+assert.deepEqual(await offline.crowdFrames(propId, crowdIds), crowdIds);
+compactReader.clear();
+assert.deepEqual(await compactReader.crowdFrames(propId, native), crowdIds);
+assert.equal(compactReads, 2, 'workspace changes refresh the compact descriptor');
+const olderServer = createAssetReader(async input => {
+  const url = new URL(String(input), 'http://localhost');
+  if (url.pathname === '/api/levels') return Response.json({ levels: ['server:TRICKY_MERQUER'] });
+  if (url.searchParams.get('level')?.startsWith('local:')) return new Response('', { status: 404 });
+  return Response.json(manifest); // Older servers ignore the new query and return the full manifest.
+});
+assert.deepEqual(
+  await olderServer.crowdFrames(propId, native),
+  crowdIds,
+  'older servers retain full-manifest fallback',
+);
 console.log('NATIVE CROWD TEXTURES PASS: local payload, profile order, legacy banks and invalid profiles.');

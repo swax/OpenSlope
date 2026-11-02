@@ -16,6 +16,29 @@ export interface AssetManifest {
   assets: ReferenceAsset[];
   unavailable?: { kind: ReferenceAssetKind; key: string; reason: string }[];
 }
+/** Crowd playback needs source membership and frame identities, without every asset's dependency closure. */
+export interface CrowdAssetManifest {
+  schema: 'openslope-crowd-assets/v1';
+  game: string;
+  map: string;
+  props: Record<string, string>;
+  frames: Record<string, string>;
+}
+
+export function crowdAssetManifest(manifest: AssetManifest): CrowdAssetManifest {
+  return {
+    schema: 'openslope-crowd-assets/v1',
+    game: manifest.game,
+    map: manifest.map,
+    props: Object.fromEntries(
+      manifest.assets.filter(asset => asset.kind === 'prop').map(asset => [asset.key, asset.hash]),
+    ),
+    // Cached props may still name an older crowd profile. Keep every available texture addressable.
+    frames: Object.fromEntries(
+      manifest.assets.filter(asset => asset.kind === 'texture').map(asset => [asset.key.toLowerCase(), asset.id]),
+    ),
+  };
+}
 export const referenceAssetId = (game: string, map: string, kind: ReferenceAssetKind, key: string, hash: string) =>
   `asset2:${encodeURIComponent(game)}:${encodeURIComponent(map)}:${kind}:${encodeURIComponent(key)}:${hash}`;
 

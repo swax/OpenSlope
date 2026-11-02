@@ -95,6 +95,8 @@ try {
         ...ids.map((id, i) => ({ id, kind: 'texture', key: frames[i], files: { [`textures/${frames[i]}`]: hash } })),
       ],
     };
+    let compactReads = 0;
+    let propsReady = false;
     configureWorkspace(
       false,
       async (url: URL) => {
@@ -103,10 +105,21 @@ try {
             levels: ['server:MERQUER'],
             maps: [{ name: 'server:MERQUER', course: 'TRICKY_MERQUER' }],
           });
-        if (url.pathname === '/api/map-asset-manifest')
-          return url.searchParams.get('mapSource') === 'local'
-            ? new Response('', { status: 404 })
-            : Response.json(manifest);
+        if (url.pathname === '/api/map-asset-manifest') {
+          if (url.searchParams.get('mapSource') === 'local') return new Response('', { status: 404 });
+          if (url.searchParams.get('crowd') !== '1') {
+            if (!propsReady) throw new Error('Cached props must not download the full manifest.');
+            return Response.json(manifest); // Cold image requests still verify their independent content identities.
+          }
+          compactReads++;
+          return Response.json({
+            schema: 'openslope-crowd-assets/v1',
+            game: manifest.game,
+            map: manifest.map,
+            props: { 48: 'a'.repeat(64) },
+            frames: Object.fromEntries(frames.map((name, i) => [name, ids[i]])),
+          });
+        }
         if (url.pathname === '/api/props') throw new Error('The old prop payload must come from persistent storage.');
         return null;
       },
@@ -125,6 +138,7 @@ try {
       },
     });
     await loader.ensure(propId);
+    propsReady = true;
     const textures = new PropTextureCache();
     const loaded = resolved.map(frame => textures.texture(propId, frame));
     const deadline = performance.now() + 15000;
@@ -134,10 +148,12 @@ try {
       ids,
       resolved,
       loaded: loaded.filter(texture => texture.image?.width === 1 && !texture.userData.missingAsset).length,
+      compactReads,
     };
   }, Array.from(png));
   assert.deepEqual(crowd.resolved, crowd.ids, 'cached old prop payloads acquire independent crowd texture identities');
   assert.equal(crowd.loaded, 16, 'all sixteen crowd frames load through the real prop texture loader');
+  assert.equal(crowd.compactReads, 1, 'old cached props use one compact lookup with no full-manifest request');
   assert.deepEqual(
     [...imageRequests].sort(),
     [...crowd.ids].sort(),

@@ -153,6 +153,7 @@ export function invalidateReferenceLevel(level: string): void {
     `json:lightrig:${name}`,
     `json:textures:${name}`,
     `json:props:${name}`,
+    `json:crowd-assets:${name}`,
     `json:groups:${name}`,
     `bytes:skypano:level:${name}`,
     `bytes:skyground:level:${name}`,

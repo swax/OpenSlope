@@ -27,7 +27,8 @@ import { responseCache } from '../response-cache';
 import { invalidateProjectLibrary, readJsonBody, RequestBodyTooLargeError, type ApiHandler } from './common';
 import { projectAssetCacheKey } from '../project-assets';
 import { parseAssetVersion } from '../../core/reference/asset-version';
-import { propAssetPayload } from '../../core/reference/asset-manifest';
+import { crowdAssetManifest, propAssetPayload } from '../../core/reference/asset-manifest';
+import { resolveServerMapName } from '../reference-map-paths';
 
 const PROP_IMPORT_LIMIT = 96 * 1024 * 1024;
 
@@ -108,7 +109,15 @@ export const propRoutes: Record<string, ApiHandler> = {
       return;
     }
     try {
-      const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level') ?? '';
+      const query = new URL(req.url ?? '', 'http://localhost').searchParams;
+      const level = query.get('level') ?? '';
+      if (query.get('crowd') === '1') {
+        const physical = await resolveServerMapName(level);
+        await responseCache.json(req, res, `crowd-assets:${physical}`, async () =>
+          crowdAssetManifest(await serverMapAssetManifest(physical)),
+        );
+        return;
+      }
       res.end(JSON.stringify(await serverMapAssetManifest(level)));
     } catch (error) {
       res.statusCode = 404;
