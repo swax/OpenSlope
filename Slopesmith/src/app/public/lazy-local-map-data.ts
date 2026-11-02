@@ -228,8 +228,7 @@ export async function lazyLocalMapData(
     if (url.pathname === '/api/texture' && hasLevel(level)) return fileUrl(`${level}/Textures/${q.get('name')}`);
     if (url.pathname === '/api/lightmap' && hasLevel(level))
       return fileUrl(`${level}/Lightmaps/${(q.get('id') ?? '0').padStart(4, '0')}.png`);
-    if (url.pathname === '/api/particle-texture' && (!level || hasLevel(level))) {
-      if (!level && courses[0]) url.searchParams.set('level', courses[0]);
+    if (url.pathname === '/api/particle-texture' && (level ? hasLevel(level) : courses.length > 0)) {
       url.searchParams.set('mapSource', 'local');
       url.searchParams.set('localAssets', scope);
       return url.href;
@@ -278,26 +277,29 @@ export async function lazyLocalMapData(
         selected.url.href,
       );
     }
-    if (url.pathname === '/api/particle-texture' && (!level || hasLevel(level))) {
-      const course = level || courses[0];
-      if (!course) return 'data:image/png;base64,';
-      const riding = await source.readJsonOr<{ Schema?: string; Enabled?: boolean; Sheet?: string; Puff?: string }>(
-        `${course}/RidingEffects.json`,
-        {},
-      );
-      const name = q.get('name') ?? '';
-      const adapted =
-        riding.Schema === 'openslope-riding-effects/v1' && riding.Enabled !== false
-          ? name === 'spry.png'
-            ? riding.Sheet
-            : /^ex0[6-9]\.png$/.test(name)
-              ? riding.Puff
-              : undefined
-          : undefined;
-      const safe =
-        adapted && adapted.split('/').every(part => /^[a-z0-9_.-]+$/i.test(part) && part !== '.' && part !== '..');
-      const full = `${course}/Textures/${safe ? adapted : name}`;
-      return (await readFile(full)) ? fileUrl(full) : 'data:image/png;base64,';
+    if (url.pathname === '/api/particle-texture' && (level ? hasLevel(level) : courses.length > 0)) {
+      const name = q.get('name') ?? 'fog0.png';
+      for (const course of level ? [level] : courses) {
+        const riding = await source.readJsonOr<{ Schema?: string; Enabled?: boolean; Sheet?: string; Puff?: string }>(
+          `${course}/RidingEffects.json`,
+          {},
+        );
+        const adapted =
+          riding.Schema === 'openslope-riding-effects/v1' && riding.Enabled !== false
+            ? name === 'spry.png'
+              ? riding.Sheet
+              : /^ex0[6-9]\.png$/.test(name)
+                ? riding.Puff
+                : undefined
+            : undefined;
+        const safe =
+          adapted && adapted.split('/').every(part => /^[a-z0-9_.-]+$/i.test(part) && part !== '.' && part !== '..');
+        for (const sprite of safe ? [adapted] : [`Particles/${name}`, name]) {
+          const full = `${course}/Textures/${sprite}`;
+          if (await readFile(full)) return fileUrl(full);
+        }
+      }
+      return 'data:image/png;base64,';
     }
     const resolved = resolveAsset(path);
     return resolved !== path && mapSourceRequest(resolved).url.pathname === '/api/local-map-file'

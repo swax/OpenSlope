@@ -121,6 +121,7 @@ const EXCLUSIVE_GROUP = new Map([
   ['local-editor.test.ts', 'browser-webgl'],
   ['export-dialog-browser.test.ts', 'browser-webgl'],
   ['map-library-export.test.ts', 'browser-webgl'],
+  ['private-fog-browser.test.ts', 'browser-webgl'],
   ['new-map-browser.test.ts', 'browser-webgl'],
   ['import-mountain-browser.test.ts', 'browser-webgl'],
   ['missing-assets-browser.test.ts', 'browser-webgl'],

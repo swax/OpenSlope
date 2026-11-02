@@ -102,13 +102,20 @@ export async function preparePublicPlayer(
     if (serverReference) return path;
     const url = new URL(path, location.origin);
     const level = url.searchParams.get('level');
+    // Unqualified shared sprites use the private map's server library, like the editor.
+    if (course.private && !level && url.pathname === '/api/particle-texture' && !url.searchParams.has('mapSource'))
+      return path;
     if (level && !course.private && splitMapSource(level).source === 'server') return 'data:image/png;base64,';
     if (level && serverOnlyLevel(level)) return path;
     const asset = local.resolveAsset(path);
     if (asset !== path) return asset;
     const customTexture = url.pathname === '/api/texture' && level?.toLowerCase() === 'custom';
-    if (!course.private && !customTexture &&
-        url.origin === location.origin && ['/api/texture', '/api/lightmap', '/api/particle-texture'].includes(url.pathname))
+    if (
+      !course.private &&
+      !customTexture &&
+      url.origin === location.origin &&
+      ['/api/texture', '/api/lightmap', '/api/particle-texture'].includes(url.pathname)
+    )
       return 'data:image/png;base64,';
     return path;
   });
@@ -236,11 +243,7 @@ export async function preparePublicPlayer(
     const donors = new Set(
       (document.props ?? [])
         .map(prop => prop.level)
-        .filter(
-          level =>
-            !!parseAssetVersion(level) ||
-            (!level.startsWith('@') && !!findMapChoice(copies, level)),
-        ),
+        .filter(level => !!parseAssetVersion(level) || (!level.startsWith('@') && !!findMapChoice(copies, level))),
     );
     const installed = new Set<string>();
     const installDonor = async (level: string) => {

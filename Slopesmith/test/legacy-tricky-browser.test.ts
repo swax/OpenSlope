@@ -36,6 +36,11 @@ try {
     const { defaultMountain } = await import(mountainUrl);
     const { readMaterialTables } = await import(propsUrl);
     const { publicMountainDocument } = await import(publicUrl);
+    const fogUrl = '/api/particle-texture?name=fog0.png';
+    const empty = await localMapData([]);
+    const emptyParticleUrl = empty.resolveAsset(fogUrl);
+    const emptyParticleRequest = await empty.resolveRequest(fogUrl);
+    empty.dispose();
     const db = await openIsoCache();
     async function seed(course: string, files: Record<string, Blob>) {
       await cacheTransaction(db, 'files', 'readwrite', (store: IDBObjectStore) => {
@@ -65,10 +70,14 @@ try {
       'Meshes/tree.obj': new Blob(['v 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n']),
       'Textures/tile.png': new Blob([new Uint8Array(pixels)], { type: 'image/png' }),
       'Textures/prefixed-only.png': new Blob([new Uint8Array(pixels)], { type: 'image/png' }),
+      'Textures/Particles/fog0.png': new Blob([new Uint8Array(pixels)], { type: 'image/png' }),
     };
     await seed('TRICKY_GARI', files);
     const local = await localMapData(['TRICKY_GARI']);
     installLocalAssetApi(local, ['TRICKY_GARI'], false);
+    const fogBytes = Array.from(
+      new Uint8Array(await (await fetch(await local.resolveRequest(local.resolveAsset(fogUrl)))).arrayBuffer()),
+    );
     const document = defaultMountain();
     document.name = 'LEGACY_ALIAS';
     document.quadTex = { 0: 'GARI/tile.png' };
@@ -95,6 +104,9 @@ try {
     const version = pinned.props[0].level;
     const snapshot = await readLocalProject(saved.project.id);
     const initial = {
+      emptyParticleUrl,
+      emptyParticleRequest,
+      fogBytes,
       hasLegacy: local.hasLevel('GARI'),
       hasOtherGame: local.hasLevel('SSX_GARI'),
       propStatus: propResponse.status,
@@ -126,6 +138,13 @@ try {
     db.close();
     return { ...initial, mismatch: mismatch.status, own: Array.from(own), missing, emptyExactTable };
   }, png);
+  assert.equal(
+    result.emptyParticleUrl,
+    '/api/particle-texture?name=fog0.png',
+    'an empty ISO cache leaves shared fog on the server',
+  );
+  assert.equal(result.emptyParticleRequest, '/api/particle-texture?name=fog0.png');
+  assert.deepEqual(result.fogBytes, png, 'local fog resolves from the extracted Particles directory');
   assert.equal(result.hasLegacy, true);
   assert.equal(result.hasOtherGame, false);
   assert.equal(result.propStatus, 200);
