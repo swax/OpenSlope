@@ -418,8 +418,13 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
       if (localOnly && path === '/api/groups') return json({ groups: [] });
       const asset = await local.resolveRequest(url.href);
       const resolved = asset !== url.href ? asset : resolve(url.href);
-      if (missingAssetUrl(resolved))
+      if (missingAssetUrl(resolved)) {
+        // A default shared sprite has no selected donor. Members can use the server copy when
+        // their loaded local courses lack it; explicitly local or pinned assets keep their source.
+        if (canReadServer && path === '/api/particle-texture' && !q.get('level') && !q.get('mapSource'))
+          return fetch(url, init);
         return json({ error: 'The matching local asset is unavailable.' }, { status: 404 });
+      }
       return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:')
         ? fetch(resolved)
         : null;

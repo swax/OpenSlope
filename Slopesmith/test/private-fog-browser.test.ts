@@ -67,9 +67,13 @@ await page.addInitScript(async () => {
     return setParticles.apply(this, args);
   };
 });
-async function fogPixels() {
-  await page.goto(`${origin}/play/FOG_RUN`);
-  await page.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+async function fogPixels(path = '/play/FOG_RUN') {
+  await page.goto(origin + path);
+  if (path.startsWith('/editor/'))
+    await page.waitForFunction(() => document.documentElement.dataset.projectSave === 'saved', undefined, {
+      timeout: 90_000,
+    });
+  else await page.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await page.waitForFunction(() => {
     const mesh = (window as any).fogViewport?.scene.getObjectByName('Custom ambient particle batch');
     const image = mesh?.material.uniforms.particleAtlas.value.image;
@@ -139,6 +143,63 @@ try {
     'public fog uses the loaded ISO sprite',
   );
   assert.equal(fogRequests.length, privateRequests, 'public fog never requests server game art');
+  const localEditorPath = await page.evaluate(async () => {
+    const projectsUrl = '/src/app/state/local-projects.ts';
+    const mountainUrl = '/src/core/doc/mountain.ts';
+    const particlesUrl = '/src/core/particles/volumes.ts';
+    const { openLocalProjects } = await import(/* @vite-ignore */ projectsUrl);
+    const { defaultMountain } = await import(/* @vite-ignore */ mountainUrl);
+    const { createFogVolume } = await import(/* @vite-ignore */ particlesUrl);
+    const document = defaultMountain();
+    document.name = 'LOCAL_FOG';
+    document.particleVolumes = [createFogVolume([0, 2, 0])];
+    const projects = await openLocalProjects();
+    const saved = await projects.seed(document);
+    return `/editor/LOCAL_FOG?local=${saved.project.id}`;
+  });
+  assert.deepEqual(
+    await fogPixels(localEditorPath),
+    { missing: false, pixel: [0, 0, 255, 255] },
+    'a signed-in member editing a local mountain resolves fog from the local ISO cache',
+  );
+  await page.evaluate(async png => {
+    const moduleUrl = '/src/app/public/iso-cache.ts';
+    const { openIsoCache, cacheTransaction } = await import(/* @vite-ignore */ moduleUrl);
+    const db = await openIsoCache();
+    const course = 'TRICKY_GARI';
+    await cacheTransaction(db, 'files', 'readwrite', (store: IDBObjectStore) => {
+      store.delete(`${course}/textures/particles/fog0.png`);
+      store.put({
+        key: `${course}/textures/tile.png`,
+        course,
+        path: 'Textures/tile.png',
+        blob: new Blob([new Uint8Array(png)], { type: 'image/png' }),
+      });
+    });
+    db.close();
+  }, Array.from(blue));
+  assert.deepEqual(
+    await fogPixels(localEditorPath),
+    { missing: false, pixel: [255, 255, 255, 255] },
+    'an unqualified fog sprite falls back to the signed-in server when loaded local assets lack that sprite',
+  );
+  assert.equal(
+    await page.evaluate(async () => {
+      const moduleUrl = '/src/app/net/workspace.ts';
+      const { workspaceFetch } = await import(/* @vite-ignore */ moduleUrl);
+      return (await workspaceFetch('/api/particle-texture?name=fog0.png&mapSource=local')).status;
+    }),
+    404,
+    'an explicitly local sprite never falls through to server art',
+  );
+  const signedInRequests = fogRequests.length;
+  await page.context().clearCookies();
+  assert.equal(
+    (await fogPixels(localEditorPath)).missing,
+    true,
+    'signed-out local editing still requires local game assets',
+  );
+  assert.equal(fogRequests.length, signedInRequests, 'signed-out local maps never request server retail sprites');
   assert.deepEqual(errors, []);
   await page.screenshot({ path: join(root, 'fog.png') });
   console.log(
