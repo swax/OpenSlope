@@ -34,6 +34,7 @@ import {
 } from '../../state/project-sync';
 import type { ProjectBundle } from '../../../core/project/transfer';
 import { isLocalWorkspace } from '../../net/workspace';
+import { showAssetMigration } from './asset-migration';
 
 /**
  * The editor's modal dialogs + file actions (docs/011): loft a New mountain, borrow a reference level's course
@@ -1222,6 +1223,15 @@ export function createDialogs(deps: DialogDeps) {
   }
 
   return {
+    assetMigrationDialog: () => {
+      void showAssetMigration({
+        getDoc,
+        setDoc: deps.setDoc,
+        isWritable: deps.isWritable,
+        checkpoint: () => deps.checkpointNow('Before migrating asset references', 'bulk'),
+        reload: deps.loadMountain,
+      });
+    },
     newMountainDialog,
     buildFromReferenceCourseDialog,
     openProjectDialog,

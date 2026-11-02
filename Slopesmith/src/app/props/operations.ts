@@ -45,8 +45,7 @@ import { dropScreensForProp } from './screens';
 import { toast } from '../ui/components/toast';
 import { fetchJson, postJson } from '../net/fetch-json';
 import { createPropLevelLoader, type PropLoadOptions } from './level-loader';
-import { pinAssetMap, pinDocumentAssets } from '../net/asset-versions';
-import { isLocalWorkspace } from '../net/workspace';
+import { pinAssetMap, pinReferenceAsset } from '../net/asset-versions';
 
 /**
  * Placed-prop ops (docs/012 + 015): the prop domain around a placement — the model geometry caches (base
@@ -84,6 +83,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   const groupDefsByLevel = new Map<string, Promise<GroupDef[]>>(); // /api/groups fetches, one per level (docs/015)
   const loadedGroupLevels = new Set<string>(); // includes successfully loaded empty group catalogues
+  const pickedDefaults = new Map<string, ResolvedPropDefaults>();
   const propLoader = createPropLevelLoader({
     levels: propLevels,
     url: level =>
@@ -182,7 +182,7 @@ export function createPropOps(deps: PropOpsDeps) {
   /** The defaults a new placement of this model starts with: the author's saved ones for their own models,
    *  derived from the level's placements for a shipped one, else the standard starting point (docs/069). */
   function propDefaults(level: string, model: number): ResolvedPropDefaults {
-    return resolvePropDefaults(level, model, propLevels.get(level));
+    return pickedDefaults.get(`${level}:${model}`) ?? resolvePropDefaults(level, model, propLevels.get(level));
   }
 
   /**
@@ -390,9 +390,12 @@ export function createPropOps(deps: PropOpsDeps) {
    *  uses the retry; progressive loading waits before rendering, while sync redraws only for new assets.
    *  Authored models are already refreshed by renderMountainObjects, including on the first load. */
   async function syncPropGeom(rebuild = true): Promise<boolean> {
-    await pinDocumentAssets(store.mdoc, isLocalWorkspace() ? 'local' : 'server');
     const modelProps = (store.mdoc.props ?? []).filter(p => !isEffectTriggerProp(p));
-    const levels = new Set(modelProps.map(p => p.level));
+    const levels = new Set([
+      ...modelProps.map(p => p.level),
+      ...modelProps.flatMap(p => p.nativeCollision?.physicsSource?.level ?? []),
+      ...(store.mdoc.propLines ?? []).flatMap(line => line.template.nativeCollision?.physicsSource?.level ?? []),
+    ]);
     const defLevels = new Set(modelProps.filter(p => p.group).map(p => p.level));
     const loads = [
       ...[...levels].filter(l => l !== AUTHORED_MODEL_LEVEL && !propLevels.has(l)).map(level => ensurePropLevel(level)),
@@ -605,14 +608,30 @@ export function createPropOps(deps: PropOpsDeps) {
    *  viewport shows it as a ghost under the cursor; a click drops it, Esc puts it down. */
   async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
     const request = isReplacingProp() ? replacement : null;
+    let defaults: ReturnType<typeof armBehaviour>;
     try {
       level = await pinAssetMap(level);
       await ensurePropLevel(level);
+      // Instance-derived defaults/effects belong to the source bank, before geometry is scoped to one prop.
+      defaults = structuredClone(armBehaviour(level, model, from));
+      const inherited = structuredClone(propDefaults(level, model));
+      const sourceLevel = level;
+      level = await pinReferenceAsset(level, 'prop', String(model));
+      if (level !== sourceLevel) await ensurePropLevel(level);
+      const bodies = new Set<string>();
+      for (const behaviour of [defaults.behaviour, inherited.behaviour]) {
+        const physics = behaviour?.nativeCollision?.physicsSource;
+        if (!physics) continue;
+        physics.level = await pinReferenceAsset(physics.level, 'body', String(physics.body));
+        bodies.add(physics.level);
+      }
+      for (const body of bodies) await ensurePropLevel(body);
+      if (level !== sourceLevel) pickedDefaults.set(`${level}:${model}`, inherited);
     } catch (e) {
       toast(`props load failed: ${e}`, 'err');
       return;
     }
-    const armed: ArmedProp = { level, model, name, ...armBehaviour(level, model, from) };
+    const armed: ArmedProp = { level, model, name, ...defaults };
     if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
     store.armedProp = armed;

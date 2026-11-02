@@ -8,13 +8,14 @@ import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { responseCache } from '../src/server/response-cache';
 import { encodePng } from '../src/server/routes/png';
 import type { AssetVersion } from '../src/core/reference/asset-version';
+import { manifestAsset, type AssetManifest } from '../src/core/reference/asset-manifest';
 import { prepareServerAssetVersions, resolveVersionedApiUrl } from '../src/server/asset-versions';
 import { serverMapName } from '../src/core/reference/map-source';
 import { defaultMountain } from '../src/core/doc/mountain';
 import { exportLevel } from '../src/server/routes/export';
 import { projectIsoCourses } from '../src/server/public-courses';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readTextureBytes } from '../src/server/routes/textures';
+import { readTextureBytes, readReferenceTextureBytes } from '../src/server/routes/textures';
 import { readModelGeometries } from '../src/server/routes/props';
 import { referenceMapData, resolveServerMapName } from '../src/server/reference-map-paths';
 import { readSkyRing, readSkyPageBytes, resolveSkyRingLevel } from '../src/server/routes/skybox';
@@ -52,6 +53,52 @@ try {
     return (await response.json()) as AssetVersion;
   };
   const first = await descriptor();
+  const manifestResponse = await get('/api/map-asset-manifest?level=TRICKY_GARI');
+  assert.equal(manifestResponse.status, 200);
+  const assetManifest = (await manifestResponse.json()) as AssetManifest;
+  const individualTile = manifestAsset(assetManifest, 'texture', 'tile.png')!;
+  const individualProp = manifestAsset(assetManifest, 'prop', '0')!;
+  assert(individualTile && individualProp);
+  const migrated = defaultMountain();
+  migrated.name = 'INDIVIDUAL_EXPORT';
+  migrated.quadTex = { 0: individualTile.id, 1: `${individualTile.id}/tile.png` };
+  assert.deepEqual(projectIsoCourses({ ...migrated, props: [], quadTex: { 0: individualTile.id } }), ['TRICKY_GARI']);
+  migrated.props = [{ id: 'tree', level: individualProp.id, model: 0, name: 'Tree', pos: [0, 0, 0], yaw: 0, scale: 1 }];
+  await exportLevel(migrated, { outDir: join(root, 'individual-export'), lighting: false });
+  assert(JSON.parse(readFileSync(join(root, 'individual-export/Models.json'), 'utf8')).Models.length > 0);
+  assert(readFileSync(join(root, 'individual-export/Slopesmith.json'), 'utf8').includes(individualTile.id));
+  const individualResponse = await get(`/api/texture?level=${encodeURIComponent(individualTile.id)}&name=tile.png`);
+  assert.equal(individualResponse.status, 200, individualResponse.ok ? '' : await individualResponse.text());
+  assert.equal((await get(`/api/props?level=${encodeURIComponent(individualProp.id)}`)).status, 200);
+  assert.equal((await get(`/api/groups?level=${encodeURIComponent(individualTile.id)}`)).status, 404);
+  const wrapper = join(root, 'Maps/WRAPPER/Textures');
+  mkdirSync(wrapper, { recursive: true });
+  writeFileSync(join(wrapper, 'tile.png'), png(13));
+  assert.deepEqual(
+    await readReferenceTextureBytes('WRAPPER', individualTile.id),
+    png(255),
+    'standalone dependencies reject unrelated staged pixels',
+  );
+  assert.deepEqual(
+    await readReferenceTextureBytes('WRAPPER', `${individualTile.id}/tile.png`),
+    png(255),
+    'old suffixed dependencies resolve identically',
+  );
+  writeFileSync(join(bank, 'Textures/unrelated.png'), png(31));
+  responseCache.clear();
+  assert.equal(
+    (await get(`/api/texture?level=${encodeURIComponent(individualTile.id)}&name=tile.png`)).status,
+    200,
+    'individual textures survive unrelated bank changes',
+  );
+  assert.equal(
+    (await get(`/api/props?level=${encodeURIComponent(individualProp.id)}`)).status,
+    200,
+    'prop closures survive unrelated bank changes',
+  );
+  // Remove the unrelated fixture so the existing whole-bank regression keeps its original baseline.
+  (await import('node:fs')).unlinkSync(join(bank, 'Textures/unrelated.png'));
+  responseCache.clear();
   assert.equal(await resolveServerMapName('GARI'), 'TRICKY_GARI');
   assert.equal(await resolveServerMapName('server:GARI'), 'TRICKY_GARI');
   await assert.rejects(resolveServerMapName('local:GARI'), /on this device/);
@@ -172,6 +219,7 @@ try {
     'unverified query parameters cannot poison versioned caches',
   );
   assert.equal((await get('/api/map-asset-version?level=..%2F..')).status, 404);
+  assert.equal((await get('/api/map-asset-manifest?level=..%2F..')).status, 404);
   const legacyBank = join(root, 'Maps/GARI');
   mkdirSync(join(legacyBank, 'Textures'), { recursive: true });
   writeFileSync(join(legacyBank, 'Textures/tile.png'), png(64));

@@ -1,5 +1,6 @@
 import type { Account } from '../net/account';
 import { configureWorkspace } from '../net/workspace';
+import { missingAssetUrl } from '../net/asset-cache';
 import { setAssetUrlResolver } from '../net/asset-paths';
 import { mapNameAtPath, mapPath } from '../navigation';
 import { blankMountain, migrateMountain } from '../../core/doc/mountain';
@@ -13,7 +14,12 @@ import { openLocalProjects } from '../state/local-projects';
 import { cachedIsoCourses } from './iso-cache';
 import { lazyLocalMapData as localMapData } from './lazy-local-map-data';
 import * as levels from '../../shared/map-levels';
-import { buildLevelPropsUncached, nativeArtSource, readMaterialTables } from '../../shared/map-props';
+import {
+  buildLevelPropsUncached,
+  nativeArtSource,
+  readMaterialTables,
+  readPhysicsBodySpheres,
+} from '../../shared/map-props';
 import { readReferenceEffects } from '../../shared/map-effects';
 import { levelsWithNativeSky, readNativeSky, nativeSkyFiles } from '../../shared/map-sky';
 import { bundleAssets, bundleProps } from './bundle-assets';
@@ -25,6 +31,7 @@ import { safeDataName } from '../../core/export/names';
 import { readLevelGroups } from '../../shared/map-groups';
 import type { GroupsPayload } from '../../core/reference/groups';
 import { readAssetVersion } from '../../shared/map-asset-version';
+import { readAssetManifest } from '../../shared/map-asset-manifest';
 
 const packed = (bytes: Uint8Array): string => {
   let binary = '';
@@ -161,6 +168,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
   const serverLevels = new Set<string>();
   const localGroups = new Map<string, Promise<GroupsPayload>>();
   const localVersions = new Map<string, ReturnType<typeof readAssetVersion>>();
+  const localManifests = new Map<string, ReturnType<typeof readAssetManifest>>();
   window.addEventListener('pagehide', event => {
     if (!event.persisted) custom.dispose();
   });
@@ -194,207 +202,223 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     return localOnly && bytes.includes(url.pathname) ? 'data:application/octet-stream;base64,' : path;
   };
   setAssetUrlResolver(resolve);
-  configureWorkspace(localOnly, async (url, init) => {
-    const path = url.pathname,
-      q = url.searchParams,
-      level = q.get('level') ?? q.get('name') ?? '';
-    const json = Response.json;
-    // A qualified request must never fall through to the other copy of the same map.
-    if (q.get('mapSource') === 'server')
-      return canReadServer
-        ? fetch(url, init)
-        : json({ error: 'Server maps are unavailable offline.' }, { status: 403 });
-    if (q.get('mapSource') === 'local' && level && !knownLevel(level))
-      return json({ error: 'This local map is not available on this device.' }, { status: 404 });
-    if (path === '/api/map-asset-version' && knownLevel(level)) {
-      let value = localVersions.get(level);
-      if (!value) {
-        value = readAssetVersion(local.source, level);
-        localVersions.set(level, value);
+  configureWorkspace(
+    localOnly,
+    async (url, init) => {
+      const path = url.pathname,
+        q = url.searchParams,
+        level = q.get('level') ?? q.get('name') ?? '';
+      const json = Response.json;
+      // A qualified request must never fall through to the other copy of the same map.
+      if (q.get('mapSource') === 'server')
+        return canReadServer
+          ? fetch(url, init)
+          : json({ error: 'Server maps are unavailable offline.' }, { status: 403 });
+      if (q.get('mapSource') === 'local' && level && !knownLevel(level))
+        return json({ error: 'This local map is not available on this device.' }, { status: 404 });
+      if (path === '/api/map-asset-version' && knownLevel(level)) {
+        let value = localVersions.get(level);
+        if (!value) {
+          value = readAssetVersion(local.source, level);
+          localVersions.set(level, value);
+        }
+        return json(await value);
       }
-      return json(await value);
-    }
-    // Choosing a local mountain changes where map edits go, not who is signed in. Account controls
-    // remain usable for members; project/library writes still go through the local-only adapter below.
-    if (
-      localOnly &&
-      'user' in account &&
-      (path.startsWith('/api/auth/') ||
-        ((init?.method ?? 'GET').toUpperCase() === 'GET' &&
-          (path === '/api/members' || path.startsWith('/api/members/'))))
-    )
-      return fetch(url, init);
-    if (projects) {
-      const response = await projects.request(url, init);
-      if (response) {
-        await refreshAliases();
-        return response;
+      if (path === '/api/map-asset-manifest' && knownLevel(level)) {
+        let value = localManifests.get(level);
+        if (!value) {
+          value = readAssetManifest(local.source, level);
+          localManifests.set(level, value);
+        }
+        return json(await value);
       }
-    }
-    if ((init?.method ?? 'GET').toUpperCase() !== 'GET') {
-      if (localOnly && path === '/api/preflight')
-        return json(computePreflight((JSON.parse(String(init?.body)) as { doc: EditDoc }).doc));
-      return null;
-    }
-    // A member editing a browser mountain can still read server references. Authored writes stay local.
-    if (localOnly && canReadServer && serverLevels.has(level.toLowerCase()) && !knownLevel(level))
-      return fetch(url, init);
-    if (path === '/api/skybox/native' && knownLevel(level)) {
-      if (q.get('files') === '1')
-        return json({
-          files: (await nativeSkyFiles(local.source, level)).map(file => ({
-            path: file.path,
-            bytes: packed(file.bytes),
-          })),
-        });
-      const sky = await readNativeSky(local.source, level, local.fileUrl);
-      return sky ? json(sky) : json({ error: `No sky mesh for ${level}` }, { status: 404 });
-    }
-    if (path === '/api/skybox') {
-      const nativeLevels = (await levelsWithNativeSky(local.source)).map(
-        level => [...cached, ...Object.keys(aliases)].find(name => name.toLowerCase() === level.toLowerCase()) ?? level,
-      );
-      const skies =
-        projects
-          ?.current()
-          ?.assets.filter(asset => asset.kind === 'sky')
-          .map(asset => asset.name) ?? [];
-      const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
-      const server = qualifySkyCatalogue(response?.ok ? ((await response.json()) as SkyCatalogue) : {}, 'server');
-      return json({
-        ...server,
-        nativeLevels: [...(server.nativeLevels ?? []), ...nativeLevels.map(name => mapSourceId('local', name))],
-        skies: localOnly ? skies : server.skies ?? [],
-      });
-    }
-    if (path === '/api/levels' || ((path === '/api/textures' || path === '/api/props') && !level)) {
-      const maps = (await levels.listLevelOrigins(local.source)).map(map => ({
-        ...map,
-        name: cached.find(name => name.toLowerCase() === map.name.toLowerCase()) ?? map.name,
-      }));
-      const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
-      const server = response?.ok
-        ? ((await response.json()) as { levels: string[]; maps?: typeof maps })
-        : { levels: [], maps: [] };
-      serverLevels.clear();
-      for (const name of server.levels) serverLevels.add(name.toLowerCase());
-      const choices = (source: MapSource, names: string[], rows: typeof maps = []): MapSourceChoice[] =>
-        names.map(name => ({
-          ...rows.find(map => map.name.toLowerCase() === name.toLowerCase()),
-          name: mapSourceId(source, name),
-          source,
-        }));
-      const combined = [...choices('server', server.levels, server.maps), ...choices('local', cached, maps)];
-      return json({
-        levels: combined.map(map => map.name),
-        maps: combined,
-        localLevels: cached.map(name => mapSourceId('local', name)),
-      });
-    }
-    if (path === '/api/level' && knownLevel(level)) {
-      const [patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards] = await Promise.all([
-        levels.readLevelPatches(local.source, level),
-        levels.readLevelCourse(local.source, level),
-        levels.readLevelLights(local.source, level),
-        levels.readLevelSplines(local.source, level),
-        levels.readLevelAiPaths(local.source, level),
-        levels.readLevelLaps(local.source, level),
-        levels.readLevelShowoffSeconds(local.source, level),
-        levels.readLevelWorld(local.source, level),
-        levels.readLevelBillboards(local.source, level),
-      ]);
-      return json({ ...patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards });
-    }
-    if (path === '/api/props' && knownLevel(level)) return json(await buildLevelPropsUncached(local.source, level));
-    if (path === '/api/effects' && knownLevel(level)) return json(await readReferenceEffects(local.source, level));
-    if (path === '/api/lightrig' && knownLevel(level)) return json(await levels.readLevelLightRig(local.source, level));
-    if (path === '/api/textures' && (localOnly || knownLevel(level))) {
-      const names =
-        level.toLowerCase() === 'custom'
-          ? (projects
-              ?.current()
-              ?.assets.filter(asset => asset.kind === 'texture')
-              .map(asset => asset.name) ?? [])
-          : await local.source.listDir(`${level}/Textures`);
-      const usage = new Map<string, number>();
-      if (knownLevel(level)) {
-        const document = await local.source.readJsonOr<{ Patches?: { TexturePath?: string }[] }>(
-          `${level}/Patches.json`,
-          {},
+      // Choosing a local mountain changes where map edits go, not who is signed in. Account controls
+      // remain usable for members; project/library writes still go through the local-only adapter below.
+      if (
+        localOnly &&
+        'user' in account &&
+        (path.startsWith('/api/auth/') ||
+          ((init?.method ?? 'GET').toUpperCase() === 'GET' &&
+            (path === '/api/members' || path.startsWith('/api/members/'))))
+      )
+        return fetch(url, init);
+      if (projects) {
+        const response = await projects.request(url, init);
+        if (response) {
+          await refreshAliases();
+          return response;
+        }
+      }
+      if ((init?.method ?? 'GET').toUpperCase() !== 'GET') {
+        if (localOnly && path === '/api/preflight')
+          return json(computePreflight((JSON.parse(String(init?.body)) as { doc: EditDoc }).doc));
+        return null;
+      }
+      // A member editing a browser mountain can still read server references. Authored writes stay local.
+      if (localOnly && canReadServer && serverLevels.has(level.toLowerCase()) && !knownLevel(level))
+        return fetch(url, init);
+      if (path === '/api/skybox/native' && knownLevel(level)) {
+        if (q.get('files') === '1')
+          return json({
+            files: (await nativeSkyFiles(local.source, level)).map(file => ({
+              path: file.path,
+              bytes: packed(file.bytes),
+            })),
+          });
+        const sky = await readNativeSky(local.source, level, local.fileUrl);
+        return sky ? json(sky) : json({ error: `No sky mesh for ${level}` }, { status: 404 });
+      }
+      if (path === '/api/skybox') {
+        const nativeLevels = (await levelsWithNativeSky(local.source)).map(
+          level =>
+            [...cached, ...Object.keys(aliases)].find(name => name.toLowerCase() === level.toLowerCase()) ?? level,
         );
-        for (const patch of document.Patches ?? [])
-          if (patch.TexturePath)
-            usage.set(patch.TexturePath.toLowerCase(), (usage.get(patch.TexturePath.toLowerCase()) ?? 0) + 1);
-      }
-      return json(
-        level
-          ? {
-              level,
-              tiles: names
-                .filter(name => /\.png$/i.test(name))
-                .map(name => ({ name, count: usage.get(name.toLowerCase()) ?? 0 })),
-            }
-          : { levels: cached },
-      );
-    }
-    if (localOnly && path === '/api/props/native-art') return json(await nativeArtSource(local.source));
-    if (path === '/api/props/materials') {
-      const localTables = new Map(
-        [...(await readMaterialTables(local.source))].map(([name, table]) => [
-          [...cached, ...Object.keys(aliases)].find(candidate => candidate.toLowerCase() === name.toLowerCase()) ??
-            name,
-          table,
-        ]),
-      );
-      const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
-      const server = response?.ok ? ((await response.json()) as { tables: Record<string, unknown> }) : { tables: {} };
-      return json({
-        tables: {
-          ...server.tables,
-          ...Object.fromEntries(
-            [...localTables.keys()].map(name => [safeDataName(mapSourceId('server', name)), []]),
-          ),
-          ...Object.fromEntries(
-            Object.entries(server.tables).map(([name, table]) => [safeDataName(mapSourceId('server', name)), table]),
-          ),
-          ...Object.fromEntries(localTables),
-          ...Object.fromEntries(
-            [...localTables].map(([name, table]) => [safeDataName(mapSourceId('local', name)), table]),
-          ),
-        },
-      });
-    }
-    if (localOnly && path === '/api/props')
-      return level
-        ? json({ error: `The prop source ${level} is not available on this device.` }, { status: 404 })
-        : json({ levels: cached });
-    if (localOnly && path === '/api/custom-props') {
-      const bundle = projects?.current();
-      return json(bundle ? bundleProps(bundle) : { level: '@import', models: [], materials: [], instances: [] });
-    }
-    if (localOnly && path === '/api/custom-sounds')
-      return json({
-        sounds:
+        const skies =
           projects
             ?.current()
-            ?.assets.filter(asset => asset.kind === 'sound')
-            .map(asset => asset.name) ?? [],
-      });
-    if (localOnly && path === '/api/characters') return json({ characters: [] });
-    if (path === '/api/groups' && knownLevel(level)) {
-      let pending = localGroups.get(level);
-      if (!pending) {
-        pending = readLevelGroups(local.source, level);
-        localGroups.set(level, pending);
-        void pending.catch(() => localGroups.delete(level));
+            ?.assets.filter(asset => asset.kind === 'sky')
+            .map(asset => asset.name) ?? [];
+        const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
+        const server = qualifySkyCatalogue(response?.ok ? ((await response.json()) as SkyCatalogue) : {}, 'server');
+        return json({
+          ...server,
+          nativeLevels: [...(server.nativeLevels ?? []), ...nativeLevels.map(name => mapSourceId('local', name))],
+          skies: localOnly ? skies : (server.skies ?? []),
+        });
       }
-      return json(await pending);
-    }
-    if (localOnly && path === '/api/groups') return json({ groups: [] });
-    const asset = await local.resolveRequest(url.href);
-    const resolved = asset !== url.href ? asset : resolve(url.href);
-    return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:')
-      ? fetch(resolved)
-      : null;
-  });
+      if (path === '/api/levels' || ((path === '/api/textures' || path === '/api/props') && !level)) {
+        const maps = (await levels.listLevelOrigins(local.source)).map(map => ({
+          ...map,
+          name: cached.find(name => name.toLowerCase() === map.name.toLowerCase()) ?? map.name,
+        }));
+        const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
+        const server = response?.ok
+          ? ((await response.json()) as { levels: string[]; maps?: typeof maps })
+          : { levels: [], maps: [] };
+        serverLevels.clear();
+        for (const name of server.levels) serverLevels.add(name.toLowerCase());
+        const choices = (source: MapSource, names: string[], rows: typeof maps = []): MapSourceChoice[] =>
+          names.map(name => ({
+            ...rows.find(map => map.name.toLowerCase() === name.toLowerCase()),
+            name: mapSourceId(source, name),
+            source,
+          }));
+        const combined = [...choices('server', server.levels, server.maps), ...choices('local', cached, maps)];
+        return json({
+          levels: combined.map(map => map.name),
+          maps: combined,
+          localLevels: cached.map(name => mapSourceId('local', name)),
+        });
+      }
+      if (path === '/api/level' && knownLevel(level)) {
+        const [patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards] = await Promise.all([
+          levels.readLevelPatches(local.source, level),
+          levels.readLevelCourse(local.source, level),
+          levels.readLevelLights(local.source, level),
+          levels.readLevelSplines(local.source, level),
+          levels.readLevelAiPaths(local.source, level),
+          levels.readLevelLaps(local.source, level),
+          levels.readLevelShowoffSeconds(local.source, level),
+          levels.readLevelWorld(local.source, level),
+          levels.readLevelBillboards(local.source, level),
+        ]);
+        return json({ ...patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards });
+      }
+      if (path === '/api/props' && knownLevel(level)) return json(await buildLevelPropsUncached(local.source, level));
+      if (path === '/api/physics-body' && knownLevel(level))
+        return json({ spheres: await readPhysicsBodySpheres(local.source, level, Number(q.get('idx'))) });
+      if (path === '/api/effects' && knownLevel(level)) return json(await readReferenceEffects(local.source, level));
+      if (path === '/api/lightrig' && knownLevel(level))
+        return json(await levels.readLevelLightRig(local.source, level));
+      if (path === '/api/textures' && (localOnly || knownLevel(level))) {
+        const names =
+          level.toLowerCase() === 'custom'
+            ? (projects
+                ?.current()
+                ?.assets.filter(asset => asset.kind === 'texture')
+                .map(asset => asset.name) ?? [])
+            : await local.source.listDir(`${level}/Textures`);
+        const usage = new Map<string, number>();
+        if (knownLevel(level)) {
+          const document = await local.source.readJsonOr<{ Patches?: { TexturePath?: string }[] }>(
+            `${level}/Patches.json`,
+            {},
+          );
+          for (const patch of document.Patches ?? [])
+            if (patch.TexturePath)
+              usage.set(patch.TexturePath.toLowerCase(), (usage.get(patch.TexturePath.toLowerCase()) ?? 0) + 1);
+        }
+        return json(
+          level
+            ? {
+                level,
+                tiles: names
+                  .filter(name => /\.png$/i.test(name))
+                  .map(name => ({ name, count: usage.get(name.toLowerCase()) ?? 0 })),
+              }
+            : { levels: cached },
+        );
+      }
+      if (localOnly && path === '/api/props/native-art') return json(await nativeArtSource(local.source));
+      if (path === '/api/props/materials') {
+        const localTables = new Map(
+          [...(await readMaterialTables(local.source))].map(([name, table]) => [
+            [...cached, ...Object.keys(aliases)].find(candidate => candidate.toLowerCase() === name.toLowerCase()) ??
+              name,
+            table,
+          ]),
+        );
+        const response = canReadServer ? await fetch(url, init).catch(() => null) : null;
+        const server = response?.ok ? ((await response.json()) as { tables: Record<string, unknown> }) : { tables: {} };
+        return json({
+          tables: {
+            ...server.tables,
+            ...Object.fromEntries([...localTables.keys()].map(name => [safeDataName(mapSourceId('server', name)), []])),
+            ...Object.fromEntries(
+              Object.entries(server.tables).map(([name, table]) => [safeDataName(mapSourceId('server', name)), table]),
+            ),
+            ...Object.fromEntries(localTables),
+            ...Object.fromEntries(
+              [...localTables].map(([name, table]) => [safeDataName(mapSourceId('local', name)), table]),
+            ),
+          },
+        });
+      }
+      if (localOnly && path === '/api/props')
+        return level
+          ? json({ error: `The prop source ${level} is not available on this device.` }, { status: 404 })
+          : json({ levels: cached });
+      if (localOnly && path === '/api/custom-props') {
+        const bundle = projects?.current();
+        return json(bundle ? bundleProps(bundle) : { level: '@import', models: [], materials: [], instances: [] });
+      }
+      if (localOnly && path === '/api/custom-sounds')
+        return json({
+          sounds:
+            projects
+              ?.current()
+              ?.assets.filter(asset => asset.kind === 'sound')
+              .map(asset => asset.name) ?? [],
+        });
+      if (localOnly && path === '/api/characters') return json({ characters: [] });
+      if (path === '/api/groups' && knownLevel(level)) {
+        let pending = localGroups.get(level);
+        if (!pending) {
+          pending = readLevelGroups(local.source, level);
+          localGroups.set(level, pending);
+          void pending.catch(() => localGroups.delete(level));
+        }
+        return json(await pending);
+      }
+      if (localOnly && path === '/api/groups') return json({ groups: [] });
+      const asset = await local.resolveRequest(url.href);
+      const resolved = asset !== url.href ? asset : resolve(url.href);
+      if (missingAssetUrl(resolved))
+        return json({ error: 'The matching local asset is unavailable.' }, { status: 404 });
+      return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:')
+        ? fetch(resolved)
+        : null;
+    },
+    'user' in account ? `member:${account.user.id}` : canReadServer ? 'open-server' : 'device',
+  );
 }

@@ -12,7 +12,9 @@ import {
   readJsonOr,
   READ_CONCURRENCY,
 } from '../reference-map-paths';
-import { CUSTOM_TEX_LEVEL, makeTexRef, type LevelTextures, type TexTile } from '../../core/paint/textures';
+import { CUSTOM_TEX_LEVEL, makeTexRef, parseTexRef, type LevelTextures, type TexTile } from '../../core/paint/textures';
+import { parseAssetVersion } from '../../core/reference/asset-version';
+import { sha256 } from '../../core/reference/asset-hash';
 import type { Rgba } from '../../core/paint/ground-textures';
 import type { FalGenerationProvenance } from '../../core/paint/fal-models';
 import { decodePng, encodePng } from './png';
@@ -139,24 +141,51 @@ export async function readReferenceTextureBytes(level: string, name: string): Pr
   const lvl = safeDataName(serverMapName(level));
   if (lvl.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) return readTextureBytes(CUSTOM_TEX_LEVEL, name);
   const ref = name.replace(/\\/g, '/').replace(/^\/+/, '');
+  const dependency = parseTexRef(ref);
+  const version = parseAssetVersion(dependency.level);
+  const versions = version ? await import('../asset-versions') : undefined;
+  const validate = async (bytes: Buffer) => {
+    if (version?.kind === 'texture') {
+      if (version.key?.toLowerCase() !== dependency.name.toLowerCase() || (await sha256(bytes)) !== version.hash)
+        throw new Error('The staged texture does not match its asset identity.');
+    } else if (versions) await versions.validateVersionedTexture(dependency.level, dependency.name, bytes);
+  };
   const levelDir = join(mapsRoot(), lvl);
   const manifest = await readSlopesmithExportManifest(levelDir);
   const described = manifest?.textures[ref];
 
   if (described?.staged) {
     const bytes = await tryTexture(lvl, described.staged);
-    if (bytes) return bytes;
+    if (bytes) {
+      try {
+        await validate(bytes);
+        return bytes;
+      } catch {
+        /* Try the exact source when a staged copy has changed. */
+      }
+    }
   }
 
-  const slash = ref.indexOf('/');
-  if (slash >= 0) {
-    const sourceLevel = safeDataName(serverMapName(ref.slice(0, slash)));
-    const sourceName = ref.slice(slash + 1);
+  if (dependency.level) {
+    const sourceName = dependency.name;
     // Current exports stage qualified pages under their bare name for Unity and portable reference use.
     const local = await tryTexture(lvl, sourceName);
-    if (local) return local;
+    if (local) {
+      try {
+        await validate(local);
+        return local;
+      } catch {
+        /* An unrelated local page cannot satisfy a versioned dependency. */
+      }
+    }
+    const sourceLevel = safeDataName(
+      versions ? await versions.resolveServerAssetVersion(dependency.level) : serverMapName(dependency.level),
+    );
     const source = await tryTexture(sourceLevel, sourceName);
-    if (source) return source;
+    if (source) {
+      await validate(source);
+      return source;
+    }
   } else {
     const local = await tryTexture(lvl, ref);
     if (local) return local;

@@ -84,7 +84,7 @@ assert.equal(await pinAssetMap('server:GARI'), first.id, 'legacy server names se
 assert.equal(await pinAssetMap('server:TRICKY_GARI'), first.id);
 assert.equal(assetPreference(first.id), 'server');
 let response = await fetchVersionedAsset(`/api/props?level=${encodeURIComponent(first.id)}`);
-assert.equal((await response.json()).source, 'server');
+assert.equal((await response.json()).source, 'local', 'exact local assets precede server preferences');
 serverAvailable = false;
 response = await fetchVersionedAsset(`/api/props?level=${encodeURIComponent(first.id)}`);
 assert.equal((await response.json()).source, 'local', 'a missing preferred server can use identical local assets');

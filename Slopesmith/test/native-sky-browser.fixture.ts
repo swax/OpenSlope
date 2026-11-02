@@ -394,11 +394,13 @@ async function run() {
   playerData.dispose();
   const emptyData = await lazyLocalMapData([]);
   installLocalAssetApi(emptyData, [], false);
-  const missingParticle = await imageAssetUrl(emptyData.resolveAsset('/api/particle-texture?name=part.png'));
-  check(
-    (await (await fetch(missingParticle)).blob()).size === 0,
-    'Missing default sprites remain local without an ISO',
-  );
+  let missingParticle = false;
+  try {
+    await imageAssetUrl(emptyData.resolveAsset('/api/particle-texture?name=part.png'));
+  } catch {
+    missingParticle = true;
+  }
+  check(missingParticle, 'Missing default sprites are reported locally without an ISO');
   emptyData.dispose();
   check(logs.length === 0, logs.join('\n'));
   local.dispose();

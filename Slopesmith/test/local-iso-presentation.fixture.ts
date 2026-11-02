@@ -261,10 +261,8 @@ async function run() {
         'explicit reference sound stays map-local',
       );
       if (i === 0) {
-        check(
-          (await (await sample('/api/board-sound?bank=zboard&slot=99')).text()) === '',
-          'a missing local clip stays silent instead of mixing game banks',
-        );
+        const missingClip = await sample('/api/board-sound?bank=zboard&slot=99');
+        check(missingClip.status === 404, 'a missing local clip stays silent instead of mixing game banks');
         check(
           (await (await sample('/api/board-sound?level=SSXGBA_PRIORITY&bank=zboard&slot=4&loop=1')).text()) ===
             'ssx-tricky-gba-glide',

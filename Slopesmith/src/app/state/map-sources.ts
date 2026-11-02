@@ -1,7 +1,7 @@
 import { mapDisplayName, mapGame, mapGameLabel, type MapSourceChoice } from '../../core/reference/map-game';
 import { findMapChoice, splitMapSource } from '../../core/reference/map-source';
 import { isLocalWorkspace } from '../net/workspace';
-import { assetLocation, assetPreference, watchAssetLocations } from '../net/asset-versions';
+import { assetLocation, watchAssetLocations } from '../net/asset-versions';
 import { parseAssetVersion } from '../../core/reference/asset-version';
 
 const catalogues = new Map<string, readonly MapSourceChoice[]>();
@@ -34,10 +34,9 @@ export function mapSourceDetails(level: string): { source: string; game: string;
       : 'server'
     : (map.source ?? splitMapSource(map.name).source ?? 'server');
   const mountain = maps.find(map => ['Custom', '@models'].includes(map.name));
-  const preferred = assetPreference(original);
   return {
     source: version
-      ? `${preferred === 'local' ? 'Local' : 'Server'} preferred${assetLocation(original) && source !== preferred ? ` · using ${source === 'local' ? 'Local' : 'Server'}` : ''}`
+      ? `Cache → local → server${assetLocation(original) ? ` · using ${source === 'local' ? 'Local' : 'Server'}` : ''}`
       : source === 'local'
         ? 'Local'
         : 'Server',

@@ -6,7 +6,9 @@
  * patches use it, so the most-used tiles sort to the top.
  */
 
-/** A texture reference a cell can be painted with: "<LEVEL>/<file.png>", e.g. "SMOKEMTN/0019.png". */
+import { parseAssetVersion } from '../reference/asset-version';
+
+/** A standalone asset2 texture ID, or a legacy/bank reference such as "SMOKEMTN/0019.png". */
 export type TexRef = string;
 
 /**
@@ -54,17 +56,24 @@ export interface LevelTextures {
 }
 
 export function makeTexRef(level: string, name: string): TexRef {
+  if (parseAssetVersion(name)?.kind === 'texture') return name;
+  const asset = parseAssetVersion(level);
+  if (asset?.kind === 'texture' && asset.key?.toLowerCase() === name.toLowerCase()) return level;
   return `${level}/${name}`;
 }
 
 /** Resolve a terrain patch's TexturePath. Extracted maps normally carry a bare file name, while authored
  *  ISO exports intentionally retain qualified dependencies such as Custom/foo.png or GARI/0012.png. */
 export function resolveTerrainTexRef(level: string, path: string): TexRef {
-  return path.indexOf('/') > 0 ? path : makeTexRef(level, path);
+  return parseTexRef(path).level ? path : makeTexRef(level, path);
 }
 
 export function parseTexRef(ref: TexRef): { level: string; name: string } {
   const i = ref.indexOf('/');
+  if (i < 0) {
+    const asset = parseAssetVersion(ref);
+    if (asset?.kind === 'texture') return { level: ref, name: asset.key! };
+  }
   return i < 0 ? { level: '', name: ref } : { level: ref.slice(0, i), name: ref.slice(i + 1) };
 }
 
@@ -79,8 +88,8 @@ export function parseTexRef(ref: TexRef): { level: string; name: string } {
  */
 export function resolvePropTex(level: string, ref: string | null | undefined): { level: string; name: string | null } {
   if (!ref) return { level, name: null };
-  const i = ref.indexOf('/');
-  return i > 0 ? { level: ref.slice(0, i), name: ref.slice(i + 1) } : { level, name: ref };
+  const parsed = parseTexRef(ref);
+  return parsed.level ? parsed : { level, name: ref };
 }
 
 /** Flattened, collision-free file name a painted tile is copied to in the exported level folder.

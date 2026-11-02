@@ -314,6 +314,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
   '/api/particle-texture': library,
   '/api/props': library,
   '/api/map-asset-version': at('viewer'),
+  '/api/map-asset-manifest': at('viewer'),
   '/api/custom-props': library,
   '/api/characters': library,
   '/api/character-model': library,

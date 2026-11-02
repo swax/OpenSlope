@@ -1,5 +1,6 @@
 import type { SkyboxDoc } from '../../core/doc/types';
 import { AUTHORED_MODEL_LEVEL } from '../../core/doc/models';
+import { parseAssetVersion } from '../../core/reference/asset-version';
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { DISC_SLOT, type DiscRecipePaths } from '../../core/export/disc';
 import type { ExportFile } from '../../core/export/files';
@@ -161,6 +162,8 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
     async materialTables() {
       const { tables } = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>('/api/props/materials');
       for (const level of opts.assetLevels ?? []) {
+        const kind = parseAssetVersion(level)?.kind;
+        if (kind && kind !== 'prop') continue;
         const value = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>(
           `/api/props/materials?level=${encodeURIComponent(level)}`,
         );

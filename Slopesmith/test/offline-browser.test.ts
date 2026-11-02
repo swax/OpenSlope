@@ -139,8 +139,10 @@ try {
     [],
     'the app cache contains no API or account responses',
   );
-  const onlineRequests = apiRequests.length;
+  // Finish online startup before counting requests made by the offline user flows.
+  await page!.waitForLoadState('networkidle');
   await context!.setOffline(true);
+  const onlineRequests = apiRequests.length;
   // The editor and player have not been visited: their lazy chunks must already be in the app cache.
   await page!.getByRole('button', { name: 'New map', exact: true }).click();
   await page!.getByRole('dialog', { name: 'New map' }).getByRole('button', { name: 'Create map' }).click();
@@ -232,7 +234,7 @@ try {
   assert.equal(
     apiRequests.length,
     onlineRequests,
-    'offline editing, exports, importing and riding make no server requests',
+    `offline editing, exports, importing and riding make no server requests: ${apiRequests.slice(onlineRequests).join(', ')}`,
   );
 
   await context!.close();

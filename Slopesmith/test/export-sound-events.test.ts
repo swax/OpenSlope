@@ -89,6 +89,49 @@ async function effectsOf(source: EditDoc): Promise<Record<string, unknown>> {
 
 async function main(): Promise<void> {
   {
+    const { referenceAssetId } = await import('../src/core/reference/asset-manifest');
+    const source = doc();
+    source.props = [
+      {
+        ...source.props![0],
+        level: referenceAssetId('ssx-tricky', 'TRICKY_GARI', 'prop', '1', 'a'.repeat(64)),
+        collisionSoundFile: undefined,
+        collisionSound: 7,
+      },
+    ];
+    const lookups: string[] = [],
+      clips: string[] = [];
+    const folder = await buildExportFolder(
+      source,
+      {
+        ...provider,
+        soundIndex: async level => {
+          lookups.push(level ?? '');
+          return {
+            Schema: 'openslope-sound-index/v1',
+            Level: 'TRICKY_GARI',
+            Banks: { '2': 'garibaldi' },
+            CollisionEvents: { '7': { Group: 2, Slot: 3, Bank: 'garibaldi', Clip: 'Audio/SFX/garibaldi/003.wav' } },
+          };
+        },
+        courseEffectSound: async (level, slot) => {
+          clips.push(`${level}/${slot}`);
+          return new Uint8Array([1]);
+        },
+      },
+      { lighting: false },
+    );
+    check(lookups.includes('TRICKY_GARI'), 'individual geometry loads its source map audio index');
+    check(
+      clips.includes('TRICKY_GARI/3'),
+      'individual props stage collision audio with the existing map/bank identity',
+    );
+    check(
+      folder.files.some(file => file.path.startsWith('Sounds/')),
+      'individual prop audio is included in the export',
+    );
+  }
+  {
     const effects = await effectsOf(doc());
     const slopesmith = (effects.extensions as Record<string, Record<string, never>>).slopesmith;
     const events = slopesmith.customSoundEvents as unknown as Record<string, string>;

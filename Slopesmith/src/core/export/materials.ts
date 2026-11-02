@@ -2,6 +2,7 @@ import { safeDataName } from './names';
 import { legacyTrickyMapName, mapSourceId, splitMapSource } from '../reference/map-source';
 import type { PropAlphaMode } from '../reference/props';
 import { resolvePropAlphaMode, type TextureAlphaAnalysis } from '../props/texture-alpha';
+import { makeTexRef, parseTexRef } from '../paint/textures';
 
 /**
  * One combined material table for everything an export bakes from source-level art — placed props, rail
@@ -43,7 +44,7 @@ export interface MaterialCombiner {
   alphaOverrides: Record<string, PropAlphaMode>;
   /** The combined slot for a source (level, MaterialID) — or -1 (emit `mat_untextured`). */
   resolveSlot(level: string, mat: number): number;
-  /** The combined slot for a bare TILE ref "LEVEL/file.png": the tile copies
+  /** The combined slot for a texture reference (standalone asset2 or "LEVEL/file.png"): the tile copies
    *  like any prop texture, and the entry INHERITS the source level's alpha-blend flag for that tile —
    *  UnknownInt18 is authored data, not pixel-derivable, so the river tile keeps its blend. -1 = bad ref.
    *
@@ -143,16 +144,14 @@ export function buildMaterialCombiner(
       alphaMode?: PropAlphaMode,
       pixelAlpha = false,
     ): number {
-      const slash = ref.indexOf('/');
-      if (slash <= 0 || slash === ref.length - 1) return -1;
-      const level = ref.slice(0, slash),
-        name = ref.slice(slash + 1);
+      const { level, name } = parseTexRef(ref);
+      if (!level || !name) return -1;
       const lvl = safeDataName(level);
       const states = frames.filter(frame => typeof frame === 'string' && !!frame);
       const src = pixelAlpha ? undefined : materialsOf(level).find(m => m.TexturePath === name);
       const resolvedAlpha = pixelAlpha
         ? resolvePropAlphaMode(
-            [name, ...states].map(file => tileAnalyses.get(`${level}/${file}`)),
+            [name, ...states].map(file => tileAnalyses.get(makeTexRef(level, file))),
             { pixelAlpha: true },
           )
         : (alphaMode ?? src?.AlphaMode);

@@ -16,7 +16,8 @@ import { librarySizeButton } from '../ui/components/library-dock';
 import { GameMapSelect } from '../ui/components/game-map-select';
 import type { MapSourceChoice } from '../../core/reference/map-game';
 import { isLocalWorkspace } from '../net/workspace';
-import { assetLocation, pinAssetMap } from '../net/asset-versions';
+import { assetLocation, pinAssetMap, referenceLibraryBank } from '../net/asset-versions';
+import { parseAssetVersion } from '../../core/reference/asset-version';
 import { contextMenu } from '../ui/components/controls';
 import { openBlenderGuide } from './blender-bridge';
 import { draftToRecord, glbToPropDraft } from './glb-import';
@@ -395,6 +396,13 @@ export class PropLibrary {
 
   /** Point the library at a level (defaults to the first available). Public so the host can align it to the armed prop. */
   async setLevel(level: string) {
+    if (parseAssetVersion(level)?.kind) {
+      try {
+        level = await referenceLibraryBank(level);
+      } catch {
+        return;
+      }
+    }
     if (this.sources.has(level)) {
       this.sources.select(level);
       level = this.levelSel.value;
@@ -459,6 +467,12 @@ export class PropLibrary {
 
   /** Mirror the armed prop's highlight (or clear) without re-picking — e.g. when the host arms via a repeat. */
   highlight(level: string, model: number | null) {
+    level =
+      this.lpFor(level)?.level ??
+      [this.props, this.imported].find(
+        lp => lp && assetLocation(level) && assetLocation(lp.level) === assetLocation(level),
+      )?.level ??
+      level;
     const listed = !!this.lpFor(level); // the Custom view lists two levels, so match on the tile's own
     this.selLevel = listed ? level : null;
     this.selModel = listed ? model : null;

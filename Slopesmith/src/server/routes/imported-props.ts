@@ -9,6 +9,7 @@ import { propAlphaMode } from '../../core/reference/props';
 import { sanitizePropBehaviour } from '../../core/props/defaults';
 import { bakePropDeformation } from '../../core/props/deform';
 import { revisedPropName } from '../../core/props/adopt';
+import { parseTexRef } from '../../core/paint/textures';
 
 /**
  * Storage for IMPORTED props (docs/032) — the GLB models a user loads through the Prop Library's Custom
@@ -312,7 +313,7 @@ export async function importedPropsPayload(): Promise<PropsPayload> {
     for (const m of record.materials) {
       // A material's flipbook frames are stored as cross-level refs like its own tile, but the renderer
       // resolves a frame list against the bank the tile already named — so the wire carries bare names.
-      const frames = m.frames?.map(ref => ref.slice(ref.indexOf('/') + 1)) ?? [];
+      const frames = m.frames?.map(ref => parseTexRef(ref).name) ?? [];
       const alphaMode = propAlphaMode(m.alphaMode);
       materials.push({
         id: matBase + m.id,

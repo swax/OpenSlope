@@ -1,6 +1,6 @@
 import { readLevelGroups } from '../routes/groups';
 import { listLevelOrigins } from '../routes/levels';
-import { serverMapAssetVersion } from '../asset-versions';
+import { serverMapAssetVersion, serverMapAssetManifest } from '../asset-versions';
 import {
   cloneImportedProp,
   deleteImportedProp,
@@ -96,6 +96,22 @@ async function levelPropIndex(level: string): Promise<{ level: string; models: P
  *  slot and an authored model's tile resolve through; GET /api/props/native-art -> which extracted level
  *  supplies the rail skin and gem crystals. */
 export const propRoutes: Record<string, ApiHandler> = {
+  '/api/map-asset-manifest': async (req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'private, no-store');
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end(JSON.stringify({ error: 'GET only' }));
+      return;
+    }
+    try {
+      const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level') ?? '';
+      res.end(JSON.stringify(await serverMapAssetManifest(level)));
+    } catch (error) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+    }
+  },
   '/api/map-asset-version': async (req, res) => {
     if (req.method !== 'GET') {
       res.statusCode = 405;

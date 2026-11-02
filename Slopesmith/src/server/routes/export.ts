@@ -5,7 +5,8 @@ import { ensureDir } from '../fs-async';
 import { serialize } from '../serialize';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
-import { prepareServerAssetVersions } from '../asset-versions';
+import { prepareServerAssetVersions, validateVersionedTexture } from '../asset-versions';
+import { parseAssetVersion } from '../../core/reference/asset-version';
 import { DISC_SLOT } from '../../core/export/disc';
 import { safeDataName } from '../../core/export/names';
 import type { ExportFolder } from '../../core/export/files';
@@ -56,6 +57,9 @@ function nodeExportProvider(dir: string): ExportProvider {
       // reader dedupes them across the whole requested set.
       const geometry = new Map<string, ModelGeom>();
       for (const [level, ids] of byLevel) {
+        const identity = parseAssetVersion(level);
+        if (identity?.kind && (identity.kind !== 'prop' || [...ids].some(id => String(id) !== identity.key)))
+          throw new Error('The selected prop identity does not cover the requested model.');
         let read: Map<number, ModelGeom>;
         try {
           read = await readModelGeometries(level, ids);
@@ -70,7 +74,11 @@ function nodeExportProvider(dir: string): ExportProvider {
     materialTables: () => readMaterialTables(),
     importedProps: () => importedPropsPayload(),
     nativeArt: () => nativeArtSource(),
-    referenceTexture: (level, name) => readReferenceTextureBytes(level, name),
+    referenceTexture: async (level, name) => {
+      const bytes = await readReferenceTextureBytes(level, name);
+      await validateVersionedTexture(parseAssetVersion(level) ? level : null, name, bytes);
+      return bytes;
+    },
     particleTexture: (name, donorLevel) => readParticleTextureBytes(name, donorLevel),
     customSound: file => readCustomSoundBytes(file),
     soundIndex: async level => {
@@ -201,6 +209,7 @@ export async function exportLevel(
       lighting: opts?.lighting,
       aiPaths: opts?.aiPaths,
     });
+    await prepareServerAssetVersions(doc);
     await writeExportFolder(dir, folder);
     return { dir, log: folder.log.join('\n') };
   });

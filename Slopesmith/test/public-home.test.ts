@@ -178,6 +178,15 @@ try {
     401,
     'a public original map cannot proxy another bank, even when its bytes are in the response cache',
   );
+  assert.equal(
+    (
+      await call(
+        `/api/texture?level=ORIGINAL&name=${encodeURIComponent(`asset2:ssx-tricky:TRICKY_GARI:texture:0000.png:${'a'.repeat(64)}`)}`,
+      )
+    ).status,
+    401,
+    'a standalone identity cannot make a public original map proxy retail texture bytes',
+  );
   const imported = defaultMountain();
   imported.effects = createEmptyEffectsDocument('FIXTURE');
   imported.effects.source = { fileName: 'fixture.ssf' };

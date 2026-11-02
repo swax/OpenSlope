@@ -36,7 +36,11 @@ import {
   materialWorldEffectsFromNode,
   type AnimObjectEffect,
 } from '../../../core/effects/world-effects';
-import { resolveCollisionSound, type CollisionSoundBank } from '../../../core/effects/collision-sound';
+import {
+  collisionSoundLevel,
+  resolveCollisionSound,
+  type CollisionSoundBank,
+} from '../../../core/effects/collision-sound';
 import {
   authoredEffectBindings,
   createEmptyEffectsDocument,
@@ -479,7 +483,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const soundBuffer = (url: string): Promise<AudioBuffer | null> => sharedAudioBuffer(url);
 
   const effectSoundUrl = (level: string, slot: number, bank: CollisionSoundBank = 'course'): string =>
-    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}` + (bank === 'crowd' ? '&bank=crowd' : '');
+    `/api/effect-sound?level=${encodeURIComponent(collisionSoundLevel(level))}&slot=${slot}` +
+    (bank === 'crowd' ? '&bank=crowd' : '');
 
   function effectSoundBuffer(
     level: string,

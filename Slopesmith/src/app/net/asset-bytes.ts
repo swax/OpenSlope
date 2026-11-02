@@ -1,5 +1,7 @@
 import { clientFetch } from './client';
 import { beginRequestDiagnostic } from './diagnostics';
+import { referenceAssetRequest } from './asset-cache';
+import { assetWorkspaceGeneration } from './workspace';
 
 /**
  * Asset bytes, kept.
@@ -21,13 +23,16 @@ const cache = new Map<string, Promise<Uint8Array>>();
 /** The bytes at `url`, fetched once. Refusals carry the route's own message — "no custom sound bell.wav" is
  *  the whole content of that response, and it is the part an author can act on. */
 export function assetBytes(url: string): Promise<Uint8Array> {
-  let pending = cache.get(url);
+  // Reference reads share the same cache as images, props and playback.
+  if (referenceAssetRequest(url)) return fetchBytes(url);
+  const key = `${assetWorkspaceGeneration()}:${url}`;
+  let pending = cache.get(key);
   if (!pending) {
     pending = fetchBytes(url);
-    cache.set(url, pending);
+    cache.set(key, pending);
     // A failed read must not become the permanent answer for this address.
     void pending.catch(() => {
-      if (cache.get(url) === pending) cache.delete(url);
+      if (cache.get(key) === pending) cache.delete(key);
     });
   }
   return pending;

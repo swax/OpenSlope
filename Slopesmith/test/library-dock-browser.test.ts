@@ -7,6 +7,12 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
 import { chromiumExecutable } from './browser-test-support';
 import { assetVersion } from '../src/core/reference/asset-version';
+import { referenceAssetId } from '../src/core/reference/asset-manifest';
+import { createHash } from 'node:crypto';
+
+const tileImage =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#668795"/><path d="M0 48 23 19 40 36 52 12 64 48Z" fill="#d2e4e8"/></svg>';
+const tileHash = createHash('sha256').update(tileImage).digest('hex');
 
 // Mount the real libraries and their handles without the terrain renderer or a server workspace.
 const bundle = await build({
@@ -86,6 +92,23 @@ try {
     if (url.pathname === '/api/levels') return route.fulfill({ json: { levels: ['TEST'] } });
     if (url.pathname === '/api/map-asset-version')
       return route.fulfill({ json: assetVersion('unknown', 'TEST', 'a'.repeat(64)) });
+    if (url.pathname === '/api/map-asset-manifest')
+      return route.fulfill({
+        json: {
+          schema: 'openslope-assets/v1',
+          game: 'unknown',
+          map: 'TEST',
+          assets: Array.from({ length: 500 }, (_, i) => ({
+            id: referenceAssetId('unknown', 'TEST', 'texture', `${i}.png`, tileHash),
+            game: 'unknown',
+            map: 'TEST',
+            kind: 'texture',
+            key: `${i}.png`,
+            hash: tileHash,
+            files: { [`textures/${i}.png`]: tileHash },
+          })),
+        },
+      });
     if (url.pathname === '/api/textures') {
       const level = url.searchParams.get('level');
       return route.fulfill({
@@ -100,7 +123,7 @@ try {
     if (url.pathname === '/api/texture')
       return route.fulfill({
         contentType: 'image/svg+xml',
-        body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#668795"/><path d="M0 48 23 19 40 36 52 12 64 48Z" fill="#d2e4e8"/></svg>',
+        body: tileImage,
       });
     if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 204 });
     return route.fulfill({

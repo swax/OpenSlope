@@ -2,6 +2,8 @@ import { parseTexRef, type TexRef } from '../../core/paint/textures';
 import { builtinCharacterUrl } from '../../core/characters/builtins';
 import { clientAssetUrl } from './client';
 import { mapSourceRequest } from './map-source';
+import { referenceAssetRequest } from './asset-cache';
+import { collisionSoundLevel } from '../../core/effects/collision-sound';
 
 const referenceTextureRevisions = new Map<string, Map<string, string>>();
 const referenceSkyRevisions = new Map<string, { panorama?: string; ground?: string }>();
@@ -12,7 +14,7 @@ export function setAssetUrlResolver(resolve: (url: string) => string): void {
 }
 export function resolveAssetUrl(url: string): string {
   const request = mapSourceRequest(url);
-  if (request.version) return url;
+  if (request.version || referenceAssetRequest(url)) return url;
   return assetResolver(request.source === 'server' && request.explicit ? request.url.href : url);
 }
 
@@ -75,6 +77,7 @@ export function customSoundUrl(name: string): string {
 
 /** One slot of a level's course / crowd bank, or of a named fixed global environment bank. */
 export function effectSoundUrl(level: string, slot: number, bank: string): string {
+  level = collisionSoundLevel(level);
   return resolveAssetUrl(
     `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}&bank=${encodeURIComponent(bank)}`,
   );

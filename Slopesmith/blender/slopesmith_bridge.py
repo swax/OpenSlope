@@ -55,6 +55,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import tempfile
 import urllib.error
 import urllib.parse
@@ -380,6 +381,17 @@ def _load_image(material, base):
     return image
 
 
+def _asset_texture(ref):
+    """Decode a standalone texture identity without mistaking a prop/body id for an image."""
+    match = re.fullmatch(r"asset2:([^:/]+):([^:/]+):texture:([^:/]+):[a-f0-9]{64}", ref or "")
+    if not match:
+        return None
+    name = urllib.parse.unquote(match[3])
+    if "\\" in name or any(part in ("", ".", "..") for part in name.split("/")) or any(ord(c) < 32 for c in name):
+        return None
+    return urllib.parse.unquote(match[2]), name
+
+
 def _short_ref(ref):
     """A tile ref as the artist should read it.
 
@@ -391,6 +403,9 @@ def _short_ref(ref):
 
     The same rule the editor's own prop material rows follow (`ui/components/prop-materials.ts`).
     """
+    asset = _asset_texture(ref)
+    if asset:
+        return "%s/%s" % asset
     level, _, name = (ref or "").partition("/")
     return name if level.lower() == "custom" and name else ref
 
@@ -674,7 +689,7 @@ def _material_ref(material):
     # lost, and inventing a ref out of display text would aim the push at a tile of that name.
     if name.startswith("OpenSlope "):
         return ""
-    return name if "/" in name and name.lower().endswith(".png") else ""
+    return name if _asset_texture(name) or ("/" in name and name.lower().endswith(".png")) else ""
 
 
 def _material_image(material):

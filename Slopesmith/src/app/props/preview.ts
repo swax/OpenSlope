@@ -9,6 +9,12 @@ import { mapSourceDetails, watchMapSources } from '../state/map-sources';
 import { propLoadState, textureLoadState, watchAssetLoads } from '../state/asset-loads';
 import { resolvePropTex, makeTexRef } from '../../core/paint/textures';
 import { textureRefUrl } from '../net/asset-paths';
+import { parseAssetVersion } from '../../core/reference/asset-version';
+
+function modelReference({ level, model }: { level: string; model: number }): string {
+  const asset = parseAssetVersion(level);
+  return asset?.kind === 'prop' && asset.key === String(model) ? level : `${level}/model/${model}`;
+}
 
 /**
  * The Prop Tools preview: a live 3/4 view of the prop you're holding (picked from the library or the reference
@@ -337,12 +343,10 @@ export class PropPreview {
               this.sourceTextures.every(ref => textureLoadState(textureRefUrl(ref)) === 'ready')
             ? 'Ready'
             : 'Loading…';
-      facts.reference = this.sourceModels.map(ref => `${ref.level}/model/${ref.model}`).join(', ');
+      facts.reference = this.sourceModels.map(modelReference).join(', ');
     }
     if (missing.length || missingTextures.length)
-      facts['missing reference'] = [...missing.map(ref => `${ref.level}/model/${ref.model}`), ...missingTextures].join(
-        ', ',
-      );
+      facts['missing reference'] = [...missing.map(modelReference), ...missingTextures].join(', ');
     for (const [key, text] of Object.entries(facts)) {
       const row = document.createElement('div');
       row.className = 'pp-source-row';

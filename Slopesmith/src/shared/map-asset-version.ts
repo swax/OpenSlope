@@ -1,3 +1,5 @@
+import { sha256 } from '../core/reference/asset-hash';
+export { sha256 } from '../core/reference/asset-hash';
 import { assetMapKey, assetVersion, type AssetVersion } from '../core/reference/asset-version';
 import { mapGame } from '../core/reference/map-game';
 import { joinMapPath as join, mapLimit, READ_CONCURRENCY, type MapDataSource } from './map-data';
@@ -53,11 +55,6 @@ function canonical(value: unknown): unknown {
 }
 
 const utf8 = new TextEncoder();
-export async function sha256(bytes: Uint8Array): Promise<string> {
-  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)))]
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 export async function readAssetVersion(
   io: MapDataSource,

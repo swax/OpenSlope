@@ -9,6 +9,7 @@ import type { LevelProps, PropInstance } from '../src/core/reference/props';
 import type { GroupDef } from '../src/core/reference/groups';
 import { assetVersion } from '../src/core/reference/asset-version';
 import { configureWorkspace } from '../src/app/net/workspace';
+import { referenceAssetId } from '../src/core/reference/asset-manifest';
 
 const version = assetVersion('ssx-tricky', 'TEST', 'a'.repeat(64));
 const level = version.id;
@@ -59,6 +60,31 @@ const levels = new Map<string, LevelProps>([
     },
   ],
 ]);
+const individualModels = [1, 2].map(model => ({
+  kind: 'prop',
+  key: String(model),
+  game: version.game,
+  map: version.map,
+  hash: String(model).repeat(64),
+  files: {},
+  id: referenceAssetId(version.game, version.map, 'prop', String(model), String(model).repeat(64)),
+}));
+const bodyAsset = {
+  kind: 'body',
+  key: '5',
+  game: version.game,
+  map: version.map,
+  hash: '5'.repeat(64),
+  files: {},
+  id: referenceAssetId(version.game, version.map, 'body', '5', '5'.repeat(64)),
+};
+for (const asset of individualModels)
+  levels.set(asset.id, {
+    ...levels.get(level)!,
+    level: asset.id,
+    models: levels.get(level)!.models.filter(model => String(model.id) === asset.key),
+    instances: [],
+  });
 const group: GroupDef = {
   id: 'lamp',
   name: 'Lamp assembly',
@@ -71,6 +97,13 @@ configureWorkspace(false, async url => {
   if (url.searchParams.get('mapSource') === 'local') return new Response('', { status: 404 });
   if (url.pathname === '/api/levels') return Response.json({ levels: ['server:TEST'] });
   if (url.pathname === '/api/map-asset-version') return Response.json(version);
+  if (url.pathname === '/api/map-asset-manifest')
+    return Response.json({
+      schema: 'openslope-assets/v1',
+      game: version.game,
+      map: version.map,
+      assets: [...individualModels, bodyAsset],
+    });
   if (url.pathname === '/api/groups') return Response.json({ level: 'TEST', groups: [group] });
   throw new Error(`Unexpected fixture request: ${url}`);
 });
@@ -150,6 +183,7 @@ const pose = (p: PlacedProp) => [p.id, p.labels, p.pos, p.yaw, p.pitch, p.roll, 
   assert.equal(ops.isReplacingProp(), true);
   await ops.armProp(level, 2, 'Lamp');
   assert.equal(target.model, 2);
+  assert.equal(target.level, individualModels[1].id, 'new individual selections use asset2');
   assert.equal(target.name, 'Lamp');
   assert.deepEqual(pose(target), originalPose);
   assert.equal(target.group, undefined);
@@ -341,8 +375,25 @@ ops.replaceSelectedProp();
 await ops.armProp(level, 2, 'Lamp');
 await ops.armProp(level, 1, 'Original');
 const heldModel = () => store.armedProp?.model;
+const heldProp = () => store.armedProp;
 assert.equal(heldModel(), 1);
 assert.equal(store.selectedProp, null);
+// An individual prop keeps the native body's identity separate from its geometry identity.
+levels.set(bodyAsset.id, { ...levels.get(level)!, level: bodyAsset.id, models: [], instances: [] });
+await ops.armProp(level, 2, 'Lamp', {
+  behaviour: {
+    nativeCollision: {
+      mode: 3,
+      playerCollision: true,
+      responseMass: 10,
+      playerBounce: false,
+      bounceAmount: 0,
+      physicsSource: { level, body: 5, instance: 42 },
+    },
+  },
+});
+assert.equal(heldProp()?.behaviour?.nativeCollision?.physicsSource?.level, bodyAsset.id);
+assert.equal(heldProp()?.level, individualModels[1].id);
 console.log(
   'Prop replacement: single and multi-selection, library, world, reference, group, pose, effects and cancellation passed.',
 );

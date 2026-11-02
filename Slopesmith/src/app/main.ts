@@ -104,11 +104,12 @@ import {
   type ClientProject,
 } from './state/project-sync';
 import { createSessionChannel, membersOn, type PresenceEntry } from './net/session-channel';
-import { currentAccount, onAccountChanged, type Member } from './net/account';
+import { currentAccount, onAccountChanged, administersServer, type Member } from './net/account';
 import { preferredAvatar } from './net/avatar-preference';
 import { avatarId } from '../core/characters/builtins';
-import { isLocalWorkspace } from './net/workspace';
-import { pinDocumentAssets } from './net/asset-versions';
+import { isLocalWorkspace, assetWorkspaceGeneration } from './net/workspace';
+import { assetMigrationSources } from './net/asset-migration';
+import { createAssetUpgrades } from './state/asset-upgrades';
 import { MAPS_PATH, localEditorUrl, mapPath } from './navigation';
 import { listLocalProjects } from './state/local-projects';
 import { createRegisterSync } from './net/register-sync';
@@ -147,6 +148,13 @@ import type { SharedScreenFrame, SharedScreenState, SharedViewOptions } from '..
  */
 
 const storedMountain = loadStored<unknown>(MOUNTAIN_KEY);
+let mayReviewAssetReferences = false;
+void administersServer().then(allowed => {
+  mayReviewAssetReferences = allowed;
+});
+onAccountChanged(member => {
+  mayReviewAssetReferences = member.role === 'admin';
+});
 
 // editor mode + view toggles carried over from the last session (see persistUi / StoredUi + state/store.ts).
 // shadeMode (which includes the cage-only 'none' state) is pushed onto the viewport just after it's constructed;
@@ -1103,6 +1111,30 @@ function persistDocumentEdit() {
   registerSync.noteEdit();
 }
 
+let assetUpgradeReady = false;
+const assetUpgrades = createAssetUpgrades({
+  getDoc: () => store.mdoc,
+  context: () => `${projectSync.current()?.id ?? ''}:${assetWorkspaceGeneration()}`,
+  writable: () =>
+    assetUpgradeReady &&
+    !!projectSync.current() &&
+    projectSync.isWritable() &&
+    !projectSync.isPreviewing() &&
+    !projectSync.conflict() &&
+    (isLocalWorkspace() || session.mayWrite()),
+  sources: assetMigrationSources,
+  changed: count => {
+    persistDocumentEdit();
+    console.info(
+      `[Slopesmith] Auto-upgraded ${count} asset reference${count === 1 ? '' : 's'} to asset2 in "${store.mdoc.name}".`,
+    );
+    scheduleCommit();
+    scheduleRebuild();
+    void propOps.syncPropGeom().catch(error => log(`upgraded prop load failed: ${String(error)}`));
+  },
+  failed: error => log(`asset upgrade deferred: ${error instanceof Error ? error.message : String(error)}`),
+});
+
 function finishRenderDoc(edited = true) {
   // Loading/replacing a document uses the same renderer as an authored edit, but it must not turn that
   // rendering work into a save. In particular, a dev reload of an idle tab must not race a headless
@@ -1373,6 +1405,7 @@ const {
   deleteMountain,
   exportMountain,
   exportDialog,
+  assetMigrationDialog,
 } = createDialogs({
   getDoc: activeDoc,
   setDoc: d => {
@@ -2552,6 +2585,8 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
       void saveToFolder();
     },
     exportDialog,
+    assetMigrationDialog,
+    canReviewAssetReferences: () => mayReviewAssetReferences,
     settingsDialog: openSettingsDialog,
     exitEditor: destination => {
       void exitEditor(destination);
@@ -3280,6 +3315,7 @@ function queueSyncedTopology() {
 }
 
 function refreshSyncedDocumentUi() {
+  void assetUpgrades.request();
   const dock = document.getElementById('dock-right');
   const scrollTop = dock?.scrollTop ?? 0;
   viewport.setModelEditContext(!!store.modelEditId, store.mdoc);
@@ -3318,8 +3354,8 @@ function refreshSyncedDocumentUi() {
 }
 
 async function loadMountain() {
+  assetUpgradeReady = false;
   await reference.syncProjectReference();
-  await pinDocumentAssets(store.mdoc, isLocalWorkspace() ? 'local' : 'server');
   surfaceEdits.reset();
   syncDocumentPending = false;
   syncUiBeforeDoc = null;
@@ -3409,6 +3445,8 @@ async function loadMountain() {
       label: 'Mountain ready',
       detail: `${store.mdoc.quads.length.toLocaleString()} patches loaded`,
     });
+    assetUpgradeReady = true;
+    void assetUpgrades.request();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     captureBuildError = message;
@@ -3832,6 +3870,7 @@ const session = createSessionChannel({
     syncChip.setShared(view.writable);
     if (view.writable) registerSync.connect();
     else registerSync.detach();
+    void assetUpgrades.request();
   },
   onProjectAccess: change => {
     if (!projectSync.applyProjectMetadata(change.project)) return;
@@ -3849,6 +3888,7 @@ const session = createSessionChannel({
       }
     }
     usersMode.refresh();
+    if (change.writable) void assetUpgrades.request();
   },
   onSync: push => registerSync.applySync(push.changes, push.by),
   onLanded: ack => registerSync.landed(ack),

@@ -1,0 +1,42 @@
+import type { AssetVersion } from './asset-version';
+
+export type ReferenceAssetKind = NonNullable<AssetVersion['kind']>;
+export interface ReferenceAsset extends AssetVersion {
+  kind: ReferenceAssetKind;
+  key: string;
+  /** Exact dependency bytes, relative to the source map. */
+  files: Record<string, string>;
+  payloadHash?: string;
+}
+export interface AssetManifest {
+  schema: 'openslope-assets/v1';
+  game: string;
+  map: string;
+  assets: ReferenceAsset[];
+  unavailable?: { kind: ReferenceAssetKind; key: string; reason: string }[];
+}
+export const referenceAssetId = (game: string, map: string, kind: ReferenceAssetKind, key: string, hash: string) =>
+  `asset2:${encodeURIComponent(game)}:${encodeURIComponent(map)}:${kind}:${encodeURIComponent(key)}:${hash}`;
+
+export function manifestAsset(
+  manifest: AssetManifest,
+  kind: ReferenceAssetKind,
+  key: string,
+): ReferenceAsset | undefined {
+  return manifest.assets.find(
+    asset =>
+      asset.kind === kind && (kind === 'texture' ? asset.key.toLowerCase() === key.toLowerCase() : asset.key === key),
+  );
+}
+
+export function assetRequestCovered(version: AssetVersion, path: string, query: URLSearchParams): boolean {
+  if (!version.kind) return true;
+  if (path === '/api/texture')
+    return (
+      version.kind === 'prop' ||
+      (version.kind === 'texture' && version.key?.toLowerCase() === query.get('name')?.toLowerCase())
+    );
+  if (path === '/api/props') return version.kind === 'prop' || version.kind === 'body';
+  if (path === '/api/props/materials') return version.kind === 'prop';
+  return path === '/api/physics-body' && version.kind === 'body' && query.get('idx') === version.key;
+}

@@ -231,6 +231,13 @@ check([row["tex"] for row in table] == ["Custom/lamp.png", "GARI/0012.png", None
 check((bridge._short_ref("Custom/lamp.png"), bridge._short_ref("GARI/0012.png"))
       == ("lamp.png", "GARI/0012.png"),
       "the mountain's own tiles read as bare file names; a borrowed one keeps the bank that owns it")
+asset_texture = "asset2:ssx-tricky:TRICKY_GARI:texture:0012.png:" + "a" * 64
+check(bridge._material_ref(Material(asset_texture)) == asset_texture,
+      "a glTF material can keep a standalone texture identity on an unchanged push")
+check(bridge._short_ref(asset_texture) == "TRICKY_GARI/0012.png",
+      "standalone texture identities display their source and filename")
+check(bridge._material_ref(Material(asset_texture.replace(":texture:", ":prop:"))) == "",
+      "geometry identities are never treated as standalone images")
 check(bridge._material_ref(Material("OpenSlope SMOKEMTN/0106.png")) == "",
       "and one of our OWN labels is never read back as a ref — it is ref-shaped by accident")
 check([row["id"] for row in table] == [0, 1, 2],

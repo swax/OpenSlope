@@ -1,9 +1,12 @@
-import { assetMapKey, parseAssetVersion, type AssetVersion } from '../../core/reference/asset-version';
+import { parseAssetVersion, type AssetVersion } from '../../core/reference/asset-version';
 import { type MapSourceChoice } from '../../core/reference/map-game';
+import { createAssetReader } from './asset-reader';
+import type { ReferenceAssetKind } from '../../core/reference/asset-manifest';
 import { findMapChoice, mapSourceId, splitMapSource, type MapSource } from '../../core/reference/map-source';
 
 type Transport = (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 let transport: Transport = (url, init) => fetch(url, init);
+let reader = createAssetReader(transport, bind);
 const locations = new Map<string, string>();
 const preferences = new Map<string, MapSource>();
 const pending = new Map<string, Promise<AssetVersion>>();
@@ -20,8 +23,10 @@ const projectAssetLevel = (level: string): boolean => {
 
 export function configureAssetTransport(next: Transport): void {
   transport = next;
+  reader = createAssetReader(next, bind);
 }
 export function clearAssetCatalogue(): void {
+  reader.clear();
   catalogueCache = undefined;
   verified.clear();
 }
@@ -152,64 +157,22 @@ export async function pinAssetMap(level: string): Promise<string> {
   return value.id;
 }
 
-export async function fetchVersionedAsset(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const url = new URL(
-    input instanceof Request ? input.url : input.toString(),
-    globalThis.location?.origin ?? 'http://localhost',
-  );
-  const parameter = url.pathname === '/api/level' ? 'name' : 'level';
-  const id = url.searchParams.get(parameter) ?? '';
-  const expected = parseAssetVersion(id);
-  if (!expected) return transport(input, init);
-  const preferred = assetPreference(id);
-  // Catalogue game labels are only hints (older/prop-only banks can lack them). The complete
-  // descriptor below still has to match game, map and content before a candidate can supply bytes.
-  const maps = (await catalogue()).filter(
-    map => assetMapKey(splitMapSource(map.name).name, map.course) === expected.map,
-  );
-  const candidates = [
-    ...new Set(
-      [
-        locations.get(id),
-        ...maps.map(locationId),
-        mapSourceId('local', expected.map),
-        mapSourceId('server', expected.map),
-      ].filter((name): name is string => !!name),
-    ),
-  ];
-  candidates.sort(
-    (a, b) => Number(splitMapSource(b).source === preferred) - Number(splitMapSource(a).source === preferred),
-  );
-  const attempts: { location: string; reason: string }[] = [];
-  for (const location of candidates) {
-    try {
-      if ((await version(location)).id !== id) {
-        attempts.push({ location, reason: 'Different asset version' });
-        continue;
-      }
-      const candidate = new URL(url);
-      const source = splitMapSource(location).source!;
-      candidate.searchParams.set('mapSource', source);
-      // The server verifies the version again before opening files. Local readers hold immutable Blob snapshots.
-      candidate.searchParams.set(parameter, source === 'server' ? id : splitMapSource(location).name);
-      const response = await transport(candidate, init);
-      if (!response.ok) {
-        attempts.push({ location, reason: `HTTP ${response.status}` });
-        verified.delete(location);
-        continue;
-      }
-      bind(id, location);
-      return response;
-    } catch (error) {
-      attempts.push({ location, reason: error instanceof Error ? error.message : String(error) });
-      verified.delete(location); /* Try the other location, but only after checking its content fingerprint. */
-    }
-  }
-  return Response.json(
-    {
-      error: `Matching asset version ${expected.hash.slice(0, 8)} for ${expected.map} is unavailable. Load that version locally or make it available on the server.`,
-      attempts,
-    },
-    { status: 404 },
-  );
+/** Per-asset identities for new picks. Project-owned assets keep their live project references. */
+export async function pinReferenceAssets(level: string, kind: ReferenceAssetKind, keys: readonly string[]) {
+  if (projectAssetLevel(level)) return new Map(keys.map(key => [key, level]));
+  return reader.pinAssets(await pinAssetMap(level), kind, keys);
 }
+
+export async function pinReferenceAsset(level: string, kind: ReferenceAssetKind, key: string): Promise<string> {
+  return (await pinReferenceAssets(level, kind, [key])).get(key)!;
+}
+
+export const referenceLibraryBank = (level: string) => reader.libraryBank(level);
+
+export function fetchVersionedAsset(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return reader.fetch(input, init);
+}
+
+export const availableAssetMaps = () => reader.maps();
+export const readAssetManifestAt = (location: string) => reader.manifest(location);
+export const readAssetBankAt = (location: string) => reader.version(location);

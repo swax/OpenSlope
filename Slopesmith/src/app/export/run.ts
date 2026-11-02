@@ -2,8 +2,6 @@ import type { EditDoc } from '../../core/doc/doc-edit';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { browserExportProvider } from './provider';
 import { assetVersionsIn } from '../../core/reference/asset-version';
-import { pinDocumentAssets } from '../net/asset-versions';
-import { isLocalWorkspace } from '../net/workspace';
 import { downloadTarget, type ExportTarget } from './landing';
 
 /**
@@ -28,7 +26,6 @@ export function resolveExportTarget(doc: EditDoc): ExportTarget {
 }
 
 export async function exportMapFolder(doc: EditDoc, target: ExportTarget): Promise<BrowserExportResult> {
-  await pinDocumentAssets(doc, isLocalWorkspace() ? 'local' : 'server');
   const provider = browserExportProvider({
     assetLevels: assetVersionsIn(doc),
     folderName: target.folderName,

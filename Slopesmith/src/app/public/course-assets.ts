@@ -2,6 +2,7 @@ import type { EditDoc } from '../../core/doc/doc-edit';
 import type { PropsPayload } from '../../core/reference/props';
 import { parseAssetVersion } from '../../core/reference/asset-version';
 import { findMapChoice } from '../../core/reference/map-source';
+import { parseTexRef } from '../../core/paint/textures';
 
 function availableAssets(availableLevels: readonly string[]) {
   const available = availableLevels.map(name => ({ name }));
@@ -13,7 +14,7 @@ function availableAssets(availableLevels: readonly string[]) {
       !!findMapChoice(available, level)
     );
   };
-  const hasTexture = (ref: string) => hasLevel(ref.split('/')[0]);
+  const hasTexture = (ref: string) => hasLevel(parseTexRef(ref).level);
   return { hasLevel, hasTexture };
 }
 

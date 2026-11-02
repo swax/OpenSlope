@@ -117,6 +117,7 @@ try {
   await publicCard.getByRole('button', { name: 'Play PUBLIC RUN', exact: true }).waitFor();
   await publicCard.click({ position: { x: 12, y: 12 } });
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor();
+  await guest.getByRole('button', { name: 'Edit map', exact: true }).waitFor({ state: 'visible' });
   assert(await guest.getByRole('button', { name: 'Edit map', exact: true }).isVisible());
   assert.equal(new URL(guest.url()).pathname, '/play/PUBLIC_RUN');
   await guest.goBack();

@@ -61,7 +61,7 @@ Existing unqualified references retain their local-first resolution until their 
 Legacy unprefixed bank names also try `TRICKY_<name>` when the requested bank is absent. This applies to
 browser-local reads, server assets and exports, including props, textures, collision and sky rings. Exact
 bank names take precedence; a missing file inside an existing bank never borrows from the prefixed bank.
-Explicit Local/Server choices remain scoped to that source, and fingerprinted references still require an
+Explicit Local/Server choices remain scoped to that source, and bank-versioned references still require an
 identical bank version. Saved documents and checkpoints do not need a name-only rewrite.
 Map labels prefer `Import.json.DisplayName`, recovered from the user's disc by the importer; `NameSource`
 records which source table supplied it. This works independently of folder names. Browser scans retain
@@ -72,25 +72,72 @@ See [source title extraction](../../Native/docs/course-titles.md) for the per-ga
 
 ## Prop and texture versions
 
-New library selections save an `asset1:<game>:<map>:<sha256>` bank identity instead of a Local/Server path.
-The source selector records this browser's loading preference for that version. Loading tries the preferred
-copy first, then another copy with the same game, canonical map and fingerprint. Different fingerprints
-remain separate identities even when folder names match. Details show the preference and a short version.
+The editor, public/private player and browser exports use a shared byte resolver. Immutable reads try
+in-memory cache, the browser's persistent asset cache, local imported assets, then an allowed server.
+Concurrent reads share work; failed reads are never retained. Memory is bounded, and blocked browser
+storage or quota failures still allow ordinary loading. Persistent caches are separated by account and
+public/device policy. Project-owned custom assets keep their existing project scope. Explicit Local/Server
+references remain scoped to that source; an unavailable local request never becomes a server request.
+Asset URL builders return logical identities. Read them with `clientFetch`, `workspaceFetch`, `assetBytes`
+or the shared image loaders so local bytes and cache hits do not require an HTTP request.
 
-The fingerprint covers the whole portable asset bank: textures, meshes, collision, prop definitions,
-instances, materials, defaults, effects and non-music audio. JSON formatting and object-key order and OBJ
-line endings are normalized. Display names, import reports, origin metadata, terrain, paths, baked export
-companions, raw disc archives and music do not participate. This deliberately treats a changed bank as a
-separate version, even if an individual texture inside it did not change. It works from the portable map
-files for every supported game and does not require an ISO to remain open.
+Existing `asset1:<game>:<map>:<sha256>` references retain their exact whole-bank requirement. Local
+candidates precede server candidates, and a candidate must match the full fingerprint. No failed lookup
+silently substitutes a different bank. Bank fingerprints normalize JSON formatting, object-key order and
+OBJ line endings; they exclude display/import metadata, terrain, paths, raw disc archives and music.
+An unresolved `asset1` reference is never rewritten to a merely similar asset.
 
-The shared workspace transport resolves versioned JSON and byte requests, including image previews, the
-viewport, public play and browser exports. Server exports resolve matching installed banks first. Image
-caches are partitioned by bank version, and new image bytes are checked against that version. Missing or
-different copies cannot silently replace the saved version.
+`GET /api/map-asset-manifest?level=<map>` describes independently versioned textures, props and native
+physics bodies under `openslope-assets/v1`. It has the same viewer authorization as bank metadata; the
+browser supplies equivalent manifests from local imports. Each entry carries an identity:
 
-Older document pointers are upgraded when their original source is available to fingerprint. A missing
-legacy Local/Server pointer stays unchanged: without its original content there is no safe version to infer.
+```text
+asset2:<game>:<map>:<texture|prop|body>:<encoded-key>:<sha256>
+```
+
+A texture's key is its map-relative name under `Textures/`; its digest covers the exact bytes. A prop key
+is its model ID. Its digest covers geometry, animation, collision, material settings and texture/flipbook
+dependencies, including the raw model/material fields required by export. Other models, unused textures
+and source placement transforms do not revise that prop. Body entries cover the decoded native shape and
+mass properties. The resolver validates the selected entry and its returned texture/prop bytes, and scopes
+prop responses to the requested model or body. Content-revision image URLs are checked against the returned
+bytes as well. Location is never part of an `asset2` identity.
+
+A texture-specific reference is the standalone `asset2` ID: its encoded key already names the image, so
+no `/filename.png` suffix is written. Existing suffixed `asset2` texture references remain readable and
+resolve to the same resource/cache key. `asset1` bank references and a prop's texture dependencies still
+include a filename because their identities can contain multiple images. New picks and verified upgrades
+emit the standalone form.
+
+Writable mountains automatically upgrade exact original-bank references and verified current-asset matches
+to `asset2` when opened or replaced by a shared document snapshot. This also runs in fully local workspaces and
+saves through the normal project/folder flow. Missing, different and unverified candidates are left alone.
+Checks in flight cannot overwrite newer reference/model choices or apply to another project or a read-only
+preview. Existing `asset2` references are unchanged.
+
+Admins can use **File → Review asset references…** to preview remaining references. Repeated references
+are grouped. Available original banks are marked **Exact original available**. The preview hashes the
+texture bytes currently resolved by the editor (reusing loaded images), or checks a prop/body definition
+and all its texture/flipbook dependencies against the candidate manifest. Confirmed matches show
+**Matches current asset** and are selected by default. This confirms the current resolved content, not the
+historical original of a name-only reference. Different or unverified candidates are unchecked.
+Unqualified references choose the available local asset
+before the server copy, regardless of where the mountain is stored. Explicit Local/Server references stay
+scoped to that source. Pinning a name-only reference records the currently available copy; it cannot verify
+the historical original. If the original bank is gone, a matching game/course candidate is marked
+**Replacement — original version unavailable** and is unchecked. Missing assets remain unchanged.
+Cancel performs no writes. Apply updates only selected references, takes a history checkpoint where
+supported, and rejects a preview if the document has changed. Suggested replacements require manual selection.
+
+New borrowed texture selections (including palette drags and model texture picks) and individual prop picks
+use `asset2` automatically. Prop picks derive their collision and effect defaults from the displayed source
+bank before pinning the individual geometry; native physics donors are pinned separately. Sampled `asset1`
+pointers retain their identities until the automatic check can verify an upgrade. Project-owned uploads and models
+keep their live project references. Group, sky and audio references keep their existing bank/source formats;
+native audio on individual props resolves through its source map's sound bank.
+Individual texture, prop and body migration can be applied independently without
+changing those references or repackaging the source maps. Snowknife exports continue staging the selected
+asset bytes; both older bank references and migrated native body donors remain supported.
 
 A folder with no `Origin.json` is read as retail. An export manifest still identifies its folder as authored,
 and one written before the provenance guard existed is treated as carrying data rather than as clean — the

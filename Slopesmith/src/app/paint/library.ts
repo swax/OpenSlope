@@ -35,7 +35,7 @@ import { librarySizeButton } from '../ui/components/library-dock';
 import { GameMapSelect } from '../ui/components/game-map-select';
 import type { MapSourceChoice } from '../../core/reference/map-game';
 import { isLocalWorkspace } from '../net/workspace';
-import { pinAssetMap } from '../net/asset-versions';
+import { pinAssetMap, pinReferenceAssets, pinReferenceAsset, referenceLibraryBank } from '../net/asset-versions';
 import { parseAssetVersion } from '../../core/reference/asset-version';
 import { setAssetBackground } from '../net/asset-images';
 import { askName, confirmAction } from '../ui/components/prompts';
@@ -152,6 +152,7 @@ export class TextureLibrary {
   private hideUnused = true; // hide textures the level never uses on terrain (props/skybox); on by default
   private hideStaged = true; // hide tiles already staged in the Palette; on by default (declutter as you build)
   private tex: LevelTextures | null = null;
+  private tileLevels = new Map<string, string>();
   private loadedSource = '';
   private selKey = ''; // highlighted brush key
   private open = false;
@@ -311,7 +312,14 @@ export class TextureLibrary {
   /** Load and scroll to the tile a pick starts on, so the picker opens showing the current answer. */
   private async revealPickTarget(current: TexRef | null) {
     if (current) {
-      const { level } = parseTexRef(current);
+      let { level } = parseTexRef(current);
+      if (parseAssetVersion(level)?.kind) {
+        try {
+          level = await referenceLibraryBank(level);
+        } catch {
+          /* Keep the existing picker usable when the original source is unavailable. */
+        }
+      }
       if (level && this.sources.has(level)) {
         this.sources.select(level);
         if (this.levelSel.value !== this.loadedSource) await this.loadLevel(this.levelSel.value);
@@ -418,9 +426,16 @@ export class TextureLibrary {
     const generation = ++this.loadGeneration;
     const selection = this.levelSel.value;
     try {
-      const tex = await fetchJson<LevelTextures>(`/api/textures?level=${encodeURIComponent(level)}`);
-      tex.level = await pinAssetMap(level);
+      const bank = await referenceLibraryBank(level);
+      const tex = await fetchJson<LevelTextures>(`/api/textures?level=${encodeURIComponent(bank)}`);
+      tex.level = await pinAssetMap(bank);
+      const identities = await pinReferenceAssets(
+        tex.level,
+        'texture',
+        tex.tiles.map(tile => tile.name),
+      );
       if (generation !== this.loadGeneration || this.levelSel.value !== selection) return null;
+      this.tileLevels = identities;
       if (level !== CUSTOM_TEX_LEVEL) {
         registerReferenceTextureRevisions(
           tex.level,
@@ -462,6 +477,7 @@ export class TextureLibrary {
         throw new Error(this.loadError || `could not load ${resolvedLevel} textures`);
     }
     resolvedLevel = await pinAssetMap(resolvedLevel);
+    if (!pinned) resolvedLevel = await pinReferenceAsset(resolvedLevel, 'texture', name);
     if (pinned) this.sources.select(resolvedLevel);
     const fullRef = makeTexRef(resolvedLevel, name);
     this.selKey = `tile:${fullRef}`;
@@ -505,7 +521,7 @@ export class TextureLibrary {
   /** Move the selection box to `selKey` without a re-render, so the grid keeps its place. */
   private markSelected() {
     for (const tile of this.body.querySelectorAll<HTMLElement>('.sp-tile[data-ref]'))
-      tile.classList.toggle('sel', `tile:${tile.dataset.ref}` === this.selKey);
+      tile.classList.toggle('sel', `tile:${tile.dataset.assetRef ?? tile.dataset.ref}` === this.selKey);
   }
 
   private render() {
@@ -531,7 +547,9 @@ export class TextureLibrary {
     if (filt2) filt2.style.display = this.pick ? 'none' : '';
     const staged = !this.pick && this.hideStaged ? (this.cb.stagedRefs?.() ?? null) : null; // refs already in the Palette
     const shown = this.tex.tiles.filter(
-      t => (custom || !this.hideUnused || t.count > 0) && !(staged && staged.has(makeTexRef(this.tex!.level, t.name))),
+      t =>
+        (custom || !this.hideUnused || t.count > 0) &&
+        !(staged && staged.has(makeTexRef(this.tileLevels.get(t.name) ?? this.tex!.level, t.name))),
     );
     const hint = document.createElement('p');
     hint.className = 'sp-hint';
@@ -565,13 +583,14 @@ export class TextureLibrary {
   /** A tile swatch; click makes it the brush, drag stages it into the Palette. Both land at the default
    *  ride feel (snow) — set the ride feel per-cell in the Palette's Surface mode. */
   private tileSwatch(t: TexTile): HTMLElement {
-    const ref = makeTexRef(this.tex!.level, t.name);
+    const level = this.tileLevels.get(t.name) ?? this.tex!.level;
+    const ref = makeTexRef(level, t.name);
     const sw = document.createElement('div');
     sw.className = 'sp-tile';
     sw.dataset.ref = makeTexRef(this.loadedSource || this.tex!.level, t.name);
     sw.dataset.assetRef = ref;
     if (this.selKey === `tile:${ref}`) sw.classList.add('sel');
-    setAssetBackground(sw, textureUrl(this.tex!.level, t.name));
+    setAssetBackground(sw, textureUrl(level, t.name));
     const label = t.name.replace(/\.png$/i, '');
     tooltip(
       sw,

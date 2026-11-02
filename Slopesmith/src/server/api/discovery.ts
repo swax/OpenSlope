@@ -196,6 +196,11 @@ async function levelBranch(level: string): Promise<Record<string, unknown>> {
       link('root', '/api'),
       link('level', `/api/level?name=${name}`, 'Terrain patches, course line, splines, AI paths, sun and world record'),
       link(
+        'asset-manifest',
+        `/api/map-asset-manifest?level=${name}`,
+        'Individual texture, prop and physics-body identities and dependencies',
+      ),
+      link(
         'portable-files',
         `/api/map-files?level=${name}`,
         'Portable course file list; add &path=<file> to read its bytes for browser export',

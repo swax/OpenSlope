@@ -242,7 +242,10 @@ export async function preparePublicPlayer(
     viewport.syncLiveModels(authoredModelLevelProps(document));
     const donors = new Set(
       (document.props ?? [])
-        .map(prop => prop.level)
+        .flatMap(prop => [
+          prop.level,
+          ...(prop.nativeCollision?.physicsSource?.level ? [prop.nativeCollision.physicsSource.level] : []),
+        ])
         .filter(level => !!parseAssetVersion(level) || (!level.startsWith('@') && !!findMapChoice(copies, level))),
     );
     const installed = new Set<string>();

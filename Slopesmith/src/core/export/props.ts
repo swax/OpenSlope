@@ -15,6 +15,7 @@ import {
 } from '../reference/props';
 import { safeDataName } from './names';
 import type { MaterialCombiner } from './materials';
+import { parseTexRef } from '../paint/textures';
 
 /**
  * The OBJ bakes an export appends to `Props.obj` (and `GemModels.obj`): placed reference props, authored
@@ -670,7 +671,7 @@ export function bakeAuthoredModelProps(
     const slot = model.texture
       ? combiner.resolveTileSlot(
           model.texture,
-          authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
+          authoredModelFrames(model).map(ref => parseTexRef(ref).name),
           false,
           undefined,
           true,

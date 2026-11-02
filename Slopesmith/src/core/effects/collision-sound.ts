@@ -5,6 +5,9 @@
  * module contains resolver behavior only; it intentionally carries no retail event table or level→bank map.
  */
 
+import { assetMapKey, parseAssetVersion } from '../reference/asset-version';
+import { splitMapSource } from '../reference/map-source';
+
 export type CollisionSoundBank = 'course' | 'crowd';
 
 export interface ResolvedCollisionSound {
@@ -70,12 +73,23 @@ export function clearCollisionSoundIndexes(): void {
 
 function indexFor(level?: string): CollisionSoundIndex | undefined {
   const exact = level?.trim().toUpperCase();
-  return exact ? indexes.get(exact) : indexes.values().next().value;
+  if (!exact) return indexes.values().next().value;
+  const found = indexes.get(exact);
+  if (found) return found;
+  const asset = parseAssetVersion(level!.trim());
+  return asset?.kind
+    ? [...indexes.values()].find(index => assetMapKey(splitMapSource(index.Level).name) === asset.map)
+    : undefined;
+}
+
+/** Individual geometry keeps native audio on its existing map/bank identity. */
+export function collisionSoundLevel(level: string): string {
+  const asset = parseAssetVersion(level);
+  return asset?.kind ? (indexFor(level)?.Level ?? asset.map) : level;
 }
 
 /** The on-disk group-2 course bank recovered for a level, or null until that level's sidecar is loaded. */
-export const courseBankName = (level: string): string | null =>
-  indexes.get(level.trim().toUpperCase())?.Banks['2'] ?? null;
+export const courseBankName = (level: string): string | null => indexFor(level)?.Banks['2'] ?? null;
 
 /** Event id → bank class + slot, sourced from a registered map sidecar. Pass a level whenever one is known so
  * a document extracted from one executable/region can never silently resolve another level's event. */
@@ -87,8 +101,8 @@ export function resolveCollisionSound(eventId: number, level?: string): Resolved
 
 /** Compact extracted source path with `Maps/` and `Audio/SFX/` elided. */
 export function collisionSoundSource(level: string, eventId: number): string | null {
-  const sourceLevel = level.trim().toUpperCase();
-  const index = indexes.get(sourceLevel);
+  const sourceLevel = collisionSoundLevel(level).trim().toUpperCase();
+  const index = indexFor(level);
   const entry = index?.CollisionEvents[String(Math.trunc(eventId))];
   if (!index || !entry) return null;
   const relative = entry.Clip.replace(/^Audio\/SFX\//i, '').replace(/^\/+/, '');
@@ -97,7 +111,7 @@ export function collisionSoundSource(level: string, eventId: number): string | n
 
 /** MainType-8 PlaySound nodes store a direct group-2 course-bank slot. */
 export function effectSoundSource(level: string, slot: number): string | null {
-  const sourceLevel = level.trim().toUpperCase();
+  const sourceLevel = collisionSoundLevel(level).trim().toUpperCase();
   const sourceSlot = Math.trunc(slot);
   const bank = courseBankName(sourceLevel);
   if (!sourceLevel || !bank || !Number.isFinite(slot) || sourceSlot < 0 || sourceSlot > 999) return null;

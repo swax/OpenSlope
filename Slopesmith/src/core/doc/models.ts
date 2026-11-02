@@ -2,6 +2,7 @@ import type { AuthoredModel, PlacedProp, QuadMeshDoc, V3 } from './types';
 import { seedMeshIds } from './ids';
 import { orientUV } from '../paint/orientation';
 import type { LevelProps } from '../reference/props';
+import { parseTexRef } from '../paint/textures';
 import {
   applyQuat,
   conjugateQuat,
@@ -354,7 +355,7 @@ export function authoredModelLevelProps(mdoc: QuadMeshDoc): LevelProps {
     if (model.texture)
       materials.set(modelNumber(model.id), {
         tex: model.texture,
-        frames: authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
+        frames: authoredModelFrames(model).map(ref => parseTexRef(ref).name),
         pixelAlpha: true,
       });
   }

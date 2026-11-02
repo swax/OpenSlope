@@ -15,6 +15,7 @@ import { findMapChoice, splitMapSource } from '../core/reference/map-source';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
 import { withProjectAssets } from './project-assets';
 import { listImportedProps } from './routes/imported-props';
+import { parseTexRef } from '../core/paint/textures';
 
 interface Publication {
   kind: PublicCourseKind;
@@ -50,7 +51,7 @@ export function projectIsoCourses(doc: EditDoc, assetTextures: readonly string[]
       levels.add((parseAssetVersion(value)?.map ?? splitMapSource(value).name).toUpperCase());
   };
   const texture = (value: string | undefined | null) => {
-    if (value?.includes('/')) level(value.split('/')[0]);
+    if (value) level(parseTexRef(value).level);
   };
   for (const ref of Object.values(doc.quadTex ?? {})) texture(ref);
   for (const ref of assetTextures) texture(ref);
@@ -64,12 +65,7 @@ export function projectIsoCourses(doc: EditDoc, assetTextures: readonly string[]
   }
   for (const volume of doc.particleVolumes ?? []) texture(volume.texture);
   if (doc.skybox?.source.kind === 'level') level(doc.skybox.source.level);
-  const textures = Object.fromEntries(
-    Object.entries(doc.quadTex ?? {}).map(([id, ref]) => [
-      id,
-      { level: ref.split('/')[0], name: ref.split('/').slice(1).join('/') },
-    ]),
-  );
+  const textures = Object.fromEntries(Object.entries(doc.quadTex ?? {}).map(([id, ref]) => [id, parseTexRef(ref)]));
   // Rails/gems and shared sound banks need one donor even without an explicit level ref. A custom sky's ring
   // does not: the player draws the uploaded panorama on its own, and only an export cuts it against a disc's
   // measured ring (docs/025), so `retail-sky-ring` stays an export reason without becoming a play requirement.
@@ -223,8 +219,8 @@ export async function publicAssetRequest(mount: string, mounted: string, method:
   // exception must cover that donor too, otherwise an original reference becomes a proxy for retail art.
   if (mount === '/api/texture') {
     const ref = (query.get('name') ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
-    const slash = ref.indexOf('/');
-    if (slash >= 0 && ref.slice(0, slash).toLowerCase() !== name.toLowerCase()) return false;
+    const source = parseTexRef(ref).level;
+    if (source && source.toLowerCase() !== name.toLowerCase()) return false;
   }
   const map = (await listLevelOrigins()).find(map => map.name.toLowerCase() === name.toLowerCase());
   return !!map && !map.retailData;

@@ -79,6 +79,8 @@ export type TopBarDeps = {
   saveToFolder?: () => void;
   saveOfflineCopy?: () => void;
   exportDialog: () => void;
+  assetMigrationDialog: () => void;
+  canReviewAssetReferences?: () => boolean;
   settingsDialog: () => void;
   exitEditor: (destination?: string) => void;
 };
@@ -461,6 +463,16 @@ export function createTopBar(deps: TopBarDeps) {
           desc: 'Download a ZIP for another Slopesmith instance or for Snowknife to build an ISO or mod package.',
           onClick: exportDialog,
         },
+        ...(deps.canReviewAssetReferences?.()
+          ? [
+              {
+                group: currentMountain,
+                label: 'Review asset references…',
+                desc: 'Preview migration to individually versioned textures and props.',
+                onClick: deps.assetMigrationDialog,
+              },
+            ]
+          : []),
         ...(!isLocalWorkspace() && deps.saveOfflineCopy
           ? [
               {

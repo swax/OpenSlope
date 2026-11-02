@@ -1,7 +1,7 @@
 import { normalizeBoardSound } from '../audio/board-sound';
 import type { EditDoc } from '../doc/doc-edit';
 import { authoredParticleTextures } from '../effects/particle-textures';
-import { parseTexRef } from '../paint/textures';
+import { makeTexRef, parseTexRef } from '../paint/textures';
 import type { PlacedProp, V3 } from '../doc/types';
 import { environmentDocument, normalizeEnvironmentBed } from '../audio/environment';
 import {
@@ -17,6 +17,7 @@ import {
   CUSTOM_SOUND_EVENT_POOL,
   registerCollisionSoundIndex,
   resolveCollisionSound,
+  collisionSoundLevel,
 } from '../effects/collision-sound';
 import {
   AUTHORED_AMBIENT_DEFAULT_M,
@@ -115,7 +116,9 @@ export async function buildExportFolder(
   // each retail source level (or any installed map for an authored/imported-only document) before allocating
   // custom events or staging native clips.
   const audioLevels = [
-    ...new Set((doc.props ?? []).map(prop => prop.level).filter(level => level && !level.startsWith('@'))),
+    ...new Set(
+      (doc.props ?? []).map(prop => collisionSoundLevel(prop.level)).filter(level => level && !level.startsWith('@')),
+    ),
   ];
   const soundIndexes = audioLevels.length
     ? await Promise.all(audioLevels.map(level => provider.soundIndex(level)))
@@ -232,16 +235,16 @@ export async function buildExportFolder(
     if (!model?.texture || !model.quads.length) continue;
     const { level: bank } = parseTexRef(model.texture);
     authoredTiles.add(model.texture);
-    for (const frame of authoredModelFrames(model)) authoredTiles.add(`${bank}/${frame.slice(frame.indexOf('/') + 1)}`);
+    for (const frame of authoredModelFrames(model)) authoredTiles.add(makeTexRef(bank, parseTexRef(frame).name));
   }
   await Promise.all(
     [...authoredTiles].map(async ref => {
       const { level, name } = parseTexRef(ref);
       try {
         const image = await provider.decodePng(await provider.referenceTexture(level, name));
-        tileAnalyses.set(ref, analyzeTexturePixels(image.data, image.w, image.h));
+        tileAnalyses.set(makeTexRef(level, name), analyzeTexturePixels(image.data, image.w, image.h));
       } catch (e) {
-        tileAnalyses.set(ref, { kind: 'unknown', glow: false });
+        tileAnalyses.set(makeTexRef(level, name), { kind: 'unknown', glow: false });
         logLines.push(
           `WARN: texture ${ref} alpha unavailable (${e instanceof Error ? e.message : e}); using preview fallback`,
         );
@@ -503,6 +506,7 @@ export async function buildExportFolder(
     return slot;
   };
   const stageBank = async (level: string, event: number): Promise<string | undefined> => {
+    level = collisionSoundLevel(level);
     const resolved = resolveCollisionSound(event, level);
     if (!resolved) return undefined;
     const safeLevel = level.replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase();
@@ -520,6 +524,7 @@ export async function buildExportFolder(
     return clip;
   };
   const stageExternalBank = async (level: string, event: number): Promise<string | undefined> => {
+    level = collisionSoundLevel(level);
     const resolved = resolveExternalSound(event, level);
     if (!resolved) return undefined;
     const safeLevel = level.replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase();

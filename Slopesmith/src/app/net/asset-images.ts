@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { parseAssetVersion } from '../../core/reference/asset-version';
-import { workspaceFetch } from './workspace';
+import { workspaceFetch, assetWorkspaceGeneration } from './workspace';
 import { reportTextureLoad } from '../state/asset-loads';
 import { missingTextureCanvas, missingTextureUrl } from '../viewport/missing-texture';
+import { referenceAssetRequest } from './asset-cache';
 
 const urls = new Map<string, Promise<string>>();
 export function versionedAssetUrl(url: string): boolean {
@@ -11,6 +12,7 @@ export function versionedAssetUrl(url: string): boolean {
 }
 
 function workspaceImage(url: string): boolean {
+  if (referenceAssetRequest(url)) return true;
   if (versionedAssetUrl(url)) return true;
   const value = new URL(url, globalThis.location?.origin ?? 'http://localhost');
   return (
@@ -23,7 +25,8 @@ function workspaceImage(url: string): boolean {
 /** Local and versioned images use the workspace transport; local files can be read only when requested. */
 export function imageAssetUrl(url: string): Promise<string> {
   if (!workspaceImage(url)) return Promise.resolve(url);
-  let pending = urls.get(url);
+  const key = `${assetWorkspaceGeneration()}:${url}`;
+  let pending = urls.get(key);
   if (!pending) {
     pending = (async () => {
       const response = await workspaceFetch(url);
@@ -33,9 +36,9 @@ export function imageAssetUrl(url: string): Promise<string> {
       }
       return URL.createObjectURL(await response.blob());
     })();
-    urls.set(url, pending);
+    urls.set(key, pending);
     void pending.catch(() => {
-      if (urls.get(url) === pending) urls.delete(url);
+      if (urls.get(key) === pending) urls.delete(key);
     });
   }
   return pending;
@@ -108,10 +111,11 @@ export function loadAssetTexture(
     reportTextureLoad(url, 'missing');
     onError?.(error, texture);
   };
-  const texture: THREE.Texture<CanvasImageSource> = workspaceImage(url)
+  const useWorkspace = typeof Image !== 'undefined' && !!loader.manager && workspaceImage(url);
+  const texture: THREE.Texture<CanvasImageSource> = useWorkspace
     ? new THREE.Texture<CanvasImageSource>()
     : loader.load(url, loaded, onProgress, missing);
-  if (!workspaceImage(url)) return texture;
+  if (!useWorkspace) return texture;
   const image = new Image();
   loader.manager.itemStart(url);
   image.onload = () => {

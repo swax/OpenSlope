@@ -14,6 +14,34 @@ import {
 import { mapGame } from '../core/reference/map-game';
 import { safeDataName } from '../core/export/names';
 import { referenceMapData, resolveServerMapName } from './reference-map-paths';
+import { readAssetManifest } from '../shared/map-asset-manifest';
+import type { AssetManifest } from '../core/reference/asset-manifest';
+import { assetRequestCovered } from '../core/reference/asset-manifest';
+import { readLevelProps } from './routes/props';
+const manifests = new Map<string, Promise<AssetManifest>>();
+
+export async function serverMapAssetManifest(name: string): Promise<AssetManifest> {
+  const level = await resolveServerMapName(name);
+  if (!level || safeDataName(level) !== level) throw new Error('Invalid asset map name.');
+  const files = await assetBankFiles(referenceMapData(), level);
+  const signature = await serverAssetSignature(level, files);
+  const key = `${mapsRoot()}/${level}/${await sha256(new TextEncoder().encode(signature))}`;
+  let value = manifests.get(key);
+  if (!value) {
+    // Retain only the current snapshot of this bank.
+    for (const previous of manifests.keys())
+      if (previous.startsWith(`${mapsRoot()}/${level}/`)) manifests.delete(previous);
+    value = readAssetManifest(referenceMapData(), level, () => readLevelProps(level)).then(manifest => {
+      for (const asset of manifest.assets) registerServerAssetVersion(asset.id, level);
+      return manifest;
+    });
+    manifests.set(key, value);
+    void value.catch(() => {
+      if (manifests.get(key) === value) manifests.delete(key);
+    });
+  }
+  return value;
+}
 
 const cache = new Map<string, { signature: string; value: Promise<AssetVersion> }>();
 const pending = new Map<string, Promise<AssetVersion>>();
@@ -36,10 +64,9 @@ export async function serverMapAssetVersion(name: string): Promise<AssetVersion>
   return value;
 }
 
-async function readServerVersion(level: string, key: string): Promise<AssetVersion> {
+async function serverAssetSignature(level: string, files: readonly string[]): Promise<string> {
   const io = referenceMapData();
-  const files = await assetBankFiles(io, level);
-  const signature = JSON.stringify(
+  return JSON.stringify(
     await Promise.all(
       [...files, 'Origin.json', 'Import.json'].map(async path => {
         try {
@@ -51,6 +78,12 @@ async function readServerVersion(level: string, key: string): Promise<AssetVersi
       }),
     ),
   );
+}
+
+async function readServerVersion(level: string, key: string): Promise<AssetVersion> {
+  const io = referenceMapData();
+  const files = await assetBankFiles(io, level);
+  const signature = await serverAssetSignature(level, files);
   const found = cache.get(key);
   if (found?.signature === signature) return found.value;
   const hashes = new Map<string, string>();
@@ -76,9 +109,13 @@ export async function resolveServerAssetVersion(id: string): Promise<string> {
   const expected = parseAssetVersion(id);
   if (!expected) return resolveServerMapName(id);
   const known = serverAssetVersionName(id);
+  const matches = async (name: string) =>
+    expected.kind
+      ? (await serverMapAssetManifest(name)).assets.some(asset => asset.id === id)
+      : (await serverMapAssetVersion(name)).id === id;
   if (known) {
     try {
-      if ((await serverMapAssetVersion(known)).id === id) return known;
+      if (await matches(known)) return known;
     } catch {
       /* Check other copies. */
     }
@@ -88,7 +125,7 @@ export async function resolveServerAssetVersion(id: string): Promise<string> {
   );
   for (const map of candidates) {
     try {
-      if ((await serverMapAssetVersion(map.name)).id === id) {
+      if (await matches(map.name)) {
         registerServerAssetVersion(id, map.name);
         return map.name;
       }
@@ -104,7 +141,13 @@ export async function resolveServerAssetVersion(id: string): Promise<string> {
 /** Immutable image cache entries must contain exactly the bytes from the pinned bank. */
 export async function validateVersionedTexture(id: string | null, name: string, bytes: Uint8Array): Promise<void> {
   if (!id) return;
-  const expected = textureHashes.get(id)?.get(`textures/${name}`.toLowerCase());
+  const version = parseAssetVersion(id);
+  const asset =
+    version?.kind &&
+    (await serverMapAssetManifest(await resolveServerAssetVersion(id))).assets.find(asset => asset.id === id);
+  const expected = asset
+    ? Object.entries(asset.files).find(([path]) => path.toLowerCase() === `textures/${name}`.toLowerCase())?.[1]
+    : textureHashes.get(id)?.get(`textures/${name}`.toLowerCase());
   if (!expected || (await sha256(bytes)) !== expected)
     throw new AssetVersionUnavailable('The requested texture version is unavailable.');
 }
@@ -121,9 +164,15 @@ export async function resolveVersionedApiUrl(path: string, mount?: string): Prom
   for (const parameter of ['level', ...(endpoint === '/api/level' ? ['name'] : [])]) {
     const id = url.searchParams.get(parameter) ?? '';
     if (parseAssetVersion(id)) {
+      const resource = mount ? mount + (url.pathname === '/' ? '' : url.pathname) : endpoint;
+      if (!assetRequestCovered(parseAssetVersion(id)!, resource, url.searchParams))
+        throw new AssetVersionUnavailable('This asset identity does not cover the requested resource.');
       // Image requests validate the individual file against the already fingerprinted bank. Walking
       // and stat-ing an entire map for every thumbnail would turn a library into quadratic disk work.
-      const known = endpoint === '/api/texture' && textureHashes.has(id) ? serverAssetVersionName(id) : undefined;
+      const known =
+        endpoint === '/api/texture' && !parseAssetVersion(id)?.kind && textureHashes.has(id)
+          ? serverAssetVersionName(id)
+          : undefined;
       url.searchParams.set(parameter, known ?? (await resolveServerAssetVersion(id)));
       url.searchParams.set('assetVersion', id);
     }

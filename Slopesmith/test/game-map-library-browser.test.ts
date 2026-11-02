@@ -407,6 +407,8 @@ try {
     const { fetchJson } = (await import(/* @vite-ignore */ moduleUrl)) as typeof import('../src/app/net/fetch-json');
     const assetModuleUrl = '/src/app/net/asset-paths.ts';
     const { textureUrl } = await import(/* @vite-ignore */ assetModuleUrl);
+    const clientModuleUrl = '/src/app/net/client.ts';
+    const { clientFetch } = await import(/* @vite-ignore */ clientModuleUrl);
     const result = [];
     for (const source of ['local', 'server']) {
       const id = `${source}:BANK_0_0`;
@@ -420,7 +422,7 @@ try {
         `/api/props?level=${encodeURIComponent(id)}`,
       );
       const bitmap = await createImageBitmap(
-        await (await fetch(textureUrl(id, source === 'local' ? 'local.png' : '0000.png'))).blob(),
+        await (await clientFetch(textureUrl(id, source === 'local' ? 'local.png' : '0000.png'))).blob(),
       );
       const canvas = new OffscreenCanvas(2, 2);
       const ctx = canvas.getContext('2d')!;
