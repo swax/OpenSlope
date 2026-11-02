@@ -63,7 +63,9 @@ def checksum(path: Path) -> str:
 
 
 def finish_asset(path: Path) -> None:
-    path.with_name(path.name + ".sha256").write_text(f"{checksum(path)}  {path.name}\n", encoding="utf-8")
+    path.with_name(path.name + ".sha256").write_text(
+        f"{checksum(path)}  {path.name}\n", encoding="utf-8", newline="\n"
+    )
 
 
 def dependency_notices(publish: Path, destination: Path) -> list[dict]:

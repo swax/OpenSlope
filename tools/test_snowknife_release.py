@@ -16,6 +16,18 @@ release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
 
 
+class ChecksumTests(unittest.TestCase):
+    def test_checksum_files_use_lf_for_cross_platform_verification(self):
+        with tempfile.TemporaryDirectory(prefix="snowknife-checksum-test-") as folder:
+            archive = Path(folder) / "snowknife-1.2.3-win-x64.zip"
+            archive.write_bytes(b"archive fixture\n")
+            release.finish_asset(archive)
+            self.assertEqual(
+                archive.with_name(archive.name + ".sha256").read_bytes(),
+                f"{release.checksum(archive)}  {archive.name}\n".encode("utf-8"),
+            )
+
+
 class SourceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="snowknife-release-test-")
