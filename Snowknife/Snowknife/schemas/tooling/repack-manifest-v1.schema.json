@@ -15,6 +15,7 @@
       "items": { "$ref": "#/$defs/level" }
     },
     "Noclip": { "type": "boolean" },
+    "BareSlot": { "type": "boolean", "description": "Hide the donor course's scenery and silence its emitters while keeping the start and finish markers." },
     "TextureType2": {
       "type": "boolean",
       "description": "Encode custom terrain and prop pages as retail-shaped 8-bit indexed type 2 instead of 32-bit type 5."
@@ -35,7 +36,7 @@
       "properties": {
         "Slot": { "type": "string", "minLength": 1 },
         "LevelData": { "type": "string", "minLength": 1 },
-        "Export": { "type": "string", "minLength": 1 }
+        "Export": { "type": "string", "minLength": 1, "description": "A map folder or .snowknife.zip archive." }
       }
     }
   }

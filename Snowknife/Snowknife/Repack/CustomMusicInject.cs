@@ -48,11 +48,12 @@ internal static class CustomMusicInject
         return arrangement;
     }
 
-    public static void Apply(IsoService iso, string outIso, string level, string customDir, string tmp)
+    public static void Apply(IsoService iso, string outIso, string level, string customDir, string tmp,
+                             ModManagerPackage? package = null)
     {
         string wav = Path.Combine(customDir, "Music", "track.wav");
         if (!File.Exists(wav)) return;
-        ApplyWav(iso, outIso, level, wav, ReadArrangement(customDir), Path.Combine(tmp, "custom_music"));
+        ApplyWav(iso, outIso, level, wav, ReadArrangement(customDir), Path.Combine(tmp, "custom_music"), package);
     }
 
     public static int Command(IsoService iso, string[] args)
@@ -102,7 +103,7 @@ internal static class CustomMusicInject
     }
 
     private static void ApplyWav(IsoService iso, string outIso, string level, string wavPath,
-                                 Arrangement arrangement, string work)
+                                 Arrangement arrangement, string work, ModManagerPackage? package = null)
     {
         Directory.CreateDirectory(work);
         string mapInfPath = Path.Combine(work, "MUSICMAP.INF");
@@ -142,21 +143,37 @@ internal static class CustomMusicInject
         byte[] mpf = arrangement.Linear ? BuildLinearMpf(donorMpf) : donorMpf;
         byte[] mus = BuildRetailShapedMus(donorMpf, donorMus, pcm, arrangement);
 
-        string newBig = Path.Combine(work, "MUSIC.new.BIG");
-        BigfRebuilder.ReplaceMembers(musicBigPath, newBig, new Dictionary<string, byte[]>
+        var replacements = new Dictionary<string, byte[]>
         {
             [mpfName] = mpf,
             [musName] = mus,
-        });
-        if (!BigfRebuilder.ReadMember(newBig, mpfName).Data.SequenceEqual(mpf) ||
-            !BigfRebuilder.ReadMember(newBig, musName).Data.SequenceEqual(mus))
-            throw new InvalidDataException("rebuilt MUSIC.BIG failed member verification");
-
+        };
         File.WriteAllText(mapInfPath, RestrictPlaylist(mapText, mapSection, shortName));
         File.WriteAllText(musicInfPath, UpdateMusicSettings(infText, songSection, arrangement));
-        iso.ReplaceFile(outIso, @"DATA\AUDIO\MUSIC.BIG", newBig);
-        iso.ReplaceFile(outIso, @"DATA\CONFIG\MUSIC.INF", musicInfPath);
-        iso.ReplaceFile(outIso, @"DATA\CONFIG\MUSICMAP.INF", mapInfPath);
+        if (package != null)
+        {
+            // Resolve names through the original archive: INF entries may use basenames while big insert
+            // needs each member's complete archive-relative path.
+            var members = new Dictionary<string, byte[]>
+            {
+                [BigfRebuilder.ReadMember(musicBigPath, mpfName).Path] = mpf,
+                [BigfRebuilder.ReadMember(musicBigPath, musName).Path] = mus,
+            };
+            package.AddArchiveMembers(@"data\audio\music.big", members);
+            package.AddFile(@"data\config\music.inf", musicInfPath);
+            package.AddFile(@"data\config\musicmap.inf", mapInfPath);
+        }
+        else
+        {
+            string newBig = Path.Combine(work, "MUSIC.new.BIG");
+            BigfRebuilder.ReplaceMembers(musicBigPath, newBig, replacements);
+            if (!BigfRebuilder.ReadMember(newBig, mpfName).Data.SequenceEqual(mpf) ||
+                !BigfRebuilder.ReadMember(newBig, musName).Data.SequenceEqual(mus))
+                throw new InvalidDataException("rebuilt MUSIC.BIG failed member verification");
+            iso.ReplaceFile(outIso, @"DATA\AUDIO\MUSIC.BIG", newBig);
+            iso.ReplaceFile(outIso, @"DATA\CONFIG\MUSIC.INF", musicInfPath);
+            iso.ReplaceFile(outIso, @"DATA\CONFIG\MUSICMAP.INF", mapInfPath);
+        }
         Log.Info($"  PathFinder slot: [{songSection}] {mpfName} ({arrangement.Mode}) + {musName}; " +
                           $"{mapSection} playlist narrowed to {shortName}, async/delay mix disabled.");
         Log.Info(arrangement.Linear

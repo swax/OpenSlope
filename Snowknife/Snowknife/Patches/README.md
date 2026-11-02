@@ -5,6 +5,11 @@ dumped from your own disc. `snowknife` applies them in place and can take them b
 again: `snowknife noclip` and `snowknife skycolor` apply one each, and `repack --patches`
 accepts a selection (`noclip`, `hud-text`, `skycolor`) while it builds.
 
+`terrain-buffer.*.json` is an automatic compatibility adjustment for dense courses. Repack derives
+matching allocation and initialization sizes from the course's patch count; manager packages carry
+those same instructions in `PCSX2Patch.txt`. The descriptor's default payload is six 64 KiB pages.
+Its reproducible generator is [`../../tools/terrain_buffer_patch.py`](../../tools/terrain_buffer_patch.py).
+
 ## Reading a patch file
 
 A definition names a target build — each supported boot executable gets its own file, and the

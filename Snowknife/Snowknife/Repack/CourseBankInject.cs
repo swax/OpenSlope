@@ -35,7 +35,8 @@ internal static class CourseBankInject
     /// regenerated, so resolving clips through it here is what keeps the shipped rows and the encoded slots
     /// talking about the same sound.</param>
     public static void Apply(IsoService iso, string outIso, string level, string customDir, string workDir,
-                             string tmp, int soundRate = 0, IReadOnlyDictionary<int, int>? eventRemap = null)
+                             string tmp, int soundRate = 0, IReadOnlyDictionary<int, int>? eventRemap = null,
+                             ModManagerPackage? package = null)
     {
         int Routed(int eventId) =>
             eventRemap != null && eventRemap.TryGetValue(eventId, out int moved) ? moved : eventId;
@@ -294,11 +295,19 @@ internal static class CourseBankInject
         if (member.Data.Length > LargestRetailCourseBank)
             Log.Warn($"  WARN: {bankName}.bnk is now {member.Data.Length:N0} bytes, past the {LargestRetailCourseBank:N0} "
                 + "of the largest bank retail ships — shorten the custom clips if course sounds misbehave.");
-        string newBig = Path.Combine(tmp, "AUDIO.new.BIG");
-        File.WriteAllBytes(newBig, archive.Write());
-        iso.ReplaceFile(outIso, @"DATA\AUDIO\AUDIO.BIG", newBig);
-        Log.Info($"  AUDIO.BIG rebuilt: {changed} slot(s) injected into {bankName}.bnk ({member.Data.Length:N0} bytes).");
-        WriteDiscSoundManifest(outIso, level, bankName, member.Data.Length, original, shipped, loopedSlots);
+        if (package != null)
+        {
+            package.AddArchiveMembers(@"data\audio\audio.big", new Dictionary<string, byte[]> { [member.Path] = rebuilt });
+            Log.Info($"  Packaged {bankName}.bnk: {changed} slot(s), {member.Data.Length:N0} bytes.");
+        }
+        else
+        {
+            string newBig = Path.Combine(tmp, "AUDIO.new.BIG");
+            File.WriteAllBytes(newBig, archive.Write());
+            iso.ReplaceFile(outIso, @"DATA\AUDIO\AUDIO.BIG", newBig);
+            Log.Info($"  AUDIO.BIG rebuilt: {changed} slot(s) injected into {bankName}.bnk ({member.Data.Length:N0} bytes).");
+            WriteDiscSoundManifest(outIso, level, bankName, member.Data.Length, original, shipped, loopedSlots);
+        }
     }
 
     /// <summary>

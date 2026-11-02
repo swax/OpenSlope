@@ -1,0 +1,25 @@
+{
+  "name": "terrain-buffer",
+  "target": "SLUS_203.26",
+  "formatVersion": 2,
+  "targetSize": 2928240,
+  "notes": "Expands terrain submission storage without changing course geometry. The two authored LUI instructions set matching allocation and initialization sizes in 64 KiB pages; repack parameterizes both immediates from the complete patch count and never shrinks an existing supported allocation. The default payload provides six pages. The stock pool holds 2048 records and its unchecked append can overwrite adjacent objects on dense maps. Only verification digests of displaced instructions are shipped. Evidence: [Trailmap: 400-terrain-buffer].",
+  "runtimeAddresses": [
+    1945940,
+    1946004
+  ],
+  "regions": [
+    {
+      "fileOffset": 901460,
+      "length": 4,
+      "originalSha256": "a0d37b0015e3b91e33008accce638bdcb75fb8fcfa301ae08be7e2770d9584c9",
+      "patched": "0600053c"
+    },
+    {
+      "fileOffset": 901524,
+      "length": 4,
+      "originalSha256": "ce428bdc7c1d3dca0acfd40a8a6ce9ced540f7ae7385be9bcb9faa079f104c47",
+      "patched": "0600063c"
+    }
+  ]
+}

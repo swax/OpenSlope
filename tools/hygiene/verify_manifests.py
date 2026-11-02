@@ -49,6 +49,7 @@ GENERATORS = {
     "noclip_patch.py": "noclip-fly-mode",
     "sky_color_patch.py": "sky-color",
     "debug_text_patch.py": "debug-text",
+    str(REPO / "Snowknife/tools/terrain_buffer_patch.py"): "terrain-buffer",
 }
 
 

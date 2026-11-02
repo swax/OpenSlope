@@ -17,7 +17,7 @@ namespace Snowknife.Services;
 /// so the file names where to copy each one from in the executable being patched instead of reproducing it. Grafts are
 /// resolved before the first write, while the sites they read from are still intact.
 /// </summary>
-internal sealed class ElfPatchService
+internal sealed partial class ElfPatchService
 {
     private readonly IsoService _iso;
 

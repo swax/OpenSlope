@@ -35,11 +35,37 @@ When an export contains authored props, Snowknife ships the fully regenerated PB
 
 Without authored props, target scenery remains unless `--bare-slot` is selected. That option delists donor scenery while preserving the StageArea start/finish instance. It is useful for a deliberately empty authored slot; it is not required to replace scenery when a custom prop population is present.
 
+For a full prop build with `--bare-slot`, hidden donor instances have their effect and physics bindings
+cleared. Donor models unused by surviving instances become empty payloads while their rows and names
+stay in place. Models shared with authored instances or gem pickups, both StageArea markers, and all
+authored model rows are retained. The repacker then keeps texture pages referenced by the final terrain,
+model materials and flipbooks, plus fallback slot zero. Unused main-bank and inherited lightmap pages
+become 16-pixel placeholders without changing page indexes; referenced pages are copied verbatim.
+
+This is a load-time RAM requirement as well as a rendering optimization. The dense GBA Garibaldi build
+exhausted the main heap while allocating another texture: its remaining free block was only 7,856 bytes.
+Removing 646 unreachable donor model payloads and reducing the unused texture and lightmap pages
+avoids carrying the hidden retail scenery alongside the imported course. The terrain submission buffer
+below addresses the separate per-frame overflow.
+
 ## World grid (`.ltg`)
+
+The terrain submission buffer is a separate runtime constraint: stock Tricky reserves 48 KiB for
+2,048 records of 24 bytes and appends visible patches without checking capacity. A dense GBA view
+submitted 2,895 patches and overwrote the adjacent lighting manager. Repack conservatively sizes
+the pool for the complete course, rounded to 64 KiB pages with a 1 MiB supported ceiling. It updates
+allocation and initialization together; executable builds use verified patch regions and manager
+packages use the same instructions in `PCSX2Patch.txt`. See [dense terrain](../REPACK.md#dense-terrain).
 
 The LTG is both the collision broad-phase and the per-frame render-gather grid. Every regenerated PBD must ship with an LTG regenerated from its final patches and instances.
 
 `LTGHandler.RegenerateCentreLTG` reuses the compact topology of the target LTG. The from-scratch origin-grid path produces a much larger grid and is not used for repacking.
+
+After regeneration, Snowknife aligns the header's horizontal origin and extent with
+the whole-cell boundaries used to place the grid. Tricky subtracts that origin
+directly when selecting a cell. Unsnapped geometry bounds can select an adjacent
+empty cell, leaving riders black at the start until they move into a populated
+cell. Alignment preserves the existing patch lists and light crossing lists.
 
 The observed retail rules are:
 

@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using Newtonsoft.Json.Linq;
 
 namespace Snowknife.Repack;
@@ -45,7 +47,7 @@ internal static class CanonicalMapProps
             source.Materials.Add(new Material(
                 (string?)material["MaterialName"] ?? "",
                 (string?)material["TexturePath"] ?? "",
-                (long?)material["UnknownInt18"] ?? 0,
+                MaterialFlags(material),
                 (material["TextureFlipbook"] as JArray ?? new JArray())
                     .Select(frame => (string?)frame ?? "").Where(frame => frame.Length > 0).ToList()));
 
@@ -74,6 +76,14 @@ internal static class CanonicalMapProps
             }
             catch { /* Effects validation reports malformed authoring metadata; canonical props still load. */ }
         return models.Count > 0 ? source : null;
+    }
+
+    private static long MaterialFlags(JToken material)
+    {
+        long flags = (long?)material["UnknownInt18"] ?? 0;
+        // Portable importers describe transparency without carrying a PS2 material word.
+        string? alpha = (string?)material["AlphaMode"];
+        return alpha is "cutout" or "blend" ? flags | 0x40000 : flags;
     }
 
     /// <summary>Every tile ref a material draws through: the resting page and each flipbook frame.</summary>
@@ -148,7 +158,7 @@ internal static class CanonicalMapProps
         {
             var (name, texture, int18, frames) = source.Materials[i];
             var entry = (JObject)materialTemplate.DeepClone();
-            entry["MaterialName"] = name.Length > 0 ? name : $"SlopesmithProp_{i}";
+            entry["MaterialName"] = LinkerMaterialName(name.Length > 0 ? name : $"SlopesmithProp_{i}");
             entry["TexturePath"] = InstalledSlot(texture, name, "TexturePath");
             entry["UnknownInt18"] = int18;
             // The state list ships whole: a flip node steps the material's frames, so dropping them leaves an
@@ -199,7 +209,7 @@ internal static class CanonicalMapProps
                     if (!File.Exists(sourcePath))
                         throw new FileNotFoundException($"Canonical prop mesh not found: {sourcePath}", sourcePath);
                     string targetName = $"ap{sourceModelIndex}_{meshSerial++}.obj";
-                    File.Copy(sourcePath, Path.Combine(targetMeshes, targetName), overwrite: true);
+                    File.WriteAllText(Path.Combine(targetMeshes, targetName), PortableObj.ForTricky(File.ReadAllText(sourcePath)));
                     mesh["MeshPath"] = targetName;
                     int sourceMaterial = (int?)mesh["MaterialID"] ?? -1;
                     mesh["MaterialID"] = sourceMaterial >= 0 && sourceMaterial < materialIndex.Length
@@ -223,6 +233,9 @@ internal static class CanonicalMapProps
 
             var instance = (JObject)instanceTemplate.DeepClone();
             foreach (var property in sourceInstance.Properties()) instance[property.Name] = property.Value.DeepClone();
+            foreach (string colour in new[] { "LightColour1", "LightColour2", "LightColour3", "AmbentLightColour" })
+                if (instance[colour] is JArray rgb && rgb.Count == 3)
+                    rgb.Add(instanceTemplate[colour]?[3]?.DeepClone() ?? new JValue(0));
             instance["ModelID"] = targetModel;
             instance["PrevInstance"] = -1;
             instance["NextInstance"] = -1;
@@ -237,7 +250,7 @@ internal static class CanonicalMapProps
             else instance["EffectSlotIndex"] = -1;
 
             if ((int?)instance["PhysicsIndex"] >= 0 && !string.IsNullOrEmpty(physicsSourceLevel)
-                && !string.Equals(physicsSourceLevel, targetLevel, StringComparison.OrdinalIgnoreCase))
+                && !TrickyAssetIdentity.SameCourse(physicsSourceLevel, targetLevel))
             {
                 Log.Warn($"  WARN: {name} cannot reuse its {physicsSourceLevel} physics body in {targetLevel}; Roller/mode-3 collision packs without that body");
                 instance["PhysicsIndex"] = -1;
@@ -271,9 +284,19 @@ internal static class CanonicalMapProps
     {
         level = ""; page = "";
         var match = System.Text.RegularExpressions.Regex.Match(texturePath ?? "", @"^p_(.+)_(\d{4})\.png$");
-        if (!match.Success) return false;
-        level = match.Groups[1].Value;
+        // Only legacy Tricky references can name a page in this disc. Flattened asset1 IDs, Custom
+        // names and art from other games are exact PNG filenames under the export's Textures/ instead.
+        if (!match.Success || !TrickyAssetIdentity.TryLegacyCourse(match.Groups[1].Value, out level)) return false;
         page = match.Groups[2].Value;
         return true;
+    }
+
+    private static string LinkerMaterialName(string name)
+    {
+        const int maxLength = 82; // MAP's fixed-width name column; the library writes without truncating.
+        if (name.Length <= maxLength) return name;
+        string tag = System.Text.RegularExpressions.Regex.Match(name, @"_scr\d{1,10}$").Value;
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name)).AsSpan(0, 6)).ToLowerInvariant();
+        return name[..(maxLength - hash.Length - tag.Length - 1)] + "_" + hash + tag;
     }
 }

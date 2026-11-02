@@ -40,6 +40,15 @@
       ],
       "properties": {
         "PatchName": { "type": "string" },
+        "SourceRecord": { "type": "integer", "minimum": 0, "description": "Original terrain record retained by portable game importers." },
+        "SourceRecords": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "The two source triangles joined into this terrain patch."
+        },
         "LightMapPoint": {
           "type": "array",
           "minItems": 4,

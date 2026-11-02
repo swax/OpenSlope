@@ -568,12 +568,12 @@ internal static class Commands
             new CliGroup("Build a custom disc",
             [
                 new CliCommand("repack",
-                    "Replace one course with a custom mountain and patch a fresh ISO",
+                    "Compile a custom course into an ISO or mod-manager package",
                     """
                     The whole recipe in one step: consume a Slopesmith export's native-shaped map
                     intermediate, clone the target slot's sidecars, append its canonical models/instances,
                     regenerate the level data and world grid, encode and install what the textures need, then
-                    pack it into a copy of the disc.
+                    pack it into a copy of the disc, or a mod-manager ZIP with --mod-manager.
 
                     Textures are installed by provenance: pages the export borrowed from a donor level go in
                     verbatim, custom ones are encoded, and both reuse the target slot's unreferenced pages
@@ -586,14 +586,25 @@ internal static class Commands
                 {
                     Params =
                     [
-                        new("<iso>", "A clean SSX Tricky image to build from. Copied, never modified."),
+                        new("<iso>", "A clean SSX Tricky image supplying the target course data. Read only."),
                         new("<courseSlot>", $"The course slot the mountain rides as. Any of {Slots}."),
                         new("<mapDir>", "That slot's own imported Maps folder - the sidecars the mountain is overlaid onto."),
-                        new("<customDir>", "The authored mountain: a Slopesmith export, or a Maps folder you edited."),
-                        new("<out.iso>", "Where the built image lands."),
+                        new("<customDir|map.zip>", "The authored map: Slopesmith's .snowknife.zip download, an extracted export, or a Maps folder you edited."),
+                        new("<out.iso|out.zip>", "Where the built image lands, or the mod ZIP when --mod-manager is selected."),
                     ],
                     Flags =
                     [
+                        new("--mod-manager", """
+                            Produce an SSX Mod Manager ZIP from the same mountain export, using a clean
+                            Tricky NTSC-U PS2 source. Course files are decompressed for the manager's loose
+                            file workspace; audio uses archive-member insertion. No output ISO is created.
+                            The manager owns executable setup, so --patches and --in-place are refused and
+                            sky-colour executable edits are skipped. Put the ZIP in the manager's
+                            Mods/SSX Tricky NTSC PS2 folder, refresh, enable it and apply mods.
+                            """),
+                        new("--mod-name <text>", "Mod display name. Defaults to the export folder name; requires --mod-manager."),
+                        new("--mod-author <text>", "Mod author. Defaults to Unknown; requires --mod-manager."),
+                        new("--mod-version <text>", "Mod version. Defaults to 1.0.0; requires --mod-manager."),
                         new("--dry-run", """
                             Run the same pipeline to the point of writing bytes and report what it found -
                             slots retained and reusable, pages in allocation order (reuse or append), bytes,
@@ -655,8 +666,8 @@ internal static class Commands
                             TextureType2, SoundRate and SkyColors=false. TextureType2=true gives every
                             encoded terrain/prop page the retail bank's 8-bit indexed shape, and SoundRate
                             caps what custom prop sounds are resampled to (retail's own ceiling is 22050).
-                            Paths resolve from the manifest's own folder. A Slopesmith export ships one
-                            beside its Repack.md.
+                            Paths resolve from the manifest's own folder. Each Export may name a map folder
+                            or a .snowknife.zip archive. Slopesmith ships this manifest inside its archive.
                             """),
                     ],
                     Flags =
@@ -677,7 +688,7 @@ internal static class Commands
                 {
                     Params =
                     [
-                        new("<exportDir>", "The authored export, whose Slopesmith.json carries the provenance behind each page."),
+                        new("<exportDir|map.zip>", "A map folder or .snowknife.zip; its Slopesmith.json carries the provenance behind each page."),
                         new("<LEVEL>", $"The course slot it would ride as: {Slots}."),
                     ],
                     Flags =

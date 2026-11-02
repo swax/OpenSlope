@@ -1,0 +1,7 @@
+{
+  "game": "ssx-tricky",
+  "platform": "ps2",
+  "region": "ntsc-u",
+  "executable": "SLUS_203.26",
+  "source": "https://github.com/GlitcherOG/SSXModManager/blob/1f4cec6/ModSystem/GameSetup.cs"
+}

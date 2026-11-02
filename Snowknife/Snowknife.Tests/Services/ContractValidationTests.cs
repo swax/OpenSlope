@@ -499,6 +499,17 @@ public class ContractValidationTests
             """;
 
         Contracts.RequireJson(sixteen, ContractKind.PatchesV1, "patch");
+        var paired = Newtonsoft.Json.Linq.JObject.Parse(sixteen);
+        var patch = paired["Patches"]![0]!;
+        patch["SourceRecord"] = 7;
+        patch["SourceRecords"] = new Newtonsoft.Json.Linq.JArray(7, 8);
+        Contracts.RequireJson(paired.ToString(), ContractKind.PatchesV1, "paired source triangles");
+        foreach (var ids in new[] { new[] { 7 }, new[] { 7, 7 }, new[] { -1, 8 }, new[] { 7, 8, 9 } })
+        {
+            patch["SourceRecords"] = new Newtonsoft.Json.Linq.JArray(ids);
+            Assert.Throws<ContractValidationException>(() =>
+                Contracts.RequireJson(paired.ToString(), ContractKind.PatchesV1, "invalid source pair"));
+        }
     }
 
     [Fact]

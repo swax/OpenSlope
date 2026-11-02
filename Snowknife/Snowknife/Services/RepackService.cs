@@ -108,6 +108,8 @@ internal sealed class RepackService
             jobs.Add((slot, Resolve((string?)item["LevelData"], $"Levels[{slot}].LevelData"),
                              Resolve((string?)item["Export"], $"Levels[{slot}].Export")));
         }
+        if (jobs.Any(job => Path.GetFullPath(job.export).Equals(outputIso, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("repack-many OutputIso must differ from every input map archive.");
         using var prettyOutput = RepackConsole.NormalizeSharedServiceOutput();
 
         // Dry run: every slot is planned against the same clean source bank, then reported together. No
@@ -295,16 +297,34 @@ internal sealed class RepackService
     private int Repack(string[] args, List<RepackPlan>? collected)
     {
         if (args.Length < 6)
-        { Log.Error("repack needs <iso> <courseSlot> <mapDir> <customDir> <out.iso>"); return 1; }
+        { Log.Error("repack needs <iso> <courseSlot> <mapDir> <customDir> <out.iso|out.zip>"); return 1; }
         if (!RepackPatchSelection.TryParse(args, out var selectedPatches, out string? patchError))
         { Log.Error($"repack: {patchError}"); return 1; }
         if (!TryParseSoundRate(args, out int soundRate, out string? soundRateError))
         { Log.Error($"repack: {soundRateError}"); return 1; }
         string iso = args[1], level = args[2].ToUpperInvariant(), levelDir = args[3], customDir = args[4], outIso = args[5];
+        if (Path.GetFullPath(customDir).Equals(Path.GetFullPath(outIso), StringComparison.OrdinalIgnoreCase))
+        { Log.Error("repack output must differ from the input map archive or folder."); return 1; }
+        bool modManager = args.Contains("--mod-manager");
+        ModManagerPackage.Metadata? modMetadata = null;
+        if (modManager)
+        {
+            if (selectedPatches.Noclip || selectedPatches.HudText || args.Contains("--in-place"))
+            { Log.Error("--mod-manager cannot use --patches or --in-place; the manager prepares the executable."); return 1; }
+            if (!Path.GetExtension(outIso).Equals(".zip", StringComparison.OrdinalIgnoreCase)
+                || Path.GetFullPath(iso).Equals(Path.GetFullPath(outIso), StringComparison.OrdinalIgnoreCase))
+            { Log.Error("--mod-manager needs a separate .zip output path."); return 1; }
+            modMetadata = ModManagerPackage.ParseMetadata(args, MapArchiveInput.DisplayName(customDir));
+            ModManagerPackage.RequireCompatibleSource(_iso, iso);
+        }
+        else if (args.Any(arg => arg.StartsWith("--mod-", StringComparison.Ordinal)))
+        { Log.Error("--mod-name, --mod-author and --mod-version require --mod-manager."); return 1; }
+        using var mapInput = MapArchiveInput.Open(customDir);
+        customDir = mapInput.MapDirectory;
         bool textureType2 = args.Contains("--texture-type2");
         // Inherit the slot but not its prop population - see HideDonorInstances.
         bool bareSlot = args.Contains("--bare-slot");
-        var plan = args.Contains("--dry-run") ? new RepackPlan(level, customDir, textureType2) : null;
+        var plan = args.Contains("--dry-run") ? new RepackPlan(level, MapArchiveInput.DisplayName(args[4]), textureType2) : null;
         var started = System.Diagnostics.Stopwatch.StartNew();
         using var prettyOutput = RepackConsole.NormalizeSharedServiceOutput();
         // Every drop and fallback the pipeline announces is also a line of the plan's Findings section.
@@ -324,14 +344,15 @@ internal sealed class RepackService
         Directory.CreateDirectory(tmp);
         try
         {
-            string export = Path.GetFileName(customDir.TrimEnd('\\', '/'));
+            var package = modMetadata == null ? null : new ModManagerPackage(Path.Combine(tmp, "mod"), modMetadata, level);
+            string export = MapArchiveInput.DisplayName(args[4]);
             bool nested = args.Contains("--in-place") || collected != null;
             if (nested) RepackConsole.Section($"{level}  ←  {export}");
-            else RepackConsole.Header(plan == null ? "repack" : "repack dry run", $"{level}  ←  {export}", iso, outIso);
+            else RepackConsole.Header(plan == null ? (modManager ? "mod package" : "repack") : "repack dry run", $"{level}  ←  {export}", iso, outIso);
             RepackConsole.Section(plan == null ? "Prepare source" : "Inspect source");
             if (textureType2) RepackConsole.Detail("Custom textures: type-2, 8-bit indexed (opt-in)");
             if (soundRate > 0) RepackConsole.Detail($"Custom sounds: converted to {soundRate} Hz (asked for, in place of the bank's own)");
-            if (!args.Contains("--in-place") && plan == null)
+            if (!modManager && !args.Contains("--in-place") && plan == null)
             {
                 RepackConsole.Detail("Copying source ISO");
                 File.Copy(iso, outIso, overwrite: true);
@@ -361,6 +382,12 @@ internal sealed class RepackService
             foreach (var d in new[] { "Meshes", "Textures", "Skybox", "Collision" })
                 if (Directory.Exists(Path.Combine(levelDir, d))) CopyDir(Path.Combine(levelDir, d), Path.Combine(work, d));
             string patches = File.ReadAllText(Path.Combine(customDir, "Patches.json"));
+            int patchCount = ((JArray)JObject.Parse(patches)["Patches"]!).Count;
+            int terrainCapacity = _elf.EnsureTerrainCapacity(plan != null || modManager ? iso : outIso,
+                patchCount, package, dryRun: plan != null);
+            if (terrainCapacity != 0) return terrainCapacity;
+            if (TerrainRenderBuffer.RequiredPages(patchCount) > 0)
+                plan?.Note("terrain-buffer", "Terrain submission capacity is expanded to cover the complete course.");
 
             RepackConsole.Section("Textures");
             var propBake = CanonicalMapProps.Load(customDir);
@@ -564,7 +591,10 @@ internal sealed class RepackService
                         used.Select((key, i) => new RepackPlan.Install(installed[i].kind, key, installed[i].source, blobs[i])).ToList(),
                         assignedSlots, reused);
                     if (plan == null)
+                    {
                         File.WriteAllBytes(Path.Combine(rawDir, "data", "models", $"{lower}.ssh"), _refpack.Compress(newSsh));
+                        File.WriteAllBytes(Path.Combine(tmp, "dec", "data", "models", $"{lower}.ssh"), newSsh);
+                    }
                     slots += appended;
                     seed = Enumerable.Range(0, slots).Select(i => i.ToString("D4") + ".png").ToList();
                     Log.Info($"  textures installed: {nBorrow} borrowed + {nCustom} custom"
@@ -746,6 +776,7 @@ internal sealed class RepackService
             // ships wholesale (no surgical swap) when props are present.
             // Counted BEFORE the append so "the donor's props" means exactly the rows that were already there.
             int donorInstances = CountInstances(work);
+            int donorModels = ((JArray)JObject.Parse(File.ReadAllText(Path.Combine(work, "Models.json")))["Models"]!).Count;
             int customProps = propBake == null ? 0
                 : CanonicalMapProps.Append(work, customDir, propBake, level, foreignSlot, fxWiring);
             bool haveCustomProps = customProps > 0;
@@ -785,7 +816,7 @@ internal sealed class RepackService
             // which is why it cannot live in the export, and the bank injection at the end of the pipeline
             // needs the same answer, which is why the map is carried forward rather than recomputed.
             var soundEventRemap = haveAuthoredSounds && !args.Contains("--no-sound-routing")
-                ? CustomSoundRouting.Apply(_iso, outIso, level, customDir, work, tmp, donorInstances, soundRate)
+                ? CustomSoundRouting.Apply(_iso, modManager ? iso : outIso, level, customDir, work, tmp, donorInstances, soundRate)
                 : new Dictionary<int, int>();
 
             // Type-1/2 ExternalSound records are 0x30 bytes and carry U7..U11, which the fixed intermediate row
@@ -807,6 +838,12 @@ internal sealed class RepackService
             // The .ltg regen lists the gems in its GemIndex off LTGState 2 (Slopesmith docs/014).
             int authoredGems = AppendAuthoredGems(work, customDir);
             bool haveAuthoredGems = authoredGems > 0;
+            bool pruneDonorResources = bareSlot && haveCustomProps;
+            if (pruneDonorResources)
+            {
+                int pruned = BareSlotResources.PruneModels(work, donorInstances, donorModels);
+                Log.Info($"  bare slot: released geometry from {pruned} unused donor models (table indexes preserved).");
+            }
 
             // Static terrain lightmaps: if the custom mountain authored Lightmaps/ pages (Slopesmith writes
             // original-brightness 000N.png when the sun is on; the patches' LightMapPoint/LightmapID in Patches.json
@@ -963,12 +1000,37 @@ internal sealed class RepackService
                         _refpack.Compress(File.ReadAllBytes(Path.Combine(tmp, lower + ext))));
             }
 
+            if (pruneDonorResources)
+            {
+                var (textures, lightmaps) = BareSlotResources.UsedPages(work);
+                string flatPng = Path.Combine(tmp, "unused-page.png");
+                using (var image = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+                    16, 16, new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 255, 255, 255)))
+                    SixLabors.ImageSharp.ImageExtensions.SaveAsPng(image, flatPng);
+                byte[] placeholder = _ssh.EncodeCustomPage(flatPng);
+                TrimBank(lower + ".ssh", textures);
+                if (!haveLightmaps)
+                {
+                    string? member = Directory.GetFiles(Path.Combine(rawDir, "data", "models"), "*_L.ssh").FirstOrDefault();
+                    if (member != null) TrimBank(Path.GetFileName(member), lightmaps);
+                }
+
+                void TrimBank(string member, IReadOnlySet<int> retained)
+                {
+                    string file = Path.Combine(rawDir, "data", "models", member);
+                    byte[] before = File.ReadAllBytes(Path.Combine(tmp, "dec", "data", "models", member));
+                    byte[] after = BareSlotResources.TrimBank(before, retained, placeholder);
+                    File.WriteAllBytes(file, _refpack.Compress(after));
+                    Log.Info($"  bare slot: {member} {before.Length:n0} -> {after.Length:n0} bytes; used pages kept verbatim.");
+                }
+            }
+
             // Regenerate the world (spatial/collision) grid (.ltg) from the freshly built pbd. Terrain still
             // RENDERS from the patch array, but terrain COLLISION reaches patches only through this grid, so a
             // grid built for the old patches would leave the rider falling through the new terrain. Use the
             // decompressed original .ltg (in <tmp>/dec) as the structural template, rebuild against the new
-            // patches (SSX-Library LTGHandler.RegenerateCentreLTG = the compact, no-crash rebuilder that lists
-            // each patch/light in every cell it overlaps), RefPack it and drop it next to the pbd before
+            // patches (terrain is listed once by its centre; light crossing lists cover their influence),
+            // RefPack it and drop it next to the pbd before
             // re-containering. The on-disc name stays .ltg.
             Log.Info("  regenerating world grid (.ltg) ...");
             string refLtg = Path.Combine(tmp, "dec", "data", "models", $"{lower}.ltg");
@@ -1023,6 +1085,7 @@ internal sealed class RepackService
                 wgPbd.Instances[i] = inst;
             }
             wgLtg.RegenerateCentreLTG(wgPbd);
+            WorldGridOrigin.Align(wgLtg);
             wgLtg.SaveLTGFile(newLtg);
             File.WriteAllBytes(Path.Combine(rawDir, "data", "models", $"{lower}.ltg"), _refpack.Compress(File.ReadAllBytes(newLtg)));
 
@@ -1032,22 +1095,30 @@ internal sealed class RepackService
             string newBig = Path.Combine(tmp, $"{lower}.new.big");
             BIG.Create(BigType.C0FB, rawDir, newBig, useCompression: false, useBackslashes: false);
 
-            RepackConsole.Section("Package ISO");
-            RepackConsole.Detail("Replacing the rebuilt level archive");
-            _iso.ReplaceFile(outIso, bigInIso, newBig);
+            RepackConsole.Section(modManager ? "Package mod" : "Package ISO");
+            if (package != null)
+            {
+                RepackConsole.Detail("Extracting the rebuilt course as loose level files");
+                package.AddCourse(newBig);
+            }
+            else
+            {
+                RepackConsole.Detail("Replacing the rebuilt level archive");
+                _iso.ReplaceFile(outIso, bigInIso, newBig);
+            }
 
             // Authored hit sounds: rebuild the level's course bank inside AUDIO.BIG (donor-fill slots the
             // target bank leaves empty, encode custom WAVs into their reserved slots). Non-fatal: a failure
             // keeps the retail banks and the ISO stays playable.
-            try { CourseBankInject.Apply(_iso, outIso, level, customDir, work, tmp, soundRate, soundEventRemap); }
-            catch (Exception e)
+            try { CourseBankInject.Apply(_iso, modManager ? iso : outIso, level, customDir, work, tmp, soundRate, soundEventRemap, package); }
+            catch (Exception e) when (!modManager)
             { RepackConsole.Warning($"Authored sound-bank injection failed ({e.Message}) — the ISO keeps the retail banks."); }
 
             // Optional static race track: Slopesmith stages Music/track.wav. Encode it as stereo 36 kHz
             // EA-XA slices in the first PathFinder song's retail short-stream layout; keep its MPF unchanged.
             // Non-fatal for the same reason as custom SFX: geometry packing remains independently useful.
-            try { CustomMusicInject.Apply(_iso, outIso, level, customDir, tmp); }
-            catch (Exception e)
+            try { CustomMusicInject.Apply(_iso, modManager ? iso : outIso, level, customDir, tmp, package); }
+            catch (Exception e) when (!modManager)
             { RepackConsole.Warning($"Custom race-music injection failed ({e.Message}) — the ISO keeps its current race music."); }
 
             if (selectedPatches.Noclip)
@@ -1057,7 +1128,7 @@ internal sealed class RepackService
             // build an image that quietly shows nothing.
             if (selectedPatches.HudText)
             { int rc = _elf.Apply(outIso, "debug-text", "debug-text", revert: false); if (rc != 0) return rc; }
-            if (!args.Contains("--no-skycolor"))
+            if (!modManager && !args.Contains("--no-skycolor"))
             {
                 string? top = SkyTopColor(customDir);
                 if (top != null)
@@ -1066,7 +1137,9 @@ internal sealed class RepackService
                     if (rc != 0) return rc;
                 }
             }
-            if (!args.Contains("--in-place")) RepackConsole.Success($"Repacked {level}", outIso, started.Elapsed);
+            if (package != null) package.Write(outIso);
+            if (!args.Contains("--in-place"))
+                RepackConsole.Success(modManager ? $"Packaged {level} for SSX Mod Manager" : $"Repacked {level}", outIso, started.Elapsed);
             return 0;
         }
         finally { try { Directory.Delete(tmp, true); } catch { } }
@@ -1123,7 +1196,7 @@ internal sealed class RepackService
     // The loader writes StartPosCount pointers into a fixed inline six-slot field. AIP/SOP datasets must
     // provide exactly six. Preserve every original path, but prepend six clones of valid designated starts
     // when the table is not already the required shape.
-    private static bool EnsureSixStartPaths(JObject root)
+    internal static bool EnsureSixStartPaths(JObject root)
     {
         const int fieldSize = 6;
         var paths = root["AIPaths"] as JArray
@@ -1141,8 +1214,15 @@ internal sealed class RepackService
             }
         }
 
+        JObject fallback = valid.FirstOrDefault()
+            ?? paths.OfType<JObject>().FirstOrDefault()
+            ?? throw new InvalidDataException("Authored path JSON has no path to seed its six start slots.");
+        // Portable games may supply only a start/AI route. The PS2 stage anchor also needs a race line.
+        bool addedRaceLine = root["RaceLines"] is not JArray raceLines || raceLines.Count == 0;
+        if (addedRaceLine) root["RaceLines"] = new JArray(fallback.DeepClone());
+
         if (starts.Count == fieldSize && valid.Count == fieldSize)
-            return false;
+            return addedRaceLine;
 
         if (valid.Count >= fieldSize)
         {
@@ -1150,9 +1230,6 @@ internal sealed class RepackService
             return true;
         }
 
-        JObject fallback = valid.FirstOrDefault()
-            ?? paths.OfType<JObject>().FirstOrDefault()
-            ?? throw new InvalidDataException("Authored path JSON has no path to seed its six start slots.");
         if (valid.Count == 0) valid.Add(fallback);
 
         var expanded = new JArray();
@@ -1339,6 +1416,8 @@ internal sealed class RepackService
             inst["PlayerBounce"] = false;
             inst["CollsionMode"] = Engine.NativeCollisionMode.None;
             inst["CollsionModelPaths"] = new JArray();
+            inst["EffectSlotIndex"] = -1;
+            inst["PhysicsIndex"] = -1;
             // ...and its SOUND, which is not a drawing property and does not follow from any of the above. A
             // placed ambient emitter is dispatched off a spatial grid built from the ADL, never off the
             // instance's visibility or collision, so a hidden prop keeps its bed playing: an authored course

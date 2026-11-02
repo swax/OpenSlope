@@ -35,8 +35,8 @@ internal readonly record struct TexturePlan(TextureOrigin Origin, string Key, st
 /// from. That is the whole disc-side decision once the target slot is known:
 ///
 ///   - <c>level</c> == the level being replaced -&gt; its bank already holds the page; reuse the slot,
-///   - <c>level</c> == another map on the disc  -&gt; splice that map's page in verbatim (reuse-first, then append),
-///   - <c>level</c> == <c>Custom</c>            -&gt; no bank behind it; encode the staged PNG.
+///   - <c>level</c> == another legacy Tricky map -&gt; splice its disc page in verbatim (reuse-first, then append),
+///   - <c>level</c> == <c>Custom</c>, a versioned bank or another game -&gt; encode the exact staged PNG.
 ///
 /// A ref the manifest lists is resolved by the manifest alone. A ref it does not list, and that names no page of
 /// the target bank, is the export's own generated art - the per-SurfaceType tiles written into its
@@ -110,12 +110,25 @@ internal sealed class SlopesmithExport
 
         if (manifest._textures.TryGetValue(texturePath, out var src))
         {
-            string key = $"{src.Level}/{src.Name}";
-            string file = src.Staged ?? src.Name;
-            var origin = string.Equals(src.Level, targetLevel, StringComparison.OrdinalIgnoreCase) ? TextureOrigin.TargetPage
-                       : string.Equals(src.Level, CustomLevel, StringComparison.OrdinalIgnoreCase) ? TextureOrigin.EncodedPage
-                       : TextureOrigin.DonorPage;
-            plan = new TexturePlan(origin, key, src.Level, src.Name, file);
+            // Versioned and non-Tricky banks are supplied by the export itself. Their identity is not a
+            // course name in this ISO, and stripping a version would silently substitute different art.
+            if (!TrickyAssetIdentity.TryLegacyCourse(src.Level, out string donor)
+                && !src.Level.Equals(CustomLevel, StringComparison.OrdinalIgnoreCase))
+            {
+                string staged = src.Staged ?? texturePath;
+                if (staged.IndexOfAny(PathChars) >= 0 || staged.Contains(':'))
+                    throw new InvalidDataException($"Invalid staged texture name: {staged}");
+                plan = new TexturePlan(TextureOrigin.EncodedPage, $"custom/{staged}", CustomLevel, src.Name, staged);
+            }
+            else
+            {
+                string level = donor.Length > 0 ? donor : src.Level;
+                string key = $"{level}/{src.Name}";
+                var origin = TrickyAssetIdentity.SameCourse(level, targetLevel) ? TextureOrigin.TargetPage
+                           : level.Equals(CustomLevel, StringComparison.OrdinalIgnoreCase) ? TextureOrigin.EncodedPage
+                           : TextureOrigin.DonorPage;
+                plan = new TexturePlan(origin, key, level, src.Name, src.Staged ?? src.Name);
+            }
             return true;
         }
 
@@ -137,6 +150,8 @@ internal sealed class SlopesmithExport
     {
         if (args.Length < 3) { Log.Error("texture-plan needs <exportDir> <LEVEL> [--slots N] [--json]"); return 1; }
         string customDir = args[1], level = args[2].ToUpperInvariant();
+        using var mapInput = MapArchiveInput.Open(customDir);
+        customDir = mapInput.MapDirectory;
         string patchesPath = Path.Combine(customDir, "Patches.json");
         if (!File.Exists(patchesPath)) { Log.Error($"No Patches.json in {customDir}"); return 1; }
 
@@ -208,7 +223,7 @@ internal sealed class SlopesmithExport
             Log.Info(new JObject
             {
                 ["kind"] = "texture-plan",
-                ["export"] = Path.GetFileName(customDir.TrimEnd('\\', '/')),
+                ["export"] = MapArchiveInput.DisplayName(args[1]),
                 ["level"] = level,
                 ["manifest"] = manifest?.Count,
                 ["slots"] = slots == int.MaxValue ? null : slots,
@@ -221,7 +236,7 @@ internal sealed class SlopesmithExport
             return 0;
         }
 
-        Log.Info($"texture-plan: {Path.GetFileName(customDir.TrimEnd('\\', '/'))} -> {level}"
+        Log.Info($"texture-plan: {MapArchiveInput.DisplayName(args[1])} -> {level}"
             + (manifest == null ? $" (no {FileName})" : $" ({FileName}, {manifest.Count} source(s))"));
         foreach (var row in rows)
         {

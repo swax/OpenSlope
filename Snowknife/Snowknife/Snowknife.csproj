@@ -38,6 +38,7 @@
   <ItemGroup>
     <None Include="Patches\**" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="schemas\**\*.schema.json" />
+    <EmbeddedResource Include="Repack\ssx-mod-manager-target.json" />
   </ItemGroup>
 
   <ItemGroup>

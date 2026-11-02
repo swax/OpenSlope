@@ -12,12 +12,28 @@ You need:
 
 - a clean PAL or NTSC-U SSX Tricky ISO;
 - the imported `Maps/<SLOT>` directory for the retail course being replaced;
-- a Slopesmith export directory; and
+- a Slopesmith `.snowknife.zip` export (or an extracted map directory); and
 - enough free space for a second ISO plus temporary build files.
 
 The imported map and source ISO should describe the same course slot. Run `snowknife --help` or `snowknife <command> --help` for the CLI's complete syntax. `snowknife` is the
 executable `dotnet build` leaves under `Snowknife/Snowknife/bin/Debug/net10.0/`; the commands below assume
 that directory is on `PATH`.
+
+## GBA courses exported by Slopesmith
+
+In Slopesmith's library, load a GBA course, open its three-dot menu and choose
+**Export… → Snowknife (ISO or mod manager)**. The browser downloads a
+`.snowknife.zip` with the imported terrain, scenery, collision, textures and
+paths. `Repack.md` inside the archive contains the commands for building a PS2
+Tricky ISO or an SSX Mod Manager ZIP from your local PS2 game files. Snowknife
+accepts the archive directly; it does not need to run on the Slopesmith server.
+
+The PS2 build adapts portable meshes, material transparency and the start route.
+Dense courses also receive the terrain-buffer fix described below; rebuild an
+older ISO or manager ZIP with the updated Snowknife before testing it again.
+It keeps the destination Tricky course's sky and soundtrack. GBA event scripting,
+pickups and checkpoint conversion are still deferred. See the
+[GBA import guide](../Native/docs/ssx-gba-import.md) for the converted content.
 
 ## Choosing a course slot
 
@@ -54,7 +70,7 @@ The positional arguments are:
 | `<iso>` | Clean source image; read only |
 | `<courseSlot>` | Retail slot to replace; `snowknife help repack` lists them |
 | `<mapDir>` | Imported `Maps/<SLOT>` data for that slot |
-| `<customDir>` | Slopesmith export to install |
+| `<customDir|map.zip>` | Slopesmith `.snowknife.zip` export or map directory to install |
 | `<out.iso>` | New image to create |
 
 `repack` performs the full pipeline: it reads the target archive from the ISO, overlays the authored data, resolves textures, rebuilds the PBD and world grid, regenerates dependent members when required, assembles a replacement BIG, and writes it into the new image.
@@ -64,6 +80,8 @@ The positional arguments are:
 | Option | Effect |
 |---|---|
 | `--dry-run` | Run the plan without producing the output ISO |
+| `--mod-manager` | Write a mod-manager ZIP instead of an ISO; requires Tricky NTSC-U PS2 |
+| `--mod-name <text>` / `--mod-author <text>` / `--mod-version <text>` | Package metadata; used with `--mod-manager` |
 | `--json` | Emit the dry-run record as JSON on stdout |
 | `--texture-type2` | Encode authored terrain and prop pages as retail-shaped 8-bit indexed textures; recommended for most builds |
 | `--sound-rate [hz]` | Encode every custom prop sound at this rate instead of the target bank's own; bare, 22050 |
@@ -72,11 +90,75 @@ The positional arguments are:
 | `--no-skycolor` | Do not apply the export's `Skybox/Sky.json` `TopColor` |
 | `--no-sound-routing` | Keep the export's reserved custom-sound event IDs instead of re-pointing them onto slots the target bank already ships; for isolating a build, not for shipping one |
 
-The quick-start recipe deliberately supplies `--no-skycolor` and selects no `--patches` feature. With those
-defaults Snowknife leaves the supplied boot executable byte-for-byte unchanged. Sky colour, noclip, and
-authored HUD support remain explicit options for local builds that need them.
+The quick-start recipe supplies `--no-skycolor` and selects no optional `--patches` feature.
+Sky colour, noclip, and authored HUD support remain explicit options. Dense courses receive the
+automatic terrain-buffer fix below even when no optional feature is selected.
+
+### Dense terrain
+
+Tricky's original terrain submission buffer holds 2,048 visible patches. Dense imported maps can
+exceed it and overwrite adjacent game objects, producing an R5900 exception such as a jump to
+`0x3f800000` after the level appears. Snowknife sizes this buffer to cover every patch in the course,
+preserving geometry and textures. Both allocation and initialization are updated together, with
+executable-size and instruction checks before writing; existing larger allocations are preserved.
+
+This fix currently supports **NTSC-U Tricky**. A dense course targeting another executable is refused
+until that build has a verified patch definition. Small courses keep the original buffer. An ISO build
+records the replaced instructions in its `.snowknife-restore.json` sidecar; a manager ZIP includes
+`PCSX2Patch.txt`, which the manager installs through its PCSX2 integration. Restart the game after
+applying the package, with the manager's PCSX2 patches enabled; loading an old savestate restores
+the old buffer allocation.
 
 Type 2 is usually the right choice for authored pages: it uses one quarter of the pixel storage of the proven type-5 fallback. Native and borrowed retail pages remain byte-verbatim either way.
+
+## Package for SSX Mod Manager
+
+The same Slopesmith map export can produce a ZIP for
+[SSX Mod Manager](https://github.com/GlitcherOG/SSXModManager). Run Snowknife locally with a clean
+**NTSC-U PS2 Tricky** ISO and that slot's imported map data:
+
+```powershell
+snowknife repack ssx-tricky.iso GARI Maps/TRICKY_GARI MyMountain.snowknife.zip MyMountain.zip --mod-manager --texture-type2 --bare-slot --mod-name "My Mountain" --mod-author "Your Name" --mod-version "1.0.0"
+```
+
+`--mod-manager --dry-run` plans the course without writing a ZIP. The name defaults to the export folder,
+the author to `Unknown`, and the version to `1.0.0`.
+
+In Slopesmith, choose **File → Export… → Snowknife (ISO or mod manager)**. The downloaded
+`.snowknife.zip` is the input to both output modes; no manual extraction is needed:
+
+```powershell
+snowknife repack ssx-tricky.iso GARI Maps/TRICKY_GARI MyMountain.snowknife.zip MyMountain.iso --texture-type2 --bare-slot --no-skycolor
+snowknife texture-plan MyMountain.snowknife.zip GARI
+```
+
+Directory inputs and ordinary `.zip` map snapshots remain supported. ZIPs may contain the map at their
+root or in one top-level folder; Snowknife extracts them temporarily, validates the paths and size, and
+cleans up afterward. Editable `.slopesmith.zip` mountains must first be exported for Snowknife.
+`repack-many` also accepts ZIP paths in its `Export` fields. The glTF and Unity commands use extracted folders.
+
+Pass standard exports directly, without renaming assets or editing their JSON. Snowknife reads versioned
+and other-game texture references from the included PNGs and fits long generated material labels to the
+game's name field during compilation. The input folder or archive stays unchanged.
+
+The ZIP carries `ModInfo.json` (package version 3), `ModInstructions.txt`, and the compiled course files.
+The level archive is decompressed into loose `data/models/` files for the manager's prepared workspace.
+Custom course sounds and music use archive-member insertion instructions; music configuration files are
+included when a track is authored. The source ISO is read only and no output ISO is built.
+
+Copy the ZIP into the manager's `Mods/SSX Tricky NTSC PS2/` folder, refresh its mod list, enable the package,
+and apply mods. Launch the game through the manager's PCSX2 integration. The map replaces the selected
+retail course slot, so menu availability still follows the game's mode and profile. Packages replacing the
+same slot conflict; music packages can also share playlist configuration or a donor song.
+
+The manager prepares the executable. This output mode skips executable sky-colour edits and refuses
+optional `--patches` and `--in-place`. Dense courses include the required terrain-buffer adjustment
+through the manager's patch-file support. SSX 3 and PAL Tricky are not targets of this package mode.
+
+Compiled packages can retain donor course data and borrowed assets. They follow the same local/private
+disc-backed workflow as repacked images; this option does not certify a package for public distribution.
+
+## Donor scenery and course audio
 
 `--bare-slot` is the other half of that recipe. An authored course replaces the slot's terrain but inherits
 the retail course's whole prop population, still standing where that course left it. A prop build delists
@@ -86,6 +168,11 @@ emitters, and every event those props hold stays reserved in the course bank ins
 clips. The instances are hidden rather than deleted, so every index the SSF, LTG, and spline tables reference
 stays put, and the StageArea start/finish markers are kept so the rider still spawns on the course. Leave the
 flag off when the retail scenery is the point, such as a terrain-only remix of the original course.
+
+For builds with placed props, `--bare-slot` also releases unused donor model geometry and replaces
+unused texture and lightmap pages with small placeholders. Surviving model, instance and page indexes
+stay stable, and referenced pages remain verbatim. This keeps dense imported courses within PS2 RAM;
+hiding the donor scenery alone still leaves its resources resident during loading.
 
 Custom prop sounds are re-encoded at **the rate the target bank is played at**, whichever rate they were
 authored in — 48 kHz down, 11 kHz up. That is a pitch decision, not a size one: the engine ignores a sound's
