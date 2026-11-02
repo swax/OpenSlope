@@ -237,7 +237,7 @@ Textures::Textures(std::span<const std::uint8_t> data, const ImportCancel& cance
         for (unsigned head = 0; head < queue.size(); ++head) {
             const auto at = queue[head];
             const int x = int(at % tile_edge), y = int(at / tile_edge);
-            for (const auto [dx, dy] : std::array<std::pair<int, int>, 4>{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}}) {
+            for (const auto& [dx, dy] : std::array<std::pair<int, int>, 4>{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}}) {
                 const int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= int(tile_edge) || ny >= int(tile_edge))
                     continue;
