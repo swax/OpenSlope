@@ -504,6 +504,41 @@ try {
   await page.getByRole('button', { name: 'Settings…', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   await settings.waitFor();
+  await settings.getByRole('tab', { name: 'Server', exact: true }).click();
+  const serverSettings = ['/api/config', '/api/version', '/api/update', '/api/restart', '/api/voice'];
+  const serverSettingsReads = await page.evaluate(async paths => {
+    const clientUrl = '/src/app/net/client.ts';
+    const { clientFetch } = await import(/* @vite-ignore */ clientUrl);
+    return Promise.all(paths.map(async path => [path, (await clientFetch(path)).status]));
+  }, serverSettings);
+  assert.deepEqual(
+    serverSettingsReads,
+    serverSettings.map(path => [path, 200]),
+    'server settings use the authenticated server while editing a browser-local mountain',
+  );
+  await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('.version-actions button')?.disabled);
+  assert.doesNotMatch(await settings.getByRole('tabpanel', { name: 'Server', exact: true }).innerText(), /403/);
+  // Exercise forwarding without checking a remote feed, installing, restarting, or changing host settings.
+  const settingsRoute = /\/api\/(config|version|update|restart|voice)$/;
+  await page.route(settingsRoute, route =>
+    route.fulfill({ json: { method: route.request().method(), body: route.request().postData() } }),
+  );
+  const serverSettingsWrites = await page.evaluate(async paths => {
+    const clientUrl = '/src/app/net/client.ts';
+    const { clientFetch } = await import(/* @vite-ignore */ clientUrl);
+    return Promise.all(
+      paths.map(async path =>
+        (await clientFetch(path, { method: path === '/api/config' ? 'PUT' : 'POST', body: '{}' })).json(),
+      ),
+    );
+  }, serverSettings);
+  assert.deepEqual(
+    serverSettingsWrites,
+    serverSettings.map(path => ({ method: path === '/api/config' ? 'PUT' : 'POST', body: '{}' })),
+    'explicit server actions reach the server transport from a local mountain',
+  );
+  await page.unroute(settingsRoute);
+  await settings.getByRole('tab', { name: 'Account', exact: true }).click();
   await settings.locator('#sp-settings-profile-bio').fill('A member editing a local mountain.');
   await settings.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByText('Bio saved.', { exact: false }).waitFor();

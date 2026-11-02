@@ -33,6 +33,8 @@ import type { GroupsPayload } from '../../core/reference/groups';
 import { readAssetVersion } from '../../shared/map-asset-version';
 import { readAssetManifest } from '../../shared/map-asset-manifest';
 
+const serverSettingsPaths = new Set(['/api/config', '/api/version', '/api/update', '/api/restart', '/api/voice']);
+
 const packed = (bytes: Uint8Array): string => {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -232,6 +234,9 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
         }
         return json(await value);
       }
+      // Server administration uses the same account regardless of where the open mountain is saved.
+      // The server still checks the role for every read and action.
+      if (localOnly && canReadServer && serverSettingsPaths.has(path)) return fetch(url, init);
       // Choosing a local mountain changes where map edits go, not who is signed in. Account controls
       // remain usable for members; project/library writes still go through the local-only adapter below.
       if (
