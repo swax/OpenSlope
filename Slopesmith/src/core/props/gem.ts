@@ -33,16 +33,14 @@ export function gemEffectTemplate(level: string, doc: EffectsDocument, slotIndex
   return { key: `gem:${level}:${slotIndex}`, circumstances };
 }
 
-/** Upgrade only the requested legacy gem. It becomes a real prop with real editable graphs, once. */
-export function promoteGem(
+/** A new gem uses an ordinary prop and editable graphs, with its artwork already pinned by the caller. */
+export function placeGemProp(
   doc: { name: string; gems?: Gem[]; props?: PlacedProp[]; effects?: EffectsDocument },
-  id: string,
+  gem: Pick<Gem, 'pos' | 'value'>,
   model: { level: string; model: number; name: string },
   defaults: StampBehaviour,
   template: PropEffectTemplate,
-): PlacedProp | null {
-  const gem = doc.gems?.find(item => item.id === id);
-  if (!gem) return null;
+): PlacedProp {
   const props = (doc.props ??= []);
   const prop: PlacedProp = {
     ...structuredClone(defaults),
@@ -56,12 +54,26 @@ export function promoteGem(
     nativeCollision: { mode: 2, playerCollision: true, responseMass: 0, playerBounce: false, bounceAmount: 0 },
   };
   const effect = structuredClone(template);
-  // Legacy gems each own their tier. Opening one must not start sharing its editable multiplier with others.
+  // Each gem owns its multiplier, including the members of a newly placed row.
   effect.key = `${template.key}:${prop.id}`;
   for (const node of effect.circumstances.collision ?? [])
     if (node.semanticType === 'score.multiplier') node.payload.MultiplierScore = gem.value ?? 2;
   attachEffectTemplateToProp((doc.effects ??= createEmptyEffectsDocument(doc.name)), prop.id!, effect, 'Gem');
   props.push(prop);
+  return prop;
+}
+
+/** Upgrade only the requested legacy gem. It becomes a real prop with real editable graphs, once. */
+export function promoteGem(
+  doc: { name: string; gems?: Gem[]; props?: PlacedProp[]; effects?: EffectsDocument },
+  id: string,
+  model: { level: string; model: number; name: string },
+  defaults: StampBehaviour,
+  template: PropEffectTemplate,
+): PlacedProp | null {
+  const gem = doc.gems?.find(item => item.id === id);
+  if (!gem) return null;
+  const prop = placeGemProp(doc, gem, model, defaults, template);
   doc.gems = doc.gems!.filter(item => item !== gem);
   return prop;
 }

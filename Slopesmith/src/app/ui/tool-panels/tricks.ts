@@ -87,11 +87,27 @@ function buildGemTools(ctx: ToolsContext) {
     'The crystal new gems drop as — and the trick-score multiplier they award.',
   );
   for (const label of ['Prop settings', 'Effects']) {
+    const prop = store.selectedProp === null ? undefined : store.mdoc.props?.[store.selectedProp];
     const action = gui
-      .add({ open: () => {} }, 'open')
-      .name(label)
-      .disable();
-    tip(action, 'Place a gem first to open its settings.');
+      .add(
+        {
+          open: () => {
+            if (prop?.specialKind !== 'gem') return;
+            ctx.selectSpecialProp(prop.id!);
+            if (label === 'Effects') ctx.goToEffects();
+            else {
+              store.specialPropView = `prop:${prop.id}`;
+              ctx.rebuildTools();
+            }
+          },
+        },
+        'open',
+      )
+      .name(label);
+    if (prop?.specialKind !== 'gem') {
+      action.disable();
+      tip(action, 'Place a gem first to open its settings.');
+    }
   }
   placementCancelButton(ctx);
 }

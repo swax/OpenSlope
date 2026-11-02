@@ -31,6 +31,7 @@ import type { Viewport } from '../viewport/viewport';
 import type { PropOps } from './operations';
 import { dropScreensForProp } from './screens';
 import { toast } from '../ui/components/toast';
+import { pinTextureReference } from '../net/asset-versions';
 
 /**
  * Prop lines (docs/070): the app half of a path that owns a row of placements.
@@ -246,8 +247,18 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
    * reference instance would — its contact, hit sound and portable effect (docs/069) — and start a sheet that
    * wears the family's tile at its typical size and span.
    */
-  function pickSheet(level: string, family: SheetFamily) {
+  async function pickSheet(level: string, family: SheetFamily) {
+    const doc = store.mdoc;
+    let texture: string | undefined;
+    try {
+      texture = family.texture ? await pinTextureReference(family.texture) : undefined;
+    } catch (e) {
+      toast(`Sheet texture load failed: ${e}`, 'err');
+      return;
+    }
+    if (store.mdoc !== doc) return;
     propOps.interceptNextPick(armed => {
+      if (store.mdoc !== doc) return true;
       // A shipped river's pieces run ~45 m; chords that long would cut the corners of a winding new one.
       const span = family.lie ? Math.min(family.span, LIE_SPAN_CAP) : family.span;
       startSheet(
@@ -256,13 +267,13 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
         {
           ...(family.lie ? { lie: true } : {}),
           size: Math.round(family.size * 100) / 100,
-          ...(family.texture ? { texture: family.texture } : {}),
+          ...(texture ? { texture } : {}),
         },
         Math.round(span * 100) / 100,
       );
       return true;
     });
-    void propOps.armProp(level, family.representative.model, family.key, {
+    await propOps.armProp(level, family.representative.model, family.key, {
       sourceIndex: family.representative.sourceIndex,
     });
   }

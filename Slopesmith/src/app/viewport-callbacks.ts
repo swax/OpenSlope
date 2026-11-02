@@ -1,4 +1,4 @@
-import type { CoursePath, Gem, PlacedProp, V3 } from '../core/doc/types';
+import type { CoursePath, PlacedProp, V3 } from '../core/doc/types';
 import { moveAiPathNode } from '../core/doc/ai-paths';
 import {
   applyBrush,
@@ -32,7 +32,7 @@ import type { RotationSnapStep, SnapStep, Viewport, ViewportCallbacks } from './
 import { shortcutForMode } from './mode-shortcuts';
 import { nextPlacedPropId } from '../core/effects/authoring';
 import { isEffectTriggerProp } from '../core/effects/trigger-volume';
-import { nextGemId, nextLightId } from '../core/doc/ids';
+import { nextLightId } from '../core/doc/ids';
 import type { RigLight } from '../core/reference/lights';
 import { placedPropCollisionProfile } from '../core/props/contact';
 import { applyBehaviour, behaviourOf } from '../core/props/defaults';
@@ -176,6 +176,18 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     store.selectedScreen = null;
     store.selectedRefScreen = null;
   };
+  async function placeGemPositions(positions: V3[]): Promise<void> {
+    const doc = store.mdoc;
+    const placed = await propOps().placeGems(positions, gemTool.value);
+    if (store.mdoc !== doc || !placed.length) return;
+    if (store.gemArmed && store.currentMode === 'props') {
+      store.selectedGem = null;
+      store.selectedProp = doc.props!.indexOf(placed.at(-1)!);
+      clearScreenState();
+    }
+    scheduleRebuild();
+    rebuildTools();
+  }
   /** Something else was selected: a prop line (docs/070) lets go, as a rail does. */
   const clearLineState = () => {
     store.selectedLine = null;
@@ -962,16 +974,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       propLines().moveNode(line, node, pos);
     },
     onPlaceGem(pos: V3) {
-      const gems = (store.mdoc.gems ??= []);
-      const placed: Gem = { id: nextGemId(gems), pos, value: gemTool.value };
-      gems.push(placed);
-      store.selectedGem = placed.id ?? null;
-      clearScreenState();
-      scheduleRebuild();
-      rebuildTools();
+      return placeGemPositions([pos]);
     },
     onPlaceGemLine(a: V3, b: V3) {
-      const gems = (store.mdoc.gems ??= []);
+      const positions: V3[] = [];
       const dx = b[0] - a[0],
         dy = b[1] - a[1],
         dz = b[2] - a[2];
@@ -984,12 +990,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         const key = pos.join(',');
         if (key === last) continue; // coarse snap steps can collapse adjacent samples; place one gem there
         last = key;
-        gems.push({ id: nextGemId(gems), pos, value: gemTool.value });
+        positions.push(pos);
       }
-      store.selectedGem = gems[gems.length - 1]?.id ?? null;
-      clearScreenState();
-      scheduleRebuild();
-      rebuildTools();
+      return placeGemPositions(positions);
     },
     onSelectGem(id: string | null) {
       store.selectedGem = id;

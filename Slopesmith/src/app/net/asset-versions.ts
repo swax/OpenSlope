@@ -4,6 +4,7 @@ import { createAssetReader } from './asset-reader';
 import type { ReferenceAssetKind } from '../../core/reference/asset-manifest';
 import type { PropsPayload } from '../../core/reference/props';
 import { findMapChoice, mapSourceId, splitMapSource, type MapSource } from '../../core/reference/map-source';
+import { makeTexRef, parseTexRef } from '../../core/paint/textures';
 
 type Transport = (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 let transport: Transport = (url, init) => fetch(url, init);
@@ -166,6 +167,14 @@ export async function pinReferenceAssets(level: string, kind: ReferenceAssetKind
 
 export async function pinReferenceAsset(level: string, kind: ReferenceAssetKind, key: string): Promise<string> {
   return (await pinReferenceAssets(level, kind, [key])).get(key)!;
+}
+
+/** Library shortcuts that copy a tile without opening the Texture Library still pin the selected art. */
+export async function pinTextureReference(ref: string): Promise<string> {
+  const { level, name } = parseTexRef(ref);
+  const asset = parseAssetVersion(level);
+  const bank = asset?.kind && asset.kind !== 'texture' ? await reader.libraryBank(level) : level;
+  return makeTexRef(await pinReferenceAsset(bank, 'texture', name), name);
 }
 
 export const referenceLibraryBank = (level: string) => reader.libraryBank(level);

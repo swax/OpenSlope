@@ -4,7 +4,7 @@ import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
 import type { NativeArt } from '../../core/export/provider';
 import { boostPadPreset, type BoostPadKind } from '../../core/props/boost-pad';
-import { promoteGem } from '../../core/props/gem';
+import { placeGemProp, promoteGem } from '../../core/props/gem';
 import { dropOrphanedAssemblyLights, wholeAssembly } from '../../core/props/assembly';
 import {
   applyBehaviour,
@@ -676,26 +676,48 @@ export function createPropOps(deps: PropOpsDeps) {
     }
   }
 
+  async function prepareGem(value: number) {
+    const art = await fetchJson<NativeArt>('/api/props/native-art');
+    const tier = value >= 5 ? 5 : value >= 3 ? 3 : 2;
+    const source = art.gemTiers.find(item => item.tier === tier);
+    if (!art.gemLevel || !source?.effect) throw new Error('Import a course with this gem’s model and effects first.');
+    const bank = await pinAssetMap(art.gemLevel);
+    const library = await ensurePropLevel(bank);
+    const model = library.models.find(item => item.id === source.model);
+    if (!model?.subs.length) throw new Error('The gem model has no geometry.');
+    const defaults = structuredClone(propDefaults(bank, source.model));
+    const level = await pinReferenceAsset(bank, 'prop', String(source.model));
+    await ensurePropLevel(level);
+    pickedDefaults.set(`${level}:${source.model}`, defaults);
+    return {
+      model: { level, model: source.model, name: model.name },
+      defaults: defaults.behaviour,
+      effect: source.effect,
+    };
+  }
+
+  /** Resolve the whole row before changing the document; a failed pin never leaves an unversioned gem. */
+  async function placeGems(positions: V3[], value: number): Promise<PlacedProp[]> {
+    const doc = store.mdoc;
+    try {
+      const source = await prepareGem(value);
+      if (store.mdoc !== doc) return [];
+      return positions.map(pos => placeGemProp(doc, { pos, value }, source.model, source.defaults, source.effect));
+    } catch (e) {
+      toast(`Could not place gems: ${e instanceof Error ? e.message : e}`, 'err');
+      return [];
+    }
+  }
+
   async function editableGem(id: string): Promise<PlacedProp | null> {
     const doc = store.mdoc;
     const gem = doc.gems?.find(item => item.id === id);
     if (!gem) return null;
+    const value = gem.value ?? 2;
     try {
-      const art = await fetchJson<NativeArt>('/api/props/native-art');
-      const tier = (gem.value ?? 2) >= 5 ? 5 : (gem.value ?? 2) >= 3 ? 3 : 2;
-      const source = art.gemTiers.find(item => item.tier === tier);
-      if (!art.gemLevel || !source?.effect) throw new Error('Import a course with this gem’s model and effects first.');
-      const library = await ensurePropLevel(art.gemLevel);
-      const model = library.models.find(item => item.id === source.model);
-      if (!model?.subs.length) throw new Error('The gem model has no geometry.');
-      if (store.mdoc !== doc || !doc.gems?.includes(gem)) return null;
-      return promoteGem(
-        doc,
-        id,
-        { level: art.gemLevel, model: source.model, name: model.name },
-        propDefaults(art.gemLevel, source.model).behaviour,
-        source.effect,
-      );
+      const source = await prepareGem(value);
+      if (store.mdoc !== doc || !doc.gems?.includes(gem) || (gem.value ?? 2) !== value) return null;
+      return promoteGem(doc, id, source.model, source.defaults, source.effect);
     } catch (e) {
       toast(`Could not open gem tools: ${e instanceof Error ? e.message : e}`, 'err');
       return null;
@@ -950,6 +972,7 @@ export function createPropOps(deps: PropOpsDeps) {
     reloadImportedProps,
     armProp,
     armBoostPad,
+    placeGems,
     editableGem,
     armGroupById,
     disarmProp,

@@ -7,6 +7,7 @@ import {
   configureAssetTransport,
   pinReferenceAsset,
   pinReferenceAssets,
+  pinTextureReference,
   referenceLibraryBank,
   clearAssetCatalogue,
 } from '../src/app/net/asset-versions';
@@ -60,6 +61,10 @@ assert.equal(await pinReferenceAsset(localBank.id, 'body', '0'), local.assets[2]
 assert.equal(assetLocation(local.assets[1].id), 'local:TRICKY_GARI');
 assert.equal((await pinReferenceAssets(localBank.id, 'texture', ['tile.png'])).get('tile.png'), local.assets[0].id);
 assert.equal(await pinReferenceAsset(local.assets[0].id, 'texture', 'tile.png'), local.assets[0].id);
+assert.equal(await pinTextureReference(`${localBank.id}/tile.png`), local.assets[0].id);
+assert.equal(await pinTextureReference(local.assets[0].id), local.assets[0].id);
+assert.equal(await pinTextureReference(`${local.assets[1].id}/tile.png`), local.assets[0].id);
+assert.equal(await pinTextureReference('Custom/my-tile.png'), 'Custom/my-tile.png');
 await assert.rejects(pinReferenceAsset(local.assets[0].id, 'prop', '0'), /does not cover/);
 await assert.rejects(pinReferenceAsset(localBank.id, 'texture', 'missing.png'), /unavailable/);
 

@@ -5,6 +5,9 @@ import type { SheetFamily } from '../src/core/props/sheet-prop';
 import type { ArmedProp } from '../src/app/state/store';
 import { attachEffectToProp, createEmptyEffectsDocument, effectAttachments } from '../src/core/effects/authoring';
 import { check, failures } from './check';
+import { configureWorkspace } from '../src/app/net/workspace';
+import { assetVersion } from '../src/core/reference/asset-version';
+import { referenceAssetId } from '../src/core/reference/asset-manifest';
 
 /**
  * Prop lines' app half (docs/070): drawing a line from a held prop, laying its members out as it grows, moving
@@ -213,7 +216,21 @@ const family: SheetFamily = {
   blend: true,
   representative: { model: 3, sourceIndex: 50 },
 };
-ops.pickSheet('GARI', family);
+const sheetTexture = referenceAssetId('ssx-tricky', 'TRICKY_GARI', 'texture', '0007.png', '7'.repeat(64));
+configureWorkspace(true, async url => {
+  if (url.pathname === '/api/levels') return Response.json({ levels: ['local:GARI'] });
+  if (url.pathname === '/api/map-asset-version')
+    return Response.json(assetVersion('ssx-tricky', 'TRICKY_GARI', 'a'.repeat(64)));
+  if (url.pathname === '/api/map-asset-manifest')
+    return Response.json({
+      schema: 'openslope-assets/v1',
+      game: 'ssx-tricky',
+      map: 'TRICKY_GARI',
+      assets: [{ id: sheetTexture, kind: 'texture', key: '0007.png', hash: '7'.repeat(64), files: {} }],
+    });
+  return new Response('', { status: 404 });
+});
+await ops.pickSheet('GARI', family);
 check(
   armedFrom.at(-1) === 50 && store.lineDrawing && store.selectedLine === 'line:0000',
   "sheet: picking one borrows its first piece's own settings, then draws at once",
@@ -224,12 +241,11 @@ const sheetLine = doc.propLines![0];
 const pieces = (doc.models ?? []).filter(m => m.line === 'line:0000');
 const pieceMembers = members();
 check(
-  sheetLine.sheet?.size === 4 && sheetLine.sheet.texture === 'GARI/0007.png' && sheetLine.spacing === 5,
+  sheetLine.sheet?.size === 4 && sheetLine.sheet.texture === sheetTexture && sheetLine.spacing === 5,
   "sheet: it wears the family's tile at its height and span",
 );
 check(
-  pieces.length === 4 &&
-    pieces.every(m => m.quads.length === 1 && m.texture === 'GARI/0007.png' && m.blend === undefined),
+  pieces.length === 4 && pieces.every(m => m.quads.length === 1 && m.texture === sheetTexture && m.blend === undefined),
   'sheet: each span keeps its one-quad tile without the retired blend flag',
   `${pieces.length} pieces`,
 );

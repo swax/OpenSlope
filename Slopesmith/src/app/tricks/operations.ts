@@ -8,6 +8,7 @@ import { VIEW_ICON } from '../ui/components/icons';
 import { tooltip } from '../ui/components/tooltip';
 import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
+import { pinTextureReference } from '../net/asset-versions';
 import { freeScreen } from '../props/screens';
 import type { BoostPadKind } from '../../core/props/boost-pad';
 import type { SpecialZoneKind } from '../../core/props/special';
@@ -99,7 +100,16 @@ export function createTrickTools(deps: TrickToolsDeps) {
    *  click on the mountain then appends a node floated at the rail's height (docs/014). `texture` is a tube tile
    *  to wear from the start — a level's rail pipes picked in the Prop Library (docs/071); the metal default
    *  is left as the default rather than pinned. */
-  function armRail(opts: { texture?: string } = {}) {
+  async function armRail(opts: { texture?: string } = {}) {
+    const doc = store.mdoc;
+    let texture: string | undefined;
+    try {
+      texture = opts.texture ? await pinTextureReference(opts.texture) : undefined;
+    } catch (e) {
+      toast(`Rail texture load failed: ${e}`, 'err');
+      return;
+    }
+    if (store.mdoc !== doc) return;
     if (!store.tricksVisible) toggleTricks(); // must see the trick layer you're adding to
     discardUnfinishedRail();
     const rails = (store.mdoc.rails ??= []);
@@ -109,7 +119,6 @@ export function createTrickTools(deps: TrickToolsDeps) {
     store.gemArmed = false;
     viewport.setGemArmed(false); // the Rail tool and the Gem tool are exclusive
     leavePropLine();
-    const texture = opts.texture && opts.texture !== viewport.railSkins.metal ? opts.texture : undefined;
     rails.push({
       id: nextRailId(rails),
       kind: 'grind',
