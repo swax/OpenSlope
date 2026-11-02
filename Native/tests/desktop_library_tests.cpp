@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
             const auto chosen = library.folder().parent_path() / "chosen disc outside app.iso";
             std::filesystem::copy_file(images[0], chosen, std::filesystem::copy_options::overwrite_existing);
             const DesktopLibrary picked(library.folder() / "chosen destination");
-            const auto patch_count = gba ? 3u : 1u;
+            const auto patch_count = gba ? 2u : 1u;
             check(picked.courses(chosen).front().name == course &&
                       Terrain::load(picked.install(chosen, course)).patches().size() == patch_count,
                   "A chosen disc outside the executable folder must scan and import without copying the image");
