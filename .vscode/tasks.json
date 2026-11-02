@@ -1,0 +1,15 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Slopesmith: Run local server",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "run:local-server"],
+      "options": {
+        "cwd": "${workspaceFolder}/Slopesmith"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
