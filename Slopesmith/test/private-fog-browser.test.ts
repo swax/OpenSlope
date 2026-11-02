@@ -358,26 +358,40 @@ try {
   await sourceContent.locator('[data-detail="status"]').filter({ hasText: 'Ready' }).waitFor();
   await sourceInfo.locator('summary').press('Space');
   assert.equal(await sourceContent.isVisible(), false, 'fog source info collapses with the keyboard');
-  const pinned = await page.evaluate(async id => {
-    const projectsUrl = '/src/app/state/local-projects.ts';
-    const versionsUrl = '/src/core/reference/asset-version.ts';
-    const mountainUrl = '/src/core/doc/mountain.ts';
-    const { readLocalProject, openLocalProjects } = await import(/* @vite-ignore */ projectsUrl);
-    const { parseAssetVersion } = await import(/* @vite-ignore */ versionsUrl);
-    const { blankMountain } = await import(/* @vite-ignore */ mountainUrl);
-    const bundle = await readLocalProject(id);
-    const volume = bundle.document.particleVolumes[1];
-    const document = { ...blankMountain('PINNED_FOG'), particleVolumes: [volume] };
-    const projects = await openLocalProjects();
-    const saved = await projects.seed(document);
-    projects.close();
-    return {
-      id: volume.texture,
-      version: parseAssetVersion(volume.texture),
-      originalLegacy: bundle.document.particleVolumes[0].texture,
-      path: `/editor/PINNED_FOG?local=${saved.project.id}`,
-    };
-  }, localId);
+  // Fork the exact saved snapshot we waited for, rather than rereading during background saves/recovery updates.
+  const savedFog = await page.waitForFunction(
+    async ({ id, texture }) => {
+      const projectsUrl = '/src/app/state/local-projects.ts';
+      const { readLocalProject } = await import(/* @vite-ignore */ projectsUrl);
+      const bundle: ProjectBundle | null = await readLocalProject(id);
+      return bundle?.document.particleVolumes?.[1]?.texture === texture ? JSON.stringify(bundle) : null;
+    },
+    { id: localId, texture: fogReference },
+    { timeout: 90_000 },
+  );
+  const pinned = await page.evaluate(
+    async serialized => {
+      const bundle = JSON.parse(serialized) as ProjectBundle;
+      const projectsUrl = '/src/app/state/local-projects.ts';
+      const versionsUrl = '/src/core/reference/asset-version.ts';
+      const mountainUrl = '/src/core/doc/mountain.ts';
+      const { openLocalProjects } = await import(/* @vite-ignore */ projectsUrl);
+      const { parseAssetVersion } = await import(/* @vite-ignore */ versionsUrl);
+      const { blankMountain } = await import(/* @vite-ignore */ mountainUrl);
+      const volume = bundle.document.particleVolumes![1];
+      const document = { ...blankMountain('PINNED_FOG'), particleVolumes: [volume] };
+      const projects = await openLocalProjects();
+      const saved = await projects.seed(document);
+      projects.close();
+      return {
+        id: volume.texture,
+        version: parseAssetVersion(volume.texture),
+        originalLegacy: bundle.document.particleVolumes![0].texture,
+        path: `/editor/PINNED_FOG?local=${saved.project.id}`,
+      };
+    },
+    (await savedFog.jsonValue())!,
+  );
   assert.equal(pinned.originalLegacy, undefined, 'opening a legacy map does not silently rewrite its fog references');
   assert.equal(pinned.version.kind, 'texture');
   assert.equal(pinned.version.key, 'particle-fog0.png');
