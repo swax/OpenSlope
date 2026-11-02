@@ -1580,6 +1580,61 @@ try {
   );
   jo.close();
 
+  // ---- a migration larger than one server message is acknowledged and survives a page load ----
+  {
+    const before = migrateMountain(defaultMountain());
+    const oldLevel = `asset1:ssx-tricky:TRICKY_GARI:${'a'.repeat(64)}`;
+    const newLevel = `asset2:ssx-tricky:TRICKY_GARI:prop:1:${'b'.repeat(64)}`;
+    before.props = Array.from({ length: 828 }, (_, i) => ({
+      id: `migration-${i}`,
+      name: 'Tree',
+      level: oldLevel,
+      model: 1,
+      pos: [0, 0, 0],
+      yaw: 0,
+      scale: 1,
+    }));
+    const response = await fetch(`http://127.0.0.1:${service.port}/api/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ document: before }),
+    });
+    const id = ((await response.json()) as { project: { id: string } }).project.id;
+    const migrating = await connect('migrating', id, await serverDocument(id));
+    for (const prop of migrating.doc.props!) prop.level = newLevel;
+    setTex(migrating.doc, 0, 'Custom/one.png');
+    setTex(migrating.doc, 1, 'Custom/two.png');
+    migrating.sync.noteEdit();
+    migrating.sync.flush();
+    const messages = migrating.sent.filter(entry => entry.kind === 'assign');
+    check(
+      messages.length === 2 &&
+        messages.every(entry => entry.changes!.length <= 4096) &&
+        messages.reduce((sum, entry) => sum + entry.changes!.length, 0) === 4142,
+      'a 4,142-change asset upgrade fits into accepted assignment messages',
+    );
+    await until(() => migrating.sync.status().landed, 'every migration batch to be acknowledged');
+    check(
+      migrating.landed.length === 2 && migrating.landed.every(ack => !ack.refused.length && !ack.retired.length),
+      'the real server acknowledges the entire upgrade without refusals',
+    );
+    await storedOnce(
+      id,
+      doc => doc.props?.length === 828 && doc.props.every(prop => prop.level === newLevel),
+      'the asset upgrade to reach the project snapshot',
+    );
+    const snapshot = await pageLoad(id);
+    const reloaded = await connect('migration-reload', id, snapshot.document, snapshot);
+    reloaded.sync.noteEdit();
+    reloaded.sync.flush();
+    check(
+      reloaded.doc.props!.every(prop => prop.level === newLevel) && reloaded.sent.length === 0,
+      'a fresh page receives the persisted asset identities with no upgrade to resend',
+    );
+    migrating.close();
+    reloaded.close();
+  }
+
   ada.close();
   await wait(150);
 } catch (error) {

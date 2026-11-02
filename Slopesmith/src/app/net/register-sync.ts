@@ -11,6 +11,7 @@ import { nameIndex } from '../../core/doc/ids';
 import {
   applyRegisters,
   documentRegisters,
+  linkedFieldRegisters,
   objectFieldChanges,
   objectFieldOf,
   registerGeometry,
@@ -86,6 +87,9 @@ export interface RegisterTransport {
  * over a mountain's registers, which is only paid while something has actually changed.
  */
 export const COALESCE_MS = 40;
+
+/** The existing session server accepts at most 4096 ordinary assignments per message. */
+const MAX_ASSIGNMENTS_PER_BATCH = 4096;
 
 /**
  * Quiet time after the last local change before the replica checks itself against the room.
@@ -757,9 +761,34 @@ export function createRegisterSync(deps: {
   }
 
   function sendAssignments(changes: RegisterAssignment[]): void {
-    const batch = ++batches;
-    if (deps.channel.assign(changes, batch)) inFlight.set(batch, changes);
-    else for (const [key, value] of changes) hold(key, value);
+    let available = true;
+    const send = (part: RegisterAssignment[]) => {
+      const batch = ++batches;
+      if (available && deps.channel.assign(part, batch)) inFlight.set(batch, part);
+      else {
+        available = false;
+        for (const [key, value] of part) hold(key, value);
+      }
+    };
+    if (changes.length <= MAX_ASSIGNMENTS_PER_BATCH) return send(changes);
+    // Asset upgrades and reconnect replays can exceed one message. Keep linked fields (a prop's level,
+    // model, name, etc.) in the same batch, even when held edits put their keys in different positions.
+    const groups = new Map<RegisterKey, RegisterAssignment[]>();
+    for (const change of changes) {
+      const key = linkedFieldRegisters(change[0])[0];
+      const group = groups.get(key);
+      if (group) group.push(change);
+      else groups.set(key, [change]);
+    }
+    let part: RegisterAssignment[] = [];
+    for (const group of groups.values()) {
+      if (part.length + group.length > MAX_ASSIGNMENTS_PER_BATCH) {
+        send(part);
+        part = [];
+      }
+      part.push(...group);
+    }
+    if (part.length) send(part);
   }
 
   /** Remember the geometry a key this tab just wrote stands on, so awareness can say what it is working on. */
