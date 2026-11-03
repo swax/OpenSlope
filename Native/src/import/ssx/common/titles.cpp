@@ -10,15 +10,20 @@ void ssx_titles(const DiscInput& disc, std::vector<DiscCourse>& courses, const I
         ontour_titles(disc, courses, cancel);
         return;
     }
+    const std::string prefix = !courses.empty() && courses.front().name.starts_with("SSX3B_") ? "SSX3B_" : "SSX3_";
     const auto boot = executable_detail::boot_executable(disc, cancel);
     if (!boot)
         return;
-    const executable_detail::Executable executable(boot->bytes);
+    const bool streamed =
+        !courses.empty() && (courses.front().name.starts_with(prefix) || courses.front().name.starts_with("SSXOT_"));
+    std::optional<executable_detail::Executable> executable;
+    if (!streamed)
+        executable.emplace(boot->bytes);
     const Bytes b{boot->bytes};
     const auto text = [&](std::uint32_t address, unsigned limit = 80) {
         std::string value;
         for (unsigned i = 0; i < limit; ++i) {
-            const auto c = executable.read(address + i);
+            const auto c = executable->read(address + i);
             if (!c)
                 return std::string{};
             if (!*c)
@@ -30,8 +35,6 @@ void ssx_titles(const DiscInput& disc, std::vector<DiscCourse>& courses, const I
         return std::string{};
     };
     std::map<std::string, std::string> titles;
-    const bool streamed =
-        !courses.empty() && (courses.front().name.starts_with("SSX3_") || courses.front().name.starts_with("SSXOT_"));
     const unsigned stride = !courses.empty() && courses.front().name.starts_with("SSX_") ? 24 : 28;
     for (std::size_t p = 0; p + 100 <= boot->bytes.size(); p += 4) {
         if (p % 65536 == 0)
@@ -66,7 +69,7 @@ void ssx_titles(const DiscInput& disc, std::vector<DiscCourse>& courses, const I
             };
             const auto key = upper(inline_text(p + 48, 16)), title = inline_text(p, 32);
             if (!key.empty() && !title.empty())
-                titles.emplace("SSX3_" + key, title);
+                titles.emplace(prefix + key, title);
         }
     }
     for (auto& course : courses) {
@@ -79,19 +82,19 @@ void ssx_titles(const DiscInput& disc, std::vector<DiscCourse>& courses, const I
         }
     }
     for (auto& course : courses) {
-        if (!course.display_name.empty() || !course.name.starts_with("SSX3_"))
+        if (!course.display_name.empty() || !course.name.starts_with(prefix))
             continue;
-        if (course.name.size() == 10 && course.name.starts_with("SSX3_PEAK") && course.name.back() >= '1' &&
-            course.name.back() <= '3') {
-            course.display_name = "Peak " + course.name.substr(9);
+        if (course.name.size() == prefix.size() + 5 && course.name.starts_with(prefix + "PEAK") &&
+            course.name.back() >= '1' && course.name.back() <= '3') {
+            course.display_name = "Peak " + course.name.substr(prefix.size() + 4);
             course.name_source = "openslope:peak-selection";
             continue;
         }
-        const auto split = course.name.find('_', 5);
+        const auto split = course.name.find('_', prefix.size());
         if (split == std::string::npos)
             continue;
         const auto first = titles.find(course.name.substr(0, split)),
-                   last = titles.find("SSX3_" + course.name.substr(split + 1));
+                   last = titles.find(prefix + course.name.substr(split + 1));
         if (first != titles.end() && last != titles.end()) {
             course.display_name = first->second + " / " + last->second;
             course.name_source = boot->name + ":course-descriptors/connector";

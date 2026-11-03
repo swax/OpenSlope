@@ -121,12 +121,12 @@ Json write_streamed_riding_audio(const std::filesystem::path& map, bool tour, co
         return nullptr;
     Adapter adapter{root, read(root / "SoundIndex.json"), Json::array(), {}, 0, cancel};
     auto& index = adapter.index;
+    const auto game = tour ? "ssx-on-tour" : index.value("Level", "").starts_with("SSX3B_") ? "ssx-3-beta" : "ssx-3";
     if (index.value("Schema", "") != "openslope-sound-index/v1" || !index.contains("NamedBanks"))
         throw std::runtime_error("Riding audio needs a named-bank index");
     if (std::filesystem::exists(root / "RidingImport.json")) {
         const auto existing = read(root / "RidingImport.json");
-        if (existing.value("Schema", "") != "openslope-riding-import/v1" ||
-            existing.value("Game", "") != (tour ? "ssx-on-tour" : "ssx-3") ||
+        if (existing.value("Schema", "") != "openslope-riding-import/v1" || existing.value("Game", "") != game ||
             !std::filesystem::is_regular_file(root / "SFX/openslope_board/bank.json") ||
             !std::filesystem::is_regular_file(root / "SFX/openslope_rider/bank.json"))
             throw std::runtime_error("Conflicting existing riding audio adapter");
@@ -192,7 +192,7 @@ Json write_streamed_riding_audio(const std::filesystem::path& map, bool tour, co
             index["Banks"]["0"] = "openslope_rider";
         Json manifest = {{"Schema", "openslope-riding-import/v1"},
                          {"Fidelity", "Approximate"},
-                         {"Game", tour ? "ssx-on-tour" : "ssx-3"},
+                         {"Game", game},
                          {"AccountedBytes", adapter.bytes},
                          {"Routes", adapter.routes}};
         write(staging / "SoundIndex.json", index);
@@ -229,7 +229,7 @@ Json write_streamed_riding_audio(const std::filesystem::path& map, bool tour, co
 std::string adapt_riding_audio(const std::filesystem::path& map, const ImportCancel& cancelled) {
     const auto document = read(map / "Import.json");
     const auto game = document.value("Game", "");
-    if (game != "ssx-3" && game != "ssx-on-tour")
+    if (game != "ssx-3" && game != "ssx-3-beta" && game != "ssx-on-tour")
         throw std::runtime_error("Riding adaptation supports SSX 3 and On Tour maps");
     return import_detail::write_streamed_riding_audio(map, game == "ssx-on-tour", cancelled).dump();
 }

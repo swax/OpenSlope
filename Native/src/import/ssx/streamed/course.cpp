@@ -22,6 +22,10 @@ using Buffer = std::vector<std::uint8_t>;
 using Key = std::pair<unsigned, std::uint32_t>;
 using Records = std::map<Key, Buffer>;
 
+const char* streamed_game(const std::string& course, bool tour) {
+    return tour ? "ssx-on-tour" : course.starts_with("SSX3B_") ? "ssx-3-beta" : "ssx-3";
+}
+
 unsigned sector(std::uint32_t id, bool tour) { return id & (tour ? 65535u : 255u); }
 
 std::uint32_t texture_key(unsigned id, bool tour) { return tour ? id << 16 : (id << 8) | 255; }
@@ -73,7 +77,8 @@ bool contains(const std::string& name, std::initializer_list<const char*> tokens
 // are followed by the streaming directories; no world-space rebasing occurs.
 std::vector<std::string> locations(Bytes b) {
     b.range(0, 80);
-    require(b.le(0) == 0x01003800, "unsupported streaming database version");
+    // [Trailmap: 510-preview-version] Preview and retail share the location rows.
+    require(b.le(0) == 0x01003800 || b.le(0) == 0x01003600, "unsupported streaming database version");
     const auto count = b.le(8);
     require(count && count <= 255, "invalid location count");
     b.range(80, std::size_t(count) * 88);
@@ -94,8 +99,8 @@ std::vector<std::string> locations(Bytes b) {
 }
 
 std::set<unsigned> selection(const std::vector<std::string>& names, const std::string& requested) {
-    require(requested.starts_with("SSX3_"), "invalid selection");
-    const auto name = requested.substr(5);
+    require(requested.starts_with("SSX3_") || requested.starts_with("SSX3B_"), "invalid selection");
+    const auto name = requested.substr(requested.starts_with("SSX3B_") ? 6 : 5);
     std::set<unsigned> result;
     const std::string letters = name == "PEAK1" ? "AB" : name == "PEAK2" ? "CD" : name == "PEAK3" ? "E" : "";
     bool exact = false;
@@ -165,6 +170,7 @@ Records read_world(const DiscInput& stream, const std::set<unsigned>& selected, 
     Buffer group;
     std::vector<std::pair<std::size_t, bool>> boundaries;
     std::size_t total = 0, count = 0, group_index = 0;
+    const bool beta = !tour && !database.data.empty() && database.le(0) == 0x01003600;
     const unsigned first_sector = tour && database.data.empty() ? 1 : 2;
     for (std::uint64_t p = 0; p < stream.size; p += 32768) {
         check_cancel(cancel);
@@ -205,7 +211,10 @@ Records read_world(const DiscInput& stream, const std::set<unsigned>& selected, 
                         "nonzero data after streaming padding");
                 break;
             }
-            const auto bin = word & 255, size = tour ? word >> 10 : word >> 8;
+            const auto source_bin = word & 255, size = tour ? word >> 10 : word >> 8;
+            // [Trailmap: 510-preview-bins] Normalize the preview's resource order
+            // for the shared converter; Source/Resources.json retains disc bins.
+            const auto bin = beta && source_bin >= 7 ? source_bin + 1 : source_bin;
             if (tour)
                 starts.insert(cursor);
             const auto mask = (word >> 8) & 3;
@@ -553,6 +562,7 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
         if (key.first != 12 || bytes.empty())
             continue;
         check_cancel(cancel);
+        require(tour || names.contains(key), "missing collision resource name");
         const auto name = tour ? "Proxy " + std::to_string(key.second) : names.at(key);
         const auto marker = name.find("_CollideModel_");
         const auto owner = std::pair{key.second & 255, name.substr(0, marker)};
@@ -623,7 +633,7 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
         {"version", 1},
         {"header", {{"U1", 0}, {"U2", 0}, {"U3", 0}}},
         {"target",
-         {{"game", tour ? "ssx-on-tour" : "ssx-3"}, {"platform", "ps2"}, {"region", "unknown"}, {"level", course}}}};
+         {{"game", streamed_game(course, tour)}, {"platform", "ps2"}, {"region", "unknown"}, {"level", course}}}};
     for (const auto* key :
          {"slots", "graphs", "functions", "objectProperties", "instances", "physics", "collisionModels", "splines"})
         effects[key] = Json::array();
@@ -693,7 +703,7 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
 }
 
 Json sound_bindings(const Records& records, const PropsExport& props, const std::filesystem::path& output,
-                    const ImportCancel& cancel, bool tour) {
+                    const ImportCancel& cancel, bool tour, const std::string& course) {
     // [Trailmap: 517-attachments] Preserve the different event namespace without
     // feeding unresolved identities into another title's sound resolver.
     Json bindings = Json::array();
@@ -759,7 +769,7 @@ Json sound_bindings(const Records& records, const PropsExport& props, const std:
                     {"ExternalEmitters", external},
                     {"ResolverState", "Deferred"}};
     save(output / "SoundBindings.json", {{"Schema", "openslope-streamed-sound-bindings/v1"},
-                                         {"Game", tour ? "ssx-on-tour" : "ssx-3"},
+                                         {"Game", streamed_game(course, tour)},
                                          {"ResolverState", "Deferred"},
                                          {"Bindings", bindings}});
     return summary;
@@ -914,7 +924,7 @@ void splines(const Records& records, const std::map<Key, std::string>& names, co
 }
 
 void lights_and_fog(const Records& records, const std::set<unsigned>& sections, const std::filesystem::path& output,
-                    bool tour = false) {
+                    bool tour = false, bool beta = false) {
     // [Trailmap: 515-light-record, 515-placeholder, 515-halo-record,
     // 515-fog-model, 515-fog-placement] Do not read placeholder light bounds.
     Json lights = Json::array(), models = Json::array(), instances = Json::array();
@@ -924,6 +934,10 @@ void lights_and_fog(const Records& records, const std::set<unsigned>& sections, 
             continue;
         Bytes b{bytes};
         if (key.first == 6) {
+            // [Trailmap: 510-preview-lights] Preserve the distinct preview layout
+            // in Source until it has a portable interpretation.
+            if (beta)
+                continue;
             b.range(0, 112);
             const auto type = b.le(16);
             if (type != 1 && type != 2)
@@ -1215,12 +1229,13 @@ std::vector<DiscCourse> ontour_courses(std::span<const std::uint8_t> database, s
 
 std::vector<DiscCourse> ssx3_courses(std::span<const std::uint8_t> database, std::uint64_t bytes) {
     const auto names = locations(Bytes{database});
+    const std::string prefix = Bytes{database}.le(0) == 0x01003600 ? "SSX3B_" : "SSX3_";
     std::vector<DiscCourse> result;
     for (const auto& name : names)
         if (name != "TRANSP" && !name.ends_with("SKY"))
-            result.push_back({"SSX3_" + name, bytes});
+            result.push_back({prefix + name, bytes});
     for (const auto* preset : {"PEAK1", "PEAK2", "PEAK3"}) {
-        const auto name = std::string("SSX3_") + preset;
+        const auto name = prefix + preset;
         const std::string letters = name.ends_with('1') ? "AB" : name.ends_with('2') ? "CD" : "E";
         if (std::any_of(names.begin(), names.end(), [&](const auto& section) {
                 return section != "TRANSP" && !section.ends_with("SKY") &&
@@ -1229,22 +1244,23 @@ std::vector<DiscCourse> ssx3_courses(std::span<const std::uint8_t> database, std
             result.push_back({name, bytes});
     }
     for (auto& course : result) {
-        const auto section = course.name.substr(5);
+        const auto section = course.name.substr(prefix.size());
         const auto split = section.find('_');
         const bool peak = section.starts_with("PEAK");
         course.map_type = peak                         ? "run-chain"
                           : split != std::string::npos ? "connector"
                           : section.size() == 1        ? "hub"
                                                        : "run";
-        course.world_id = "ssx-3:bam";
-        course.parent_map = peak ? "SSX3_ALL"
-                                 : std::string("SSX3_PEAK") + (section.front() <= 'B'   ? "1"
-                                                               : section.front() <= 'D' ? "2"
-                                                                                        : "3");
+        course.world_id = prefix == "SSX3B_" ? "ssx-3-beta:bam" : "ssx-3:bam";
+        course.parent_map = peak ? prefix + "ALL"
+                                 : prefix + "PEAK" +
+                                       (section.front() <= 'B'   ? "1"
+                                        : section.front() <= 'D' ? "2"
+                                                                 : "3");
         for (const auto index : selection(names, course.name))
             course.source_sections.push_back(names[index]);
         if (split != std::string::npos)
-            course.connects = {"SSX3_" + section.substr(0, split), "SSX3_" + section.substr(split + 1)};
+            course.connects = {prefix + section.substr(0, split), prefix + section.substr(split + 1)};
     }
     return result;
 }
@@ -1270,23 +1286,25 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
         const auto sky_letter = course.ends_with("PEAK3")   ? 'E'
                                 : course.ends_with("PEAK2") ? 'C'
                                 : course.ends_with("PEAK1") ? 'A'
-                                                            : course[5];
+                                                            : course[course.starts_with("SSX3B_") ? 6 : 5];
         for (unsigned i = 0; i < names.size(); ++i)
             if (names[i] == std::string(1, sky_letter) + "SKY") {
                 sky.insert(i);
                 needed.insert(i);
             }
     }
-    const auto records = read_world(stream, needed, progress, cancel, tour, night, tour ? Bytes{database} : Bytes{});
+    const bool beta = course.starts_with("SSX3B_");
+    const auto records = read_world(stream, needed, progress, cancel, tour, night, Bytes{database});
     Json warnings = Json::array();
     notify("Converting mountain props and baked vertex lighting");
     auto world_props = props(records, labels, selected, output, warnings, cancel, tour);
+    notify("Converting mountain collision proxies");
     collision(records, labels, world_props, output, warnings, cancel, tour);
     auto effects = material_effects(records, world_props, course, cancel, tour);
     auto playtest = streamed_playtest_props(world_props.instances, effects, cancel);
     playtest["CourseHelpersPrepared"] = tour ? prepare_ontour_helpers(world_props.instances, world_props.models) : 0;
     save(output / "PlaytestImport.json", playtest);
-    const auto sounds = sound_bindings(records, world_props, output, cancel, tour);
+    const auto sounds = sound_bindings(records, world_props, output, cancel, tour, course);
     save(output / "Models.json", {{"Models", world_props.models}});
     save(output / "Materials.json", {{"Materials", world_props.materials}});
     save(output / "Instances.json", {{"Instances", world_props.instances}});
@@ -1397,7 +1415,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     auto lighting_sections = selected;
     if (tour)
         lighting_sections.insert(0);
-    lights_and_fog(records, lighting_sections, output, tour);
+    lights_and_fog(records, lighting_sections, output, tour, beta);
     if (!sky.empty()) {
         notify("Converting sky dome");
         std::filesystem::create_directories(output / "Skybox/Textures");
@@ -1479,7 +1497,8 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
             continue;
         source_bundle.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
         require(bool(source_bundle), "cannot save source resource bundle");
-        source_index.push_back({{"Bin", key.first},
+        const auto source_bin = beta && key.first >= 8 ? key.first - 1 : key.first;
+        source_index.push_back({{"Bin", source_bin},
                                 {"Resource", key.second},
                                 {"File", "Resources.bin"},
                                 {"Offset", source_offset},
@@ -1494,7 +1513,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     if (audio)
         write_streamed_ambient_audio(output, tour, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
-                                  {"Game", tour ? "ssx-on-tour" : "ssx-3"},
+                                  {"Game", streamed_game(course, tour)},
                                   {"Origin", "retail"},
                                   {"RetailData", true},
                                   {"Course", course},
@@ -1521,12 +1540,14 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
                     "Origin.json"};
     if (!sky.empty())
         outputs.push_back("Skybox");
+    if (beta)
+        warnings.push_back("Preview local-light records are preserved in Source; baked lighting is retained.");
     save(output / "Import.json",
          {{"Schema", "openslope-native-import/v1"},
           {"Course", course},
           {"Complete", false},
           {"Sections", selected},
-          {"Game", tour ? "ssx-on-tour" : "ssx-3"},
+          {"Game", streamed_game(course, tour)},
           {"TimeOfDay", tour ? (night ? "night" : "day") : "source"},
           {"Warnings", warnings},
           {"AudioAssets", audio},

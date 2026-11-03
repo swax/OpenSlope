@@ -10,6 +10,7 @@ const GAME_LABELS: Readonly<Record<string, string>> = {
   'ssx-tricky': 'SSX Tricky',
   'ssx-tricky-gba': 'SSX Tricky (GBA)',
   'ssx-3': 'SSX 3',
+  'ssx-3-beta': 'SSX 3 Beta',
   'ssx-on-tour': 'SSX On Tour',
   '1080-avalanche': '1080° Avalanche',
   'jonny-moseley-mad-trix': 'Jonny Moseley Mad Trix',
@@ -46,6 +47,7 @@ export function mapGame(source: { name: string; game?: string; course?: string; 
     const name = splitMapSource(value ?? '').name.toUpperCase();
     if (name.startsWith('SSXGBA_')) return 'ssx-tricky-gba';
     if (name.startsWith('SSXOT_')) return 'ssx-on-tour';
+    if (name.startsWith('SSX3B_')) return 'ssx-3-beta';
     if (name.startsWith('SSX3_')) return 'ssx-3';
     if (name.startsWith('SSX_')) return 'ssx';
     if (name.startsWith('TRICKY_')) return 'ssx-tricky';

@@ -573,7 +573,8 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     const sourcesByCourse = new Map(entries.map(entry => [entry.key, libraryGameSources(entry, libraryFilter.visibility)]));
     const loadedCount = entries.filter(entry => entry.loaded).length;
     const missingCount = maps.length - loadedCount;
-    typeFilter.hidden = selectedGame !== 'ssx3';
+    typeFilter.hidden = selectedGame !== 'ssx3' && selectedGame !== 'ssx3-beta';
+    showAllTypes.setAttribute('aria-label', `Show all ${gameName} map types`);
     mapHeader.hidden = !!options && typeFilter.hidden;
     heading.textContent = `${ISO_GAMES.find(game => game.id === selectedGame)!.name} maps`;
     filters.hidden = !maps.length;

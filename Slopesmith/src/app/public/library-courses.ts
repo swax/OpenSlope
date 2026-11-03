@@ -9,7 +9,7 @@ export type LibraryReferenceGroup = IsoGame | 'other';
 export type LibraryCounts = Record<LibraryVisibility | 'other', number>;
 
 const referenceGames: Partial<Record<string, IsoGame>> = {
-  'ssx-tricky': 'tricky', 'ssx-tricky-gba': 'tricky-gba', ssx: 'ssx', 'ssx-3': 'ssx3',
+  'ssx-tricky': 'tricky', 'ssx-tricky-gba': 'tricky-gba', ssx: 'ssx', 'ssx-3': 'ssx3', 'ssx-3-beta': 'ssx3-beta',
   'ssx-on-tour': 'ontour', '1080-avalanche': 'avalanche', 'jonny-moseley-mad-trix': 'madtrix',
 };
 

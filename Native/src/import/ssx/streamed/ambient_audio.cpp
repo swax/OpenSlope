@@ -69,20 +69,21 @@ Json write_streamed_ambient_audio(const std::filesystem::path& map, bool tour, c
     }
     if (!std::filesystem::is_regular_file(root / "SoundBindings.json"))
         return nullptr;
+    const auto bindings = read(root / "SoundBindings.json");
+    const auto game = bindings.value("Game", "");
+    if (tour ? game != "ssx-on-tour" : (game != "ssx-3" && game != "ssx-3-beta"))
+        throw std::runtime_error("Invalid streamed sound bindings game");
     const auto manifest_path = audio / "AmbientImport.json";
     if (std::filesystem::exists(manifest_path)) {
         const auto existing = read(manifest_path);
-        if (existing.value("Schema", "") != "openslope-ambient-import/v1" ||
-            existing.value("Game", "") != (tour ? "ssx-on-tour" : "ssx-3") ||
+        if (existing.value("Schema", "") != "openslope-ambient-import/v1" || existing.value("Game", "") != game ||
             !std::filesystem::is_regular_file(audio / "SFX/openslope_ambient/bank.json"))
             throw std::runtime_error("Conflicting ambient adapter");
         return existing;
     }
     auto document = read(root / "Instances.json");
     auto& instances = document.at("Instances");
-    const auto bindings = read(root / "SoundBindings.json");
-    if (bindings.value("Schema", "") != "openslope-streamed-sound-bindings/v1" ||
-        bindings.value("Game", "") != (tour ? "ssx-on-tour" : "ssx-3"))
+    if (bindings.value("Schema", "") != "openslope-streamed-sound-bindings/v1")
         throw std::runtime_error("Invalid streamed sound bindings");
     const auto index = read(audio / "SoundIndex.json");
     std::map<std::uint32_t, std::size_t> placements;
@@ -230,7 +231,7 @@ Json write_streamed_ambient_audio(const std::filesystem::path& map, bool tour, c
         instances[i]["Sounds"] = {{"CollisonSound", -1}, {"ExternalSounds", sounds}};
     }
     Json manifest = {{"Schema", "openslope-ambient-import/v1"},
-                     {"Game", tour ? "ssx-on-tour" : "ssx-3"},
+                     {"Game", game},
                      {"Fidelity", "Approximate"},
                      {"Emitters", count},
                      {"DeferredEmitters", deferred},
@@ -287,7 +288,7 @@ Json write_streamed_ambient_audio(const std::filesystem::path& map, bool tour, c
 
 std::string adapt_course_ambience(const std::filesystem::path& map, const ImportCancel& cancel) {
     const auto game = read(map / "Import.json").value("Game", "");
-    if (game != "ssx-3" && game != "ssx-on-tour")
+    if (game != "ssx-3" && game != "ssx-3-beta" && game != "ssx-on-tour")
         throw std::runtime_error("Unsupported ambience game");
     if (!std::filesystem::is_regular_file(map / "SoundBindings.json"))
         throw std::runtime_error("Course ambience requires streamed SoundBindings.json");

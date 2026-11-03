@@ -168,7 +168,7 @@ const trickySlot = (slot: string): string | undefined => {
 };
 export function canonicalDiscCourse(course: string): string {
   const slot = course.toUpperCase();
-  return /^[A-Z0-9_-]+$/.test(slot) && !/^(SSXGBA_|TRICKY_|SSX_|SSX3_|SSXOT_|AVALANCHE_|MADTRIX_)/.test(slot)
+  return /^[A-Z0-9_-]+$/.test(slot) && !/^(SSXGBA_|TRICKY_|SSX_|SSX3B?_|SSXOT_|AVALANCHE_|MADTRIX_)/.test(slot)
     ? `TRICKY_${slot}`
     : course;
 }
@@ -190,7 +190,7 @@ export const isDiscCourse = (course: string): boolean => {
   return (
     Object.hasOwn(DISC_COURSES, slot) ||
     !!trickySlot(slot) ||
-    (slot.startsWith('SSX3_') && SSX3_SECTIONS.has(slot.slice(5))) ||
+    (/^SSX3B?_/.test(slot) && SSX3_SECTIONS.has(slot.replace(/^SSX3B?_/, ''))) ||
     !!onTourSlot(slot)
   );
 };
@@ -203,7 +203,10 @@ export const discCourseName = (course: string): string => {
   if (tricky) return DISC_COURSES[tricky];
   const tour = onTourSlot(slot);
   if (tour) return `${tour[1]} · ${tour[2] === 'DAY' ? 'Day' : 'Night'} (SSX On Tour)`;
-  if (!slot.startsWith('SSX3_') || !SSX3_SECTIONS.has(slot.slice(5))) return course;
-  const section = slot.slice(5);
-  return section.startsWith('PEAK') ? `Peak ${section.slice(4)} (SSX 3)` : `${section.replaceAll('_', ' → ')} (SSX 3)`;
+  const section = slot.replace(/^SSX3B?_/, '');
+  if (section === slot || !SSX3_SECTIONS.has(section)) return course;
+  const game = slot.startsWith('SSX3B_') ? 'SSX 3 Beta' : 'SSX 3';
+  return section.startsWith('PEAK')
+    ? `Peak ${section.slice(4)} (${game})`
+    : `${section.replaceAll('_', ' → ')} (${game})`;
 };

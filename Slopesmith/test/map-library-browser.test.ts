@@ -113,7 +113,7 @@ try {
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'ISO', exact: true }).count(),
     0,
   );
-  assert.equal(await page.getByRole('region', { name: 'References' }).getByRole('button').count(), 8);
+  assert.equal(await page.getByRole('region', { name: 'References' }).getByRole('button').count(), 9);
   assert(await page.getByRole('heading', { name: 'References', exact: true }).isVisible());
   const loadMap = page.getByRole('button', { name: 'Load map', exact: true });
   const loadMapPanel = page.getByRole('group', { name: 'Load map', exact: true });

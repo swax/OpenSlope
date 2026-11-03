@@ -3,7 +3,7 @@
 #include <map>
 
 namespace openslope::import_detail {
-std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent);
+std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent, bool identical_duplicates = false);
 std::map<std::string, std::vector<std::uint8_t>> archive(const DiscInput& disc, const Extent& extent,
                                                          const ImportCancel& cancelled);
 } // namespace openslope::import_detail

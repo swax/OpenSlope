@@ -19,7 +19,7 @@ export const isoCourseCacheVersion = (course: string): number =>
         ? 8
         : /^SSXOT_.*_NIGHT$/i.test(course)
           ? 8
-          : /^(SSX3_|SSXOT_)/i.test(course)
+          : /^(SSX3B?_|SSXOT_)/i.test(course)
             ? 7
             : /^SSX_/i.test(course)
               ? 3
@@ -57,7 +57,7 @@ function cachedSoundFile(db: IDBDatabase, course: string): Promise<CachedFile | 
 }
 /** Only Tricky's executable collision routing can currently repair older caches. */
 export const supportsCollisionSoundUpdate = (course: string): boolean =>
-  !/^(SSXGBA_|SSX_|SSX3_|SSXOT_|AVALANCHE_|MADTRIX_)/i.test(course);
+  !/^(SSXGBA_|SSX_|SSX3B?_|SSXOT_|AVALANCHE_|MADTRIX_)/i.test(course);
 
 export async function needsCollisionSoundUpdate(courses: string[]): Promise<boolean> {
   const db = await openIsoCache();

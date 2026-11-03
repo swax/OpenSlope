@@ -37,8 +37,10 @@ export function courseLayout(id: string): CourseLayout {
   const key = id.toUpperCase();
   const known = layouts.get(key);
   if (known) return known;
-  if (!key.startsWith('SSX3_')) return { MapType: 'run' };
-  const section = key.slice(5);
+  if (!/^SSX3B?_/.test(key)) return { MapType: 'run' };
+  const beta = key.startsWith('SSX3B_');
+  const prefix = beta ? 'SSX3B_' : 'SSX3_';
+  const section = key.slice(prefix.length);
   const MapType: MapType =
     section === 'ALL'
       ? 'full-mountain'
@@ -51,12 +53,14 @@ export function courseLayout(id: string): CourseLayout {
             : 'run';
   return {
     MapType,
-    WorldId: 'ssx-3:bam',
+    WorldId: beta ? 'ssx-3-beta:bam' : 'ssx-3:bam',
     ...(MapType === 'full-mountain'
       ? {}
       : {
           ParentMap:
-            MapType === 'run-chain' ? 'SSX3_ALL' : `SSX3_PEAK${section[0] <= 'B' ? 1 : section[0] <= 'D' ? 2 : 3}`,
+            MapType === 'run-chain'
+              ? `${prefix}ALL`
+              : `${prefix}PEAK${section[0] <= 'B' ? 1 : section[0] <= 'D' ? 2 : 3}`,
         }),
   };
 }
@@ -64,7 +68,5 @@ export function importedCourseLayouts(ids: readonly string[]): Record<string, Co
   return Object.fromEntries(ids.map(id => [id, courseLayout(id)]));
 }
 export function isoCourseVisible(id: string, allTypes: boolean, required: readonly string[] = []): boolean {
-  return (
-    !id.toUpperCase().startsWith('SSX3_') || allTypes || required.includes(id) || courseLayout(id).MapType === 'run'
-  );
+  return !/^SSX3B?_/i.test(id) || allTypes || required.includes(id) || courseLayout(id).MapType === 'run';
 }

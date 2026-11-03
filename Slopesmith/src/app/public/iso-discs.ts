@@ -6,6 +6,7 @@ export const ISO_GAMES = [
   { id: 'tricky-gba', name: 'SSX Tricky (GBA)', system: 'GBA', support: '8 courses · Preliminary support' },
   { id: 'ssx', name: 'SSX', system: 'PS2', support: 'Partial support' },
   { id: 'ssx3', name: 'SSX 3', system: 'PS2', support: 'Preliminary support' },
+  { id: 'ssx3-beta', name: 'SSX 3 Beta', system: 'PS2', support: 'July 2003 preview · Preliminary support' },
   { id: 'ontour', name: 'SSX On Tour', system: 'PS2', support: 'Preliminary support' },
   { id: 'avalanche', name: '1080° Avalanche', system: 'GameCube', support: '25 course layouts · Preliminary support' },
   { id: 'madtrix', name: 'Jonny Moseley Mad Trix', system: 'PS2', support: '11 courses · Preliminary support' },
@@ -25,6 +26,7 @@ export function isoGameForCourse(course: string): IsoGame {
   if (/^MADTRIX_/i.test(course)) return 'madtrix';
   if (/^AVALANCHE_/i.test(course)) return 'avalanche';
   if (/^SSX_/i.test(course)) return 'ssx';
+  if (/^SSX3B_/i.test(course)) return 'ssx3-beta';
   if (/^SSX3_/i.test(course)) return 'ssx3';
   if (/^SSXOT_/i.test(course)) return 'ontour';
   return 'tricky';

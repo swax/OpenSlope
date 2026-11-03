@@ -6,7 +6,15 @@ interface BoardAudioSource {
   bank?: string;
 }
 
-const GAME_ORDER = ['ssx-tricky', 'ssx-3', 'ssx-on-tour', 'jonny-moseley-mad-trix', '1080-avalanche', 'ssx-tricky-gba'];
+const GAME_ORDER = [
+  'ssx-tricky',
+  'ssx-3',
+  'ssx-3-beta',
+  'ssx-on-tour',
+  'jonny-moseley-mad-trix',
+  '1080-avalanche',
+  'ssx-tricky-gba',
+];
 
 function priority(source: BoardAudioSource): number {
   let game = mapGame(source);

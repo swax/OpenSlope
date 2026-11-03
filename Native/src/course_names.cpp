@@ -36,9 +36,10 @@ std::string course_game(std::string_view id) {
     std::string name(id);
     std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
     for (const auto& [prefix, game] :
-         std::array<std::pair<std::string_view, std::string_view>, 7>{{{"SSXGBA_", "ssx-tricky-gba"},
+         std::array<std::pair<std::string_view, std::string_view>, 8>{{{"SSXGBA_", "ssx-tricky-gba"},
                                                                        {"SSXOT_", "ssx-on-tour"},
                                                                        {"SSX3_", "ssx-3"},
+                                                                       {"SSX3B_", "ssx-3-beta"},
                                                                        {"SSX_", "ssx"},
                                                                        {"TRICKY_", "ssx-tricky"},
                                                                        {"AVALANCHE_", "1080-avalanche"},
@@ -53,11 +54,12 @@ std::string course_game(std::string_view id) {
 }
 
 std::string game_display_name(std::string_view game) {
-    for (const auto& [id, title] : std::array<std::pair<std::string_view, std::string_view>, 9>{
+    for (const auto& [id, title] : std::array<std::pair<std::string_view, std::string_view>, 10>{
              {{"ssx", "SSX"},
               {"ssx-tricky", "SSX Tricky"},
               {"ssx-tricky-gba", "SSX Tricky (GBA)"},
               {"ssx-3", "SSX 3"},
+              {"ssx-3-beta", "SSX 3 Beta"},
               {"ssx-on-tour", "SSX On Tour"},
               {"1080-avalanche", "1080 Avalanche"},
               {"jonny-moseley-mad-trix", "Jonny Moseley Mad Trix"},

@@ -304,7 +304,7 @@ std::string polish_streamed_map(const std::filesystem::path& map, const ImportCa
         return Json::parse(file);
     };
     const auto game = read("Import.json").value("Game", "");
-    if (game != "ssx-3" && game != "ssx-on-tour")
+    if (game != "ssx-3" && game != "ssx-3-beta" && game != "ssx-on-tour")
         throw std::runtime_error("Playtest polish supports only streamed SSX3 and On Tour maps");
     std::map<std::string, Json> documents;
     for (const auto* name : {"Instances.json", "Effects.json", "Lights.json"})

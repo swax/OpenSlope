@@ -56,7 +56,7 @@ export async function readBoardSoundIndex(level?: string): Promise<BoardSoundInd
     )
       return local;
     // Streamed maps use the common PACK fallback until their surface routes are authored.
-    if (/^(SSX3_|SSXOT_)/i.test(level)) return null;
+    if (/^(SSX3B?_|SSXOT_)/i.test(level)) return null;
   }
   const index = await readJsonOr<BoardSoundIndex | null>(
     join(mapsRoot(), 'Shared', 'Audio', 'BoardSoundIndex.json'),

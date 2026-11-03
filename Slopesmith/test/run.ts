@@ -131,6 +131,7 @@ const EXCLUSIVE_GROUP = new Map([
   ['game-map-library-browser.test.ts', 'browser-webgl'],
   ['library-dock-browser.test.ts', 'browser-webgl'],
   ['ssx3-run-picker.test.ts', 'browser-webgl'],
+  ['ssx3-beta-browser.test.ts', 'browser-webgl'],
   ['surface-object-browser.test.ts', 'browser-webgl'],
   ['surface-stitch-browser.test.ts', 'browser-webgl'],
   ['terrain-pixel-lighting-browser.test.ts', 'browser-webgl'],

@@ -1,11 +1,10 @@
 #include "big.hpp"
 #include "import/strings.hpp"
 #include <algorithm>
-#include <set>
 #include <sstream>
 
 namespace openslope::import_detail {
-std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent) {
+std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent, bool identical_duplicates) {
     const auto header = disc.read(extent.offset, static_cast<std::size_t>(std::min<std::uint64_t>(extent.size, 16)));
     Bytes h{header};
     const bool compact = header.size() >= 6 && h.be(0, 2) == 0xc0fb;
@@ -18,7 +17,8 @@ std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent) {
     const auto table = disc.read(extent.offset, end);
     Bytes b{table};
     std::vector<Extent> result;
-    std::set<std::string> names;
+    std::map<std::string, Extent> names;
+    std::uint64_t compared = 0;
     std::size_t entries = 0;
     const auto declared_count = compact ? 0u : h.be(8);
     if (!compact && declared_count > 65535)
@@ -45,8 +45,23 @@ std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent) {
                 throw std::runtime_error("Unsafe archive member segment");
         if (!offset || name.find('*') != std::string::npos)
             continue;
-        if (offset < end || offset > extent.size || size > extent.size - offset || !names.insert(upper(name)).second)
+        if (offset < end || offset > extent.size || size > extent.size - offset)
             throw std::runtime_error("Invalid or duplicate archive member");
+        const Extent entry{name, extent.offset + offset, size, false};
+        const auto [previous, inserted] = names.emplace(upper(name), entry);
+        if (!inserted) {
+            // [Trailmap: 510-preview-archive] Compare bounded slices and retain
+            // the first extent only when repeated mountain members match.
+            if (!identical_duplicates || previous->second.size != size || compared + size > 512ull * 1024 * 1024)
+                throw std::runtime_error("Invalid or duplicate archive member");
+            compared += size;
+            for (std::uint64_t at = 0; at < size; at += 1024 * 1024) {
+                const auto count = std::size_t(std::min<std::uint64_t>(1024 * 1024, size - at));
+                if (disc.read(previous->second.offset + at, count) != disc.read(entry.offset + at, count))
+                    throw std::runtime_error("Conflicting duplicate archive member");
+            }
+            continue;
+        }
         result.push_back({name, extent.offset + offset, size, false});
     }
     return result;

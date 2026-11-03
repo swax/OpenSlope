@@ -7,6 +7,15 @@
 
 namespace openslope::import_detail {
 namespace {
+std::vector<std::uint8_t> mountain_member(const DiscInput& disc, const std::vector<Extent>& entries,
+                                          const std::string& name) {
+    const auto found = std::find_if(entries.begin(), entries.end(),
+                                    [&](const auto& entry) { return upper(entry.name) == upper(name); });
+    if (found == entries.end())
+        throw std::runtime_error("Mountain archive member is missing: " + name);
+    return decode_refpack(disc.read(found->offset, std::size_t(found->size)));
+}
+
 bool accepts(const DiscInput& disc) {
     if (!iso9660_disc(disc))
         return false;
@@ -25,13 +34,15 @@ std::vector<DiscCourse> courses(const DiscInput& disc, const ImportCancel& cance
     import_detail::check_cancel(cancelled);
     const auto data = iso.children(iso.find("DATA"));
     if (std::any_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "WORLDS"; })) {
-        const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb");
+        const auto entries = archive_index(disc, iso.find("DATA/WORLDS/BAM.BIG"), true);
+        const auto database = mountain_member(disc, entries, "data/worlds/bam.sdb");
         if (Bytes{database}.le(0) == 0x21004e00) {
-            const auto ids = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
-                       names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
-            return import_detail::ontour_courses(database, ids, names,
-                                                 disc_archive_directory(disc, "DATA/WORLDS/BAM.BIG"),
-                                                 iso.find("DATA/WORLDS/BAM.BIG").size);
+            const auto ids = mountain_member(disc, entries, "data/worlds/bam.phm"),
+                       names = mountain_member(disc, entries, "data/worlds/bam.psm");
+            std::vector<DiscEntry> members;
+            for (const auto& entry : entries)
+                members.push_back({entry.name, entry.size, false});
+            return import_detail::ontour_courses(database, ids, names, members, iso.find("DATA/WORLDS/BAM.BIG").size);
         }
         return import_detail::ssx3_courses(database, iso.find("DATA/WORLDS/BAM.BIG").size);
     }
@@ -84,8 +95,8 @@ std::vector<DiscCourse> courses(const DiscInput& disc, const ImportCancel& cance
 void extract(const DiscInput& disc, const std::string& stem, const std::filesystem::path& output,
              const ImportProgress& progress, const ImportCancel& cancelled) {
     Iso iso(disc);
-    if (stem.starts_with("SSX3_") || stem.starts_with("SSXOT_")) {
-        const auto entries = archive_index(disc, iso.find("DATA/WORLDS/BAM.BIG"));
+    if (stem.starts_with("SSX3_") || stem.starts_with("SSX3B_") || stem.starts_with("SSXOT_")) {
+        const auto entries = archive_index(disc, iso.find("DATA/WORLDS/BAM.BIG"), true);
         const auto it = std::find_if(entries.begin(), entries.end(),
                                      [](const auto& e) { return upper(e.name) == "DATA/WORLDS/BAM.SSB"; });
         if (it == entries.end())
@@ -93,15 +104,21 @@ void extract(const DiscInput& disc, const std::string& stem, const std::filesyst
         DiscInput stream{it->size, [disc, offset = it->offset](std::uint64_t p, std::span<std::uint8_t> bytes) {
                              disc.read_at(offset + p, bytes);
                          }};
-        const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb"),
-                   identifiers = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
-                   names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
+        const auto database = mountain_member(disc, entries, "data/worlds/bam.sdb"),
+                   identifiers = mountain_member(disc, entries, "data/worlds/bam.phm"),
+                   names = mountain_member(disc, entries, "data/worlds/bam.psm");
         if (stem.starts_with("SSXOT_")) {
-            const auto courses = import_detail::ontour_courses(database, identifiers, names,
-                                                               disc_archive_directory(disc, "DATA/WORLDS/BAM.BIG"),
+            std::vector<DiscEntry> members;
+            for (const auto& entry : entries)
+                members.push_back({entry.name, entry.size, false});
+            const auto courses = import_detail::ontour_courses(database, identifiers, names, members,
                                                                iso.find("DATA/WORLDS/BAM.BIG").size);
             if (std::none_of(courses.begin(), courses.end(), [&](const auto& item) { return item.name == stem; }))
                 throw std::runtime_error("Unknown On Tour track or time of day");
+        } else {
+            const auto courses = import_detail::ssx3_courses(database, iso.find("DATA/WORLDS/BAM.BIG").size);
+            if (std::none_of(courses.begin(), courses.end(), [&](const auto& item) { return item.name == stem; }))
+                throw std::runtime_error("Unknown SSX 3 selection for this disc");
         }
         import_detail::write_mountain_course(disc, stream, database, identifiers, names, stem, output, progress,
                                              cancelled);

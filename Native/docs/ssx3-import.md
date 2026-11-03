@@ -6,13 +6,25 @@ hub, connector, or peak. Browser extraction stays local in
 IndexedDB. Native extraction publishes an ordinary `Maps/SSX3_<selection>` folder.
 Existing maps are preserved and failed/cancelled imports are removed atomically.
 
+The July 31, 2003 PS2 preview is available as **SSX 3 Beta** in Slopesmith.
+Its streaming database identifies the build automatically, independent of the
+image filename. Beta maps use `SSX3B_<selection>` and game `ssx-3-beta`, keeping
+saved images, map caches and map pickers separate from retail SSX 3. The preview's
+repeated world-archive members are accepted only when their contents match.
+Runs, connectors, hubs and peaks share the SSX 3 converter and its remaining
+limitations below.
+Preview local-light records remain in `Source/`; terrain lightmaps and baked
+prop lighting are converted, but the preview's distinct local-light layout is
+not yet interpreted.
+
 ```powershell
 ./temp/native-core/Release/openslope_import.exe list discs/ssx-3-usa.iso
 ./temp/native-core/Release/openslope_import.exe extract discs/ssx-3-usa.iso SSX3_PEAK1 Maps
 ./temp/native-core/Release/openslope_import.exe extract discs/ssx-3-usa.iso SSX3_ARA1 Maps
+./temp/native-core/Release/openslope_import.exe extract "discs/SSX3 Preview 31_07_2003.iso" SSX3B_ARA1 Maps
 ```
 
-The supported layout is the PS2 NTSC-U mountain archive. Discovery reads the
+The supported layouts are the retail PS2 NTSC-U and July 2003 preview mountain archives. Discovery reads the
 streaming database without decompressing the mountain. Extraction reads bounded
 streaming groups directly from the disc; it never copies the ISO into memory.
 An event includes its connectors. Peaks select hubs A/B, C/D, or E and their

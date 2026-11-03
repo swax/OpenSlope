@@ -1601,6 +1601,7 @@ try {
     ['SSX Tricky', 'Full support'],
     ['SSX', 'Partial support'],
     ['SSX 3', 'Preliminary support'],
+    ['SSX 3 Beta', 'July 2003 preview · Preliminary support'],
     ['SSX On Tour', 'Preliminary support'],
     ['1080° Avalanche', '25 course layouts · Preliminary support'],
     ['Jonny Moseley Mad Trix', '11 courses · Preliminary support'],
