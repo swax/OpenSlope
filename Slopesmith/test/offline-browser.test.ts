@@ -286,6 +286,7 @@ try {
   await context!.setOffline(false);
   const originalWorker = readFileSync(join(dist, 'sw.js'), 'utf8');
   const originalIndex = readFileSync(join(dist, 'index.html'), 'utf8');
+  const originalCache = /name="slopesmith-app-cache" content="([^"]+)"/.exec(originalIndex)![1];
   failPrecache = true;
   writeFileSync(join(dist, 'index.html'), originalIndex.replace('</head>', '<!-- failed update --></head>'));
   await writeOfflineWorker(dist);
@@ -327,6 +328,9 @@ try {
   await sibling.getByRole('link', { name: 'Play OFFLINE_SAVED', exact: true }).waitFor();
   writeFileSync(join(dist, 'index.html'), originalIndex.replace('</head>', '<!-- complete update --></head>'));
   await writeOfflineWorker(dist);
+  const updatedCache = /name="slopesmith-app-cache" content="([^"]+)"/.exec(
+    readFileSync(join(dist, 'index.html'), 'utf8'),
+  )![1];
   await page!.evaluate(async () => {
     await (await navigator.serviceWorker.getRegistration())!.update();
   });
@@ -334,18 +338,25 @@ try {
   await updateNotice.waitFor();
   assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
   // Navigation can retry a previously failed installation; let that installation finish cleaning up too.
-  await page!.waitForFunction(
-    async () =>
-      !(await navigator.serviceWorker.getRegistration())?.installing &&
-      (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length === 2,
+  const updateCachesHandle = await page!.waitForFunction(
+    async expected => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const names = (await caches.keys()).filter(key => key.startsWith('slopesmith-app-'));
+      return !registration?.installing &&
+        registration?.active?.state === 'activated' &&
+        names.length === expected.length &&
+        expected.every(name => names.includes(name))
+        ? names
+        : false;
+    },
+    [originalCache, updatedCache],
   );
-  const updateCaches = await page!.evaluate(async () =>
-    (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
-  );
-  assert.equal(
-    updateCaches.length,
-    2,
-    `only the current and updated release caches remain: ${updateCaches.join(', ')}`,
+  const updateCaches = (await updateCachesHandle.jsonValue()) as string[];
+  await updateCachesHandle.dispose();
+  assert.deepEqual(
+    updateCaches.sort(),
+    [originalCache, updatedCache].sort(),
+    'only the current and updated release caches remain',
   );
   await updateNotice.getByRole('button', { name: 'Reload to update', exact: true }).click();
   await editorReady();

@@ -1,5 +1,6 @@
 // tier: integration
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -617,12 +618,18 @@ try {
     library.el.remove();
     return picked;
   }, versions.server);
-  assert.equal(sampled, `${versions.server}/0000.png`, 'sampling preserves an existing content version');
-  writeFileSync(
-    join(root, 'Maps', 'BANK_0_0', 'Textures', '0000.png'),
-    encodePng({ w: 1, h: 1, data: new Uint8Array([0, 255, 0, 255]) }),
+  assert.equal(
+    sampled,
+    `asset2:ssx:BANK_0_1:texture:0000.png:${createHash('sha256').update(png).digest('hex')}`,
+    'sampling upgrades a verified bank reference to the exact texture bytes',
   );
+  const replacementTexture = encodePng({ w: 1, h: 1, data: new Uint8Array([0, 255, 0, 255]) });
+  writeFileSync(join(root, 'Maps', 'BANK_0_0', 'Textures', '0000.png'), replacementTexture);
   const changedSample = await page.evaluate(async id => {
+    const versionsUrl = '/src/app/net/asset-versions.ts';
+    const { clearAssetCatalogue, pinReferenceAsset } = await import(/* @vite-ignore */ versionsUrl);
+    clearAssetCatalogue();
+    const replacement = await pinReferenceAsset('server:BANK_0_0', 'texture', '0000.png');
     const moduleUrl = '/src/app/paint/library.ts';
     const { TextureLibrary } = await import(/* @vite-ignore */ moduleUrl);
     let picked = '';
@@ -639,12 +646,16 @@ try {
       rejected = true;
     }
     library.el.remove();
-    return { picked, rejected };
+    return { picked, rejected, replacement };
   }, versions.differentServer);
   assert.deepEqual(
     changedSample,
-    { picked: '', rejected: true },
-    'sampling a missing version cannot silently pick the current different bank',
+    {
+      picked: `${versions.differentServer}/0000.png`,
+      rejected: false,
+      replacement: `asset2:ssx:BANK_0_0:texture:0000.png:${createHash('sha256').update(replacementTexture).digest('hex')}`,
+    },
+    'sampling an unavailable original preserves its identity instead of selecting the changed texture',
   );
   assert.deepEqual(errors, []);
   console.log(
