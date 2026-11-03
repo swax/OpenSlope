@@ -8,22 +8,25 @@ import { createIsoImportSessions } from './iso-import-sessions';
 import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
+// SSX 3 Beta generation 8 adds the original fog sprite and missing snow riding loops.
 // Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
 // GBA generation 9 rematches terrain into larger quads without subdividing isolated faces.
 export const isoCourseCacheVersion = (course: string): number =>
-  /^SSXGBA_/i.test(course)
-    ? 9
-    : /^AVALANCHE_/i.test(course)
-      ? 3
-      : /^MADTRIX_/i.test(course)
-        ? 8
-        : /^SSXOT_.*_NIGHT$/i.test(course)
+  /^SSX3B_/i.test(course)
+    ? 8
+    : /^SSXGBA_/i.test(course)
+      ? 9
+      : /^AVALANCHE_/i.test(course)
+        ? 3
+        : /^MADTRIX_/i.test(course)
           ? 8
-          : /^(SSX3B?_|SSXOT_)/i.test(course)
-            ? 7
-            : /^SSX_/i.test(course)
-              ? 3
-              : ISO_CACHE_VERSION;
+          : /^SSXOT_.*_NIGHT$/i.test(course)
+            ? 8
+            : /^(SSX3B?_|SSXOT_)/i.test(course)
+              ? 7
+              : /^SSX_/i.test(course)
+                ? 3
+                : ISO_CACHE_VERSION;
 interface CachedFile {
   key: string;
   course: string;

@@ -59,6 +59,12 @@ try {
   writeFileSync(join(adapted, 'SFX', 'openslope_board', '052.wav'), 'attack');
   assert.equal((await readBoardSoundBytes('zboard', 52, true, 'SSX3_ADAPTED')).toString(), 'metal-sustain');
   assert.equal((await readBoardSoundBytes('zboard', 52, false, 'SSX3_ADAPTED')).toString(), 'attack');
+  writeFileSync(join(adapted, 'SFX', 'original', '003.loop.wav'), 'preview-carve');
+  writeFileSync(join(adapted, 'SFX', 'original', '004.loop.wav'), 'preview-glide');
+  assert.equal((await readBoardSoundBytes('zboard', 3, true, 'SSX3_ADAPTED')).toString(), 'preview-carve');
+  assert.equal((await readBoardSoundBytes('zboard', 12, true, 'SSX3_ADAPTED')).toString(), 'preview-glide');
+  await assert.rejects(readBoardSoundBytes('zboard', 3, false, 'SSX3_ADAPTED'));
+  await assert.rejects(readBoardSoundBytes('zboard', 5, true, 'SSX3_ADAPTED'));
   const tricky = join(root, 'GARI', 'Audio'),
     madtrix = join(root, 'MADTRIX_LV_LAS_VEGAS', 'Audio');
   for (const [folder, banks, fallback] of [

@@ -331,7 +331,7 @@ export async function preparePublicPlayer(
       viewport.showSky(playing);
       localSky?.setVisible(playing);
     },
-    ensureReferenceEffects: async () => {},
+    prepareReference: async () => {},
     onPlayingChanged: playing => {
       session.setPlaying(playing);
       onPlaying(!!playing);

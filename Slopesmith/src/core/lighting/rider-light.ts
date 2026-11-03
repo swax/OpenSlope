@@ -62,6 +62,9 @@ export function referenceRiderProbes(instances: readonly PropInstance[]): RiderL
   const seen = new Set<string>();
   const probes: RiderLightProbe[] = [];
   for (const instance of instances) {
+    // A vertex-lit mesh's average scenery tint is not an actor rig. Use the ground
+    // lighting for those imports unless they supply a separate RiderLighting record.
+    if (instance.vertexLight?.length && !instance.riderLighting) continue;
     const light = instance.riderLighting ?? instance.lighting;
     if (!light) continue;
     const ambient = light.ambient.map(value => value / 256) as V3;
@@ -96,6 +99,9 @@ interface Node {
 }
 export class RiderLightField {
   private readonly root: Node | null;
+  get hasProbes(): boolean {
+    return this.root !== null;
+  }
   constructor(probes: readonly RiderLightProbe[]) {
     const build = (items: RiderLightProbe[], axis: number): Node | null => {
       if (!items.length) return null;

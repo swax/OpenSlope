@@ -48,7 +48,7 @@ std::string patch_document(std::span<const std::uint8_t> records, const std::vec
 void write_crowd(std::span<const std::uint8_t> source, const std::filesystem::path& root,
                  const ImportCancel& cancel = {});
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes, bool lightmap, const ImportCancel& cancelled,
-                              bool particle = false, bool original = false);
+                              bool particle = false, bool original = false, const std::string& only = {});
 std::string light_document(std::span<const std::uint8_t> geometry);
 std::string ssx_light_document(std::span<const std::uint8_t> index, std::span<const std::uint8_t> world);
 void write_paths(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,

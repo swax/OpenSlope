@@ -14,7 +14,7 @@ import type { BoardSoundIndex } from '../../core/audio/board-sound';
 import { validEnvironmentDocument, type EnvironmentAudioDocument } from '../../core/audio/environment';
 import { safeDataName } from './safe-name';
 import { resolveServerMapName } from '../reference-map-paths';
-import { compareBoardAudioSources } from '../../core/audio/board-sources';
+import { compareBoardAudioSources, missingSnowLoopSources } from '../../core/audio/board-sources';
 import { normalizeMapGame } from '../../core/reference/map-game';
 
 /** Read the user-generated map sidecar Snowknife wrote from this map's source disc. */
@@ -274,6 +274,16 @@ export async function readBoardSoundBytes(bank: string, slot: number, loop: bool
     const names = loop ? [`${stem}.loop.wav`, `${stem}.wav`] : [`${stem}.wav`];
     const bytes = await readFirst(names.map(name => join(source.dir, name)));
     if (bytes) return bytes;
+    if (loop)
+      for (const fallback of missingSnowLoopSources(await readSoundIndex(source.level), source.bank, safeSlot)) {
+        const stem = String(fallback.slot).padStart(3, '0');
+        const bytes = await readFirst(
+          ['.loop.wav', '.wav'].map(suffix =>
+            join(mapsRoot(), source.level, 'Audio', 'SFX', fallback.bank, `${stem}${suffix}`),
+          ),
+        );
+        if (bytes) return bytes;
+      }
   }
   throw new Error(`no extracted ${bank} slot ${safeSlot}`);
 }

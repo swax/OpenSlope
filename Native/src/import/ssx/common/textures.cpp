@@ -40,9 +40,9 @@ void finish_texture(Image& image) {
 } // namespace
 
 // [Trailmap: 210-directory, 210-chunk, 210-types, 210-palette, 210-swizzle,
-// 210-alpha, 210-color] All reads are bounded by directory/chunk extents.
+// 210-alpha, 210-color, 210-preview-particle-mips] All reads are bounded by directory/chunk extents.
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap, const ImportCancel& cancelled,
-                              bool particle, bool original) {
+                              bool particle, bool original, const std::string& only) {
     Bytes bank{data};
     bank.range(0, 16);
     if (bank.text(0, 4) != "SHPS" || bank.le(4) != data.size())
@@ -69,6 +69,8 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap,
         const std::size_t end = i + 1 < count ? bank.le(28 + i * 8) : data.size();
         if (start < 16 + count * 8 || end <= start || end > data.size())
             throw std::runtime_error("Invalid SSH image extent");
+        if (!only.empty() && name != only)
+            continue;
         Bytes image{data.subspan(start, end - start)};
         std::size_t cursor = 0, pixels_offset = 0, palette_offset = 0, palette_count = 0;
         unsigned type = 0, flags = 0, palette_flags = 0, width = 0, height = 0;
@@ -87,7 +89,22 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap,
                 flags = image.le(cursor + 12);
                 if (!width || !height || width > 4096 || height > 4096)
                     throw std::runtime_error("Invalid SSH dimensions");
-                const auto payload = (std::size_t(width) * height * (kind == 5 ? 32 : kind == 2 ? 8 : 4) + 7) / 8;
+                const auto bits = kind == 5 ? 32u : kind == 2 ? 8u : 4u;
+                auto payload = (std::size_t(width) * height * bits + 7) / 8;
+                // Particle banks pack smaller mip levels after the displayed base level.
+                const auto mip_count = particle ? flags >> 28 : 0;
+                if (mip_count > 12)
+                    throw std::runtime_error("Invalid SSH mip level count");
+                auto mip_width = width, mip_height = height;
+                for (unsigned mip = 0; mip < mip_count; ++mip) {
+                    if (mip_width == 1 && mip_height == 1)
+                        throw std::runtime_error("SSH mip levels exceed image dimensions");
+                    mip_width = std::max(1u, mip_width / 2);
+                    mip_height = std::max(1u, mip_height / 2);
+                    payload += (std::size_t(mip_width) * mip_height * bits + 7) / 8;
+                }
+                if (particle)
+                    flags &= 0x0fffffffu;
                 pixels_offset = cursor + 16;
                 image.range(pixels_offset, payload);
                 if (!size)

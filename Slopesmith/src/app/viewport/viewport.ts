@@ -546,7 +546,7 @@ export class Viewport {
   private propFill!: THREE.AmbientLight;
   private propKey!: THREE.DirectionalLight;
   private riderReferenceLight = new RiderLightField([]);
-  private referenceGroundLight: ((position: V3) => V3 | null) | null = null;
+  private referenceGroundLight: ((position: V3, residualFallback?: boolean) => V3 | null) | null = null;
   private riderAuthoredLight: RiderLight | null = null;
   // The reference's flat Surface view must keep the same normal-direction warning as its textured tiles and
   // the authored terrain. This material is also the fallback while reference tile pages are still loading.
@@ -1143,7 +1143,9 @@ export class Viewport {
         !!this.refBounds &&
         (refDistance < ownDistance ||
           (refDistance === ownDistance && (this.rideCtl.playTarget === 'reference' || !this.ownBounds)));
-      const shade = reference ? this.referenceGroundLight?.([refPoint.x, refPoint.y, refPoint.z]) : null;
+      const shade = reference
+        ? this.referenceGroundLight?.([refPoint.x, refPoint.y, refPoint.z], !this.riderReferenceLight.hasProbes)
+        : null;
       const light = reference
         ? sampleReferenceRiderLight(
             this.riderReferenceLight,

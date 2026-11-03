@@ -5,7 +5,7 @@ import type { ReferenceMusicGraph, ReferenceMusicIndex, ReferenceMusicSummary } 
 import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
 import { legacyTrickyMapName } from '../../core/reference/map-source';
 import { mapSourceRequest } from '../net/map-source';
-import { compareBoardAudioSources } from '../../core/audio/board-sources';
+import { compareBoardAudioSources, missingSnowLoopSources } from '../../core/audio/board-sources';
 import { normalizeMapGame } from '../../core/reference/map-game';
 import { referenceParticleTexturePaths } from '../../core/effects/particle-textures';
 
@@ -224,6 +224,14 @@ export async function localMapData(courses: string[], aliases: Record<string, st
         const loop = `${course}/Audio/SFX/${actualBank}/${slot}.loop.wav`;
         if (q.get('loop') === '1' && blob(loop)) return fileUrl(loop);
         if (blob(path)) return fileUrl(path);
+        if (q.get('loop') === '1')
+          for (const fallback of missingSnowLoopSources(index, actualBank ?? '', Number(slot))) {
+            const stem = String(fallback.slot).padStart(3, '0');
+            for (const suffix of ['.loop.wav', '.wav']) {
+              const candidate = `${course}/Audio/SFX/${fallback.bank}/${stem}${suffix}`;
+              if (blob(candidate)) return fileUrl(candidate);
+            }
+          }
       }
       return 'data:audio/wav;base64,';
     }

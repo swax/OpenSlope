@@ -4,7 +4,7 @@ import { buildReferenceMesh, type RawPatch } from '../src/core/reference/terrain
 import { referenceGroundLightSampler } from '../src/app/viewport/mesh/reference-lighting';
 
 /** A shaded floor, a bright roof at the same XZ, open snow, and a legacy-lit surface. */
-export function groundLightingFixture(shade: V3 = [0.2, 0.2, 0.2], source: 'image' | 'vertex' = 'image') {
+export function groundLightingFixture(shade: V3 = [0.2, 0.2, 0.2], source: 'image' | 'vertex' | 'residual' = 'image') {
   const colors = [shade, [0.8, 0.7, 0.6], [1, 1, 1], [0.01, 0.01, 0.01]];
   const patch = (x: number, y: number, id: number, rgb = true): RawPatch => ({
     Points: Array.from({ length: 16 }, (_, i) => [
@@ -13,8 +13,8 @@ export function groundLightingFixture(shade: V3 = [0.2, 0.2, 0.2], source: 'imag
       y * 100,
     ]),
     SurfaceType: 1,
-    LightmapID: source === 'image' ? id : -1,
-    LightMapPoint: source === 'image' ? [0, 0, 1, 1] : [0, 0, 0, 0],
+    LightmapID: source !== 'vertex' ? id : -1,
+    LightMapPoint: source !== 'vertex' ? [0, 0, 1, 1] : [0, 0, 0, 0],
     ...(rgb && source === 'image' ? { LightmapEncoding: 'rgb-multiply' as const } : {}),
     ...(rgb && source === 'vertex' ? { LightColorPoints: Array.from({ length: 16 }, () => [...colors[id]]) } : {}),
   });
@@ -28,7 +28,7 @@ export function groundLightingFixture(shade: V3 = [0.2, 0.2, 0.2], source: 'imag
       },
     ]),
   );
-  const data = buildReferenceMesh(patches, source === 'image' ? maps : undefined, 2);
+  const data = buildReferenceMesh(patches, source !== 'vertex' ? maps : undefined, 2);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
   geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));

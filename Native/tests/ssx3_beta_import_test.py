@@ -5,13 +5,14 @@ import struct
 import sys
 import tempfile
 
-from audio_import_test import disc as iso
+from audio_import_test import disc as iso, archive as audio_archive
 from course_titles_test import boot_files, executable
-from import_test import run
+from import_test import run, ssh
+from riding_audio_import_test import encoded_bank
 from ssx3_import_test import members
 
 
-def preview_disc(conflicting=False):
+def preview_disc(conflicting=False, short_fog=False):
     files = members(lambda rows: [(kind - 1 if kind >= 8 else kind,
                                   rid, payload) for kind, rid, payload in rows])
     database = bytearray(files['data/worlds/bam.sdb'])
@@ -34,7 +35,15 @@ def preview_disc(conflicting=False):
     archive += b''.join(payload for _, payload in rows)
     boot = bytearray(executable(streamed=True))
     boot[560:576] = b'ARA1'.ljust(16, b'\0')
-    return iso({'DATA/WORLDS/BAM.BIG': bytes(archive), **boot_files(bytes(boot))})
+    # The preview fog sprite includes a mip level inside its image chunk.
+    image = b'\x02' + (20 if short_fog else 21).to_bytes(3, 'little') + struct.pack('<HHHHI', 2, 2, 0, 0, 1 << 28)
+    image += bytes([0, 1, 2, 3, 0]) + ssh()[52:84]
+    fog = b'SHPS' + struct.pack('<II', 24 + len(image), 1) + b'TESTfog0' + struct.pack('<I', 24) + image
+    return iso({'DATA/WORLDS/BAM.BIG': bytes(archive), **boot_files(bytes(boot)),
+                'DATA/TEXTURES/PARTICLE.SSH': bytes(fog),
+                'DATA/CONFIG/BANKS.INF': b'[WORLD]\nBOARD = ride.bnk\nLAND = ride.bnk\n',
+                'DATA/CONFIG/SNOW.INF': b'# synthetic preview configuration\n',
+                'DATA/AUDIO/AUDIO.BIG': audio_archive({'data/audio/ride.bnk': encoded_bank()})})
 
 
 def main():
@@ -65,6 +74,15 @@ def main():
             source_bins = {row['Bin'] for row in json.loads((out / 'Source/Resources.json').read_text())}
             assert {7, 8, 9, 11, 13, 15} <= source_bins
             assert json.loads((out / 'Splines.json').read_text())['Splines']
+            board = json.loads((out / 'Audio/SFX/openslope_board/bank.json').read_text())['Slots']
+            assert board[3] is not None and board[4] is not None
+            assert (out / 'Audio/SFX/openslope_board/004.loop.wav').is_file()
+            assert (out / 'Textures/Particles/fog0.png').read_bytes().startswith(b'\x89PNG')
+            assert (out / 'Source/particle.ssh').is_file()
+        source.write_bytes(preview_disc(short_fog=True))
+        run(importer, 'extract', source, 'SSX3B_ARA1', root / 'short-fog', succeeds=False)
+        assert not (root / 'short-fog/SSX3B_ARA1').exists()
+        source.write_bytes(preview_disc())
         run(importer, 'extract', source, 'SSX3_ARA1', root / 'wrong-game', succeeds=False)
         assert not (root / 'wrong-game/SSX3_ARA1').exists()
         source.write_bytes(preview_disc(conflicting=True))

@@ -110,6 +110,20 @@ def main():
             before = hashes(root)
             run(importer, 'adapt-riding-audio', root, succeeds=False)
             assert hashes(root) == before, 'Failed adaptation changed source files'
+        preview = base / 'SSX3B_SYNTHETIC'
+        fixture(preview, False)
+        index_file = preview / 'Audio/SoundIndex.json'
+        index = json.loads(index_file.read_text())
+        del index['NamedBanks']['SPUBOARD']
+        write(index_file, index)
+        write(preview / 'Import.json', dict(Game='ssx-3-beta'))
+        source_bank(preview, 'hard', {3: True, 4: True})
+        report = json.loads(run(importer, 'adapt-riding-audio', preview))
+        assert report['Game'] == 'ssx-3-beta'
+        routes = {row['Slot']: row for row in report['Routes'] if row['Bank'] == 'openslope_board'}
+        for slot in [3, 4, 11, 12, 19, 20, 27, 28]:
+            assert routes[slot]['SourceBank'] == 'hard' and routes[slot]['SourceSlot'] == slot % 8
+        assert (preview / 'Audio/SFX/openslope_board/004.loop.wav').is_file()
     print('PASS: both common riding banks, loop regions, source preservation, approximate cue roles, idempotence and refusal without mutation')
 
 

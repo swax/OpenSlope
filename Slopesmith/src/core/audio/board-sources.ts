@@ -1,4 +1,25 @@
 import { mapGame } from '../reference/map-game';
+import type { CollisionSoundIndex } from '../effects/collision-sound';
+
+/** Older preview adapters omitted snow loops when the disc had BOARD but no SPUBOARD bank. */
+export function missingSnowLoopSources(
+  index: Pick<CollisionSoundIndex, 'NamedBanks'> | null | undefined,
+  bank: string,
+  slot: number,
+): { bank: string; slot: number }[] {
+  const original = index?.NamedBanks?.BOARD;
+  if (
+    bank.toLowerCase() !== 'openslope_board' ||
+    index?.NamedBanks?.SPUBOARD ||
+    !original ||
+    !/^[a-z0-9_-]+$/i.test(original) ||
+    slot < 0 ||
+    slot >= 32 ||
+    ![3, 4].includes(slot % 8)
+  )
+    return [];
+  return [...new Set([slot, slot % 8])].map(slot => ({ bank: original, slot }));
+}
 
 interface BoardAudioSource {
   name: string;

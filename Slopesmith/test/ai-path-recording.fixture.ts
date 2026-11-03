@@ -178,7 +178,7 @@ const play = createPlay({
   rebuildTools,
   updateCmdSheet() {},
   syncSkyVisibility() {},
-  ensureReferenceEffects: async () => {},
+  prepareReference: async () => {},
   onPlayingChanged() {},
 });
 function rebuildTools() {

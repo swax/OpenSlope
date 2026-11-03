@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { prepareRiderLighting, RIDER_LIGHT_SOURCE } from '../src/app/ride/rider-lighting';
 import {
   attenuateRiderLight,
+  referenceRiderProbes,
   RiderLightField,
   sampleReferenceRiderLight,
   type RiderLight,
@@ -9,6 +10,8 @@ import {
 import { groundLightingFixture } from './reference-ground-light.fixture';
 import { attachCharacterRig } from '../src/app/ride/character-rig';
 import { BLOCKY_RIDER_CHARACTER_ID } from '../src/core/characters/builtins';
+import { createBoard } from '../src/app/ride/gear';
+import type { PropInstance } from '../src/core/reference/props';
 
 const expect = (value: boolean, what: string) => {
   if (!value) throw new Error(what);
@@ -109,8 +112,6 @@ try {
   expect(actual.userData.riderVisual === BLOCKY_RIDER_CHARACTER_ID, 'built-in character did not load');
   camera.position.set(0, 0.85, 3);
   camera.lookAt(0, 0.85, 0);
-  scene.userData[RIDER_LIGHT_SOURCE] = () => ({ ambient: [1, 1, 1], keys: [] });
-  renderer.render(scene, camera);
   const energy = () => {
     const data = new Uint8Array(64 * 64 * 4);
     const gl = renderer.getContext();
@@ -119,25 +120,47 @@ try {
     for (let i = 0; i < data.length; i += 4) sum += data[i] + data[i + 1] + data[i + 2];
     return sum;
   };
-  const modelBright = energy();
-  for (const source of ['image', 'vertex'] as const) {
-    const ground = groundLightingFixture([0.1, 0.1, 0.1], source);
-    const field = new RiderLightField([]);
-    scene.userData[RIDER_LIGHT_SOURCE] = (position: THREE.Vector3) => {
-      const shade = ground.sample(position.toArray());
-      return source === 'vertex'
-        ? sampleReferenceRiderLight(field, position.toArray(), shade, true)
-        : attenuateRiderLight({ ambient: [1, 1, 1], keys: [] }, shade ?? [1, 1, 1]);
-    };
+  const field = new RiderLightField(
+    referenceRiderProbes([
+      {
+        loc: [0, 0, 0],
+        rot: [0, 0, 0, 1],
+        scale: [1, 1, 1],
+        lighting: { ambient: [224, 224, 224], keys: [] },
+        vertexLight: new Uint16Array([0x7fff]),
+      } as unknown as PropInstance,
+    ]),
+  );
+  const assertGroundShade = (subject: string) => {
+    scene.userData[RIDER_LIGHT_SOURCE] = () => ({ ambient: [1, 1, 1], keys: [] });
     renderer.render(scene, camera);
-    const modelDark = energy();
-    expect(
-      modelBright > 10000 && modelDark < modelBright * 0.15,
-      `built-in character ${source} shade ${modelBright}/${modelDark}`,
-    );
-    ground.geometry.dispose();
-  }
+    const modelBright = energy();
+    for (const source of ['image', 'vertex', 'residual'] as const) {
+      const ground = groundLightingFixture([0.1, 0.1, 0.1], source);
+      scene.userData[RIDER_LIGHT_SOURCE] = (position: THREE.Vector3) => {
+        const shade = ground.sample(position.toArray(), !field.hasProbes);
+        return source !== 'image'
+          ? sampleReferenceRiderLight(field, position.toArray(), shade, source === 'vertex')
+          : attenuateRiderLight({ ambient: [1, 1, 1], keys: [] }, shade ?? [1, 1, 1]);
+      };
+      renderer.render(scene, camera);
+      const modelDark = energy();
+      expect(
+        modelBright > 10000 && modelDark < modelBright * 0.15,
+        `${subject} ${source} shade ${modelBright}/${modelDark}`,
+      );
+      ground.geometry.dispose();
+    }
+  };
+  assertGroundShade('built-in character');
   character.dispose();
+  scene.remove(actual);
+  const board = createBoard('snowboard', 'goofy', undefined, null);
+  scene.add(board.group);
+  camera.position.set(0, 3, 2);
+  camera.lookAt(0, 0, 0);
+  assertGroundShade('snowboard');
+  board.dispose();
   document.documentElement.dataset.riderLightResult = JSON.stringify({ ok: true, bright, other, turned, glow });
 } catch (error) {
   document.documentElement.dataset.riderLightResult = JSON.stringify({ ok: false, error: String(error) });

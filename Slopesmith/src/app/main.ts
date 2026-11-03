@@ -2454,7 +2454,9 @@ const play = createPlay({
   rebuildTools,
   updateCmdSheet,
   syncSkyVisibility,
-  ensureReferenceEffects,
+  prepareReference: async () => {
+    await Promise.all([ensureReferenceEffects(), reference.ensureReferenceLightmaps()]);
+  },
   onPlayingChanged: target => session.setPlaying(target),
 });
 
@@ -2863,7 +2865,7 @@ function setMode(m: Mode) {
   }
   if (store.currentMode === 'play' && m !== 'play') {
     // leaving Play: stop any ride or watched field + hide the setup marker
-    play.cancelLaunch(); // a pending effects await must not start a ride after the mode has changed
+    play.cancelLaunch(); // pending reference preparation must not start a ride after the mode has changed
     if (viewport.riding) {
       viewport.stopRide();
       session.setPlaying(null);

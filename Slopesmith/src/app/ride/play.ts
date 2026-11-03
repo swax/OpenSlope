@@ -29,7 +29,7 @@ export type PlayDeps = {
   rebuildTools: () => void;
   updateCmdSheet: () => void;
   syncSkyVisibility: () => void;
-  ensureReferenceEffects: () => Promise<void>;
+  prepareReference: () => Promise<void>;
   /** Publish actual play-session start/stop state for the Users roster. */
   onPlayingChanged: (target: 'authored' | 'reference' | null) => void;
 };
@@ -42,7 +42,7 @@ export function createPlay(deps: PlayDeps) {
     rebuildTools,
     updateCmdSheet,
     syncSkyVisibility,
-    ensureReferenceEffects,
+    prepareReference,
     onPlayingChanged,
   } = deps;
   let launching: 'play' | 'watch' | null = null;
@@ -151,7 +151,7 @@ export function createPlay(deps: PlayDeps) {
     if (viewport.watching) viewport.stopWatch(); // a field on the other mountain has nothing to do with this one
     cancelStartPlacement(false); // an armed one-shot belongs to the mountain it was armed on
     store.playTarget = target;
-    if (target === 'reference') void ensureReferenceEffects();
+    if (target === 'reference') void prepareReference();
     syncSkyVisibility();
     viewport.setPlayActive(true, target);
     ensurePlaySpawn();
@@ -175,7 +175,7 @@ export function createPlay(deps: PlayDeps) {
     launching = 'play';
     rebuildTools();
     try {
-      if (target === 'reference') await ensureReferenceEffects();
+      if (target === 'reference') await prepareReference();
       if (
         generation !== launchGeneration ||
         store.currentMode !== 'play' ||
@@ -216,8 +216,8 @@ export function createPlay(deps: PlayDeps) {
    * The Play in VR button (docs/048): enter the headset and stand at the start with the board parked there.
    *
    * The order here is load-bearing. WebXR gates `requestSession` on USER ACTIVATION, and awaiting anything first
-   * spends it — so the session is asked for before any preparation, not after, and a reference level's effects
-   * are fetched behind the rider while they are still standing at the gate on foot. There is no `launching`
+   * spends it — so the session is asked for before any preparation, not after. A reference level's effects
+   * and lighting load while the rider is standing at the gate on foot. There is no `launching`
    * indicator for the same reason: the headset's own permission and loading screens are the wait.
    */
   async function startVr() {
@@ -267,7 +267,7 @@ export function createPlay(deps: PlayDeps) {
     if (store.currentMode === 'play') rebuildTools();
     updateCmdSheet();
     // Behind the rider, who is on foot at the gate and cannot mount before this lands.
-    if (target === 'reference') await ensureReferenceEffects();
+    if (target === 'reference') await prepareReference();
   }
 
   /** The headset session ended — Stop, Esc, the system menu, or the rider taking it off. */
@@ -314,7 +314,7 @@ export function createPlay(deps: PlayDeps) {
     launching = 'watch';
     rebuildTools();
     try {
-      if (target === 'reference') await ensureReferenceEffects();
+      if (target === 'reference') await prepareReference();
       if (
         generation !== launchGeneration ||
         store.currentMode !== 'play' ||
@@ -334,7 +334,7 @@ export function createPlay(deps: PlayDeps) {
     }
   }
 
-  /** Leaving Play or switching its target invalidates an async launch without cancelling the shared effects fetch. */
+  /** Leaving Play or switching its target invalidates an async launch without cancelling the shared reference preparation. */
   function cancelLaunch() {
     launchGeneration++;
     launching = null;

@@ -4,12 +4,14 @@ import {
   attenuateRiderLight,
   evaluateRiderLight,
   fallbackRiderLight,
+  referenceRiderProbes,
   RiderLightField,
   sampleReferenceRiderLight,
 } from '../src/core/lighting/rider-light';
 import { referenceGroundLightSampler } from '../src/app/viewport/mesh/reference-lighting';
 import { groundLightingFixture } from './reference-ground-light.fixture';
 import type { V3 } from '../src/core/doc/types';
+import type { PropInstance } from '../src/core/reference/props';
 
 const close = (actual: V3 | null, expected: V3) => {
   assert(actual);
@@ -31,7 +33,7 @@ data.lightColor = undefined;
 assert.equal(sample([0, 1, 0]), null);
 data.lightColor = saved;
 close(sample([0, 1, 0]), [0.1, 0.2, 0.3]);
-assert.equal(referenceGroundLightSampler(geometry, { ...data, patchLightmapMultiply: undefined }), null);
+assert.equal(referenceGroundLightSampler(geometry, { ...data, patchLightmapMultiply: undefined })([0, 1, 0]), null);
 geometry.dispose();
 const vertex = groundLightingFixture([0.1, 0.2, 1.25], 'vertex');
 close(vertex.sample([0, 1, 0]), [0.1, 0.2, 1.25]);
@@ -48,4 +50,25 @@ close(
   Array(3).fill(0.6 + (0.4 * 0.8) / Math.hypot(0.3, 0.8, 0.5)) as V3,
 );
 vertex.geometry.dispose();
+const scenery = {
+  loc: [0, 0, 0],
+  rot: [0, 0, 0, 1],
+  scale: [1, 1, 1],
+  lighting: { ambient: [224, 224, 224], keys: [] },
+  vertexLight: new Uint16Array([0x7fff]),
+} as unknown as PropInstance;
+const streamed = new RiderLightField(referenceRiderProbes([scenery]));
+assert.equal(streamed.hasProbes, false, 'An SSX 3 scenery average must not override the light beneath a rider');
+const residual = groundLightingFixture([0.1, 0.2, 0.3], 'residual');
+assert.equal(residual.sample([0, 1, 0]), null, 'Tricky actor rigs retain their existing lighting');
+close(residual.sample([0, 1, 0], true), [0.1, 0.1, 0.1]);
+close(residual.sample([0, 9, 0], true), [0.8, 0.8, 0.8]);
+const caveLight = sampleReferenceRiderLight(streamed, [0, 1, 0], residual.sample([0, 1, 0], !streamed.hasProbes))!;
+const openLight = sampleReferenceRiderLight(streamed, [20, 1, 0], residual.sample([20, 1, 0], !streamed.hasProbes))!;
+assert(evaluateRiderLight(caveLight, [0, 1, 0])[0] < evaluateRiderLight(openLight, [0, 1, 0])[0] * 0.11);
+assert.equal(residual.sample([100, 1, 0], true), null, 'A missing floor does not invent a shadow');
+const actor = new RiderLightField(referenceRiderProbes([{ ...scenery, riderLighting: light }]));
+assert(actor.hasProbes, 'An explicit actor rig survives alongside vertex-lit scenery');
+assert.equal(residual.sample([0, 1, 0], !actor.hasProbes), null, 'Do not double-darken an explicit actor rig');
+residual.geometry.dispose();
 console.log('RGB actor shade: floor/roof separation, colour, fill/key attenuation, no-hit and legacy fallback PASS');

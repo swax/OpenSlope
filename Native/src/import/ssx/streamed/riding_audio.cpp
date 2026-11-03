@@ -136,18 +136,22 @@ Json write_streamed_riding_audio(const std::filesystem::path& map, bool tour, co
     board.slots.resize(80);
     rider.slots.resize(123);
     for (unsigned group = 0; group < 10; ++group) {
-        const auto bank = adapter.named(tour        ? group == 0  ? "BRD_PACK"
-                                                      : group < 3 ? "BRD_POW"
-                                                                  : "BRD_ICE"
-                                        : group < 4 ? "SPUBOARD"
-                                                    : "BOARD");
+        const auto snow = adapter.named("SPUBOARD");
+        const auto bank = adapter.named(tour                         ? group == 0  ? "BRD_PACK"
+                                                                       : group < 3 ? "BRD_POW"
+                                                                                   : "BRD_ICE"
+                                        : group < 4 && !snow.empty() ? "SPUBOARD"
+                                                                     : "BOARD");
         const auto base = tour ? 0 : group * 8;
         for (const auto& [mode, label] : {std::pair{3u, "Carve"}, std::pair{4u, "Glide"}})
             adapter.assign(board, "openslope_board", group * 8 + mode, label, true,
                            {{!tour && group == 6 ? adapter.named("BOARD") : bank, !tour && group == 6 ? 35u
                                                                                   : tour              ? mode - 2
                                                                                                       : base + mode},
-                            {adapter.named(tour ? "BRD_PACK" : "SPUBOARD"), tour ? mode - 2 : mode}});
+                            {tour           ? adapter.named("BRD_PACK")
+                             : snow.empty() ? adapter.named("BOARD")
+                                            : snow,
+                             tour ? mode - 2 : mode}});
         adapter.assign(board, "openslope_board", group * 8 + 1, "Land", false,
                        {{adapter.named(tour ? "SKI_BRD_COMMON" : "LAND"), tour ? 5u : group * 8 + 1},
                         {adapter.named(tour ? "SKI_BRD_COMMON" : "LAND"), tour ? 5u : 1u}});

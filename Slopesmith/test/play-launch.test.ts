@@ -279,7 +279,7 @@ function harness(wait: Promise<void>) {
     rebuildTools: () => {},
     updateCmdSheet: () => {},
     syncSkyVisibility: () => {},
-    ensureReferenceEffects: () => {
+    prepareReference: () => {
       effectRequests++;
       return wait;
     },
