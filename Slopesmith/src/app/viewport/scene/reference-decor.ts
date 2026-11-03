@@ -720,7 +720,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           const drawMaterial = arrayMaterial
             ? arrayMaterial
             : native || vertexLit
-              ? assets.propTex.native(baseMaterial, vertexLit)
+              ? assets.propTex.native(baseMaterial, vertexLit, native && !!(model.animation ?? model.rotation))
               : baseMaterial;
           if (bucket.effect)
             for (const inst of bucket.instances) {

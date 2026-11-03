@@ -1,6 +1,7 @@
 import { loadAssetTexture } from '../net/asset-images';
 import * as THREE from 'three';
 import { renderLoadingManager } from '../viewport/render-assets';
+import { RAW_TO_EDITOR } from '../viewport/constants';
 import {
   createUvScrollPlayback,
   createTextureFlipPlayback,
@@ -42,7 +43,8 @@ import {
 /** Preview buckets for a prop's ground light (see `PropTextures.groundLit`). 12 keeps the step under what a
  *  viewer can pick out while bounding how many materials a prop-heavy mountain allocates. */
 const GROUND_LIGHT_STEPS = 12;
-const NATIVE_LIGHT_TEXELS = 7;
+// Ambient + three colour/direction pairs + the original placement's transposed 3x3 basis.
+const NATIVE_LIGHT_TEXELS = 10;
 
 /** Store a reference instance id in Three's existing per-instance RGB channel. Native materials consume it
  * as a lookup key rather than a diffuse tint; 24 bits covers every practical PBD instance table. */
@@ -139,16 +141,37 @@ export function propKeyScaleShader(fragmentShader: string): string {
     .replace('#include <lights_fragment_begin>', patched);
 }
 
-/** Carry the model-local stored normal to the fragment shader. Retail's instance light vectors live in this
- * exact frame, so transforming both through Three's world/view matrices would reintroduce the yaw error the
- * native records already solved. */
+/** Retail light vectors already include the placement rotation. Keep static normals in that frame, but
+ * apply animated pose changes relative to the original placement so a spinning gem turns through the light.
+ * The final three lookup texels hold transpose(rest placement); multiplying it by the current instance's
+ * normal matrix cancels the original placement, including its axis conversion and nonuniform scale. */
 export function ps2ObjectNormalVertexShader(vertexShader: string): string {
+  const declarations = `attribute vec3 ps2StoredNormal;
+varying vec3 vPs2ObjectNormal;
+uniform float uNativePoseNormals;
+uniform sampler2D uNativeLightTable;
+vec4 ps2NativePoseTexel( const in int placement, const in int field ) {
+	int size = textureSize( uNativeLightTable, 0 ).x;
+	int texel = placement * ${NATIVE_LIGHT_TEXELS} + field;
+	return texelFetch( uNativeLightTable, ivec2( texel % size, texel / size ), 0 );
+}`;
+  const normal = `#include <beginnormal_vertex>
+	vPs2ObjectNormal = normalize( ps2StoredNormal );
+#if defined( USE_INSTANCING ) && defined( USE_INSTANCING_COLOR )
+	if ( uNativePoseNormals > 0.5 ) {
+		int placement = int( dot( floor( vColor.rgb * 255.0 + 0.5 ), vec3( 1.0, 256.0, 65536.0 ) ) );
+		vec4 rest0 = ps2NativePoseTexel( placement, 7 );
+		mat3 pose = mat3( instanceMatrix );
+		if ( rest0.w > 0.5 && abs( determinant( pose ) ) > 0.000000000001 ) {
+			mat3 restTranspose = mat3( rest0.xyz, ps2NativePoseTexel( placement, 8 ).xyz,
+				ps2NativePoseTexel( placement, 9 ).xyz );
+			vPs2ObjectNormal = normalize( restTranspose * transpose( inverse( pose ) ) * ps2StoredNormal );
+		}
+	}
+#endif`;
   return vertexShader
-    .replace('void main() {', 'attribute vec3 ps2StoredNormal;\nvarying vec3 vPs2ObjectNormal;\nvoid main() {')
-    .replace(
-      '#include <beginnormal_vertex>',
-      '#include <beginnormal_vertex>\nvPs2ObjectNormal = normalize( ps2StoredNormal );',
-    );
+    .replace('void main() {', `${declarations}\nvoid main() {`)
+    .replace('#include <beginnormal_vertex>', normal);
 }
 
 export function ps2ObjectNormalVertexShaderApplies(): boolean {
@@ -480,6 +503,7 @@ export class PropTextureCache {
   private readonly keyScales = new WeakMap<THREE.Material, { value: number }>();
   private readonly fillScales = new WeakMap<THREE.Material, { value: number }>();
   private readonly nativeRecords = new WeakMap<THREE.Material, { value: number }>();
+  private readonly nativePoseNormals = new WeakMap<THREE.Material, { value: number }>();
   private readonly nativeLightTable = { value: emptyNativeLightTexture() };
   private readonly vertexLights = new WeakMap<THREE.Material, { value: number }>();
   private readonly vertexLightTable = { value: lookupTexture(1, 4, n => new Uint8Array(n)).texture };
@@ -546,12 +570,14 @@ export class PropTextureCache {
     const keyScale = this.keyScaleUniform(m);
     const fillScale = this.fillScaleUniform(m);
     const nativeRecords = this.nativeRecordUniform(m);
+    const nativePoseNormals = this.nativePoseNormalUniform(m);
     const vertexLight = this.vertexLightUniform(m);
     m.onBeforeCompile = shader => {
       shader.uniforms.uPs2Normals = this.ps2Normals; // shared: the flip is a global mode
       shader.uniforms.uKeyScale = keyScale; // per material: the ground under THIS prop
       shader.uniforms.uFillScale = fillScale; // per material: native ambient / authored ambient
       shader.uniforms.uNativeRecords = nativeRecords;
+      shader.uniforms.uNativePoseNormals = nativePoseNormals;
       shader.uniforms.uNativeLightTable = this.nativeLightTable;
       shader.uniforms.uVertexLight = vertexLight; // per material: lit by SSX 3's baked vertex colours
       shader.uniforms.uVertexLightTable = this.vertexLightTable;
@@ -579,6 +605,12 @@ export class PropTextureCache {
   private nativeRecordUniform(m: THREE.Material): { value: number } {
     let u = this.nativeRecords.get(m);
     if (!u) this.nativeRecords.set(m, (u = { value: 0 }));
+    return u;
+  }
+
+  private nativePoseNormalUniform(m: THREE.Material): { value: number } {
+    let u = this.nativePoseNormals.get(m);
+    if (!u) this.nativePoseNormals.set(m, (u = { value: 0 }));
     return u;
   }
 
@@ -619,11 +651,19 @@ export class PropTextureCache {
 
   /** Install the active reference level's exact per-instance ambient and three directional records. Colours
    * are normalised against the PS2's 256 texture-true value; directions remain signed model-local vectors. */
-  setNativeLighting(instances: readonly Pick<PropInstance, 'sourceIndex' | 'lighting'>[] | null): void {
+  setNativeLighting(
+    instances:
+      readonly (Pick<PropInstance, 'sourceIndex' | 'lighting'> & Partial<Pick<PropInstance, 'rot' | 'scale'>>)[] | null,
+  ): void {
     const maximum = instances?.reduce((value, instance) => Math.max(value, instance.sourceIndex), -1) ?? -1;
     const texels = Math.max(1, (maximum + 1) * NATIVE_LIGHT_TEXELS);
     const size = Math.ceil(Math.sqrt(texels));
     const data = new Float32Array(size * size * 4);
+    const rest = new THREE.Matrix4();
+    const restTranspose = new THREE.Matrix3();
+    const rotation = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const origin = new THREE.Vector3();
     for (const instance of instances ?? []) {
       if (!instance.lighting || instance.sourceIndex < 0) continue;
       const base = instance.sourceIndex * NATIVE_LIGHT_TEXELS * 4;
@@ -638,6 +678,15 @@ export class PropTextureCache {
           data[direction + channel] = light.direction[channel];
         }
       }
+      if (instance.rot && instance.scale) {
+        rest
+          .compose(origin, rotation.fromArray(instance.rot), scale.fromArray(instance.scale))
+          .premultiply(RAW_TO_EDITOR);
+        const transpose = restTranspose.setFromMatrix4(rest).transpose().elements;
+        for (let column = 0; column < 3; column++)
+          for (let row = 0; row < 3; row++) data[base + (7 + column) * 4 + row] = transpose[column * 3 + row];
+        data[base + 7 * 4 + 3] = 1;
+      }
     }
     const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.FloatType);
     texture.minFilter = texture.magFilter = THREE.NearestFilter;
@@ -647,9 +696,10 @@ export class PropTextureCache {
   }
 
   /** Native retail material: same tile/animation, but the exact instance record supplies the PS2 light — or,
-   *  with `vertexLit`, SSX 3's baked per-vertex colours do (`setVertexLighting`). */
-  native<T extends THREE.MeshLambertMaterial>(base: T, vertexLit = false): T {
-    const key = vertexLit ? `vertex:${base.uuid}` : base.uuid;
+   * with `vertexLit`, SSX 3's baked per-vertex colours do (`setVertexLighting`). Animated instances enable
+   * `poseNormals` to move normals relative to their original placement; static batches keep stored normals. */
+  native<T extends THREE.MeshLambertMaterial>(base: T, vertexLit = false, poseNormals = false): T {
+    const key = `${vertexLit ? 'vertex:' : ''}${poseNormals ? 'pose:' : ''}${base.uuid}`;
     let material = this.nativeMats.get(key) as T | undefined;
     if (!material) {
       material = this.variant(base);
@@ -683,6 +733,7 @@ export class PropTextureCache {
       }
       this.nativeRecordUniform(material).value = 1;
       this.vertexLightUniform(material).value = vertexLit ? 1 : 0;
+      this.nativePoseNormalUniform(material).value = poseNormals && !vertexLit ? 1 : 0;
       this.nativeMats.set(key, material);
     }
     return material;
@@ -736,6 +787,7 @@ export class PropTextureCache {
     const array = materialTextureArray(m);
     if (array) useTextureArray(clone as unknown as THREE.MeshLambertMaterial, array, `variant:${m.uuid}`);
     this.nativeRecordUniform(clone).value = this.nativeRecordUniform(m).value;
+    this.nativePoseNormalUniform(clone).value = this.nativePoseNormalUniform(m).value;
     this.vertexLightUniform(clone).value = this.vertexLightUniform(m).value;
     const animated = this.animatedByMaterial.get(m);
     // A variant draws the same animation, so it joins the bound set: scrolling reaches it through the shared

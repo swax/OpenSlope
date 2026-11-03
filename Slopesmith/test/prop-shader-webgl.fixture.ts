@@ -7,6 +7,7 @@ import { PropTextureCache, propLightIndexColor } from '../src/app/props/textures
 import { applyTextureAlphaMode } from '../src/app/props/texture-alpha';
 import { propPreviewIntensity } from '../src/core/lighting/prop-lights';
 import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
+import { createGemsLayer } from '../src/app/viewport/scene/gems';
 import {
   applyPropShade,
   setPropShadeSun,
@@ -25,6 +26,7 @@ interface ShaderSmokeResult {
   customPixel?: number[];
   nativePixel?: number[];
   batchedNativePixel?: number[];
+  rotatingPropPixels?: number[][];
   bakedPixels?: number[][];
   clayLitPixel?: number[];
   clayDarkPixel?: number[];
@@ -99,6 +101,17 @@ async function run(): Promise<void> {
       sourceIndex: 1,
       lighting: { ambient: [256, 256, 256], keys: [] },
     },
+    ...[0, 0.61].map((yaw, index) => ({
+      sourceIndex: index + 2,
+      rot: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), yaw).toArray(),
+      scale: [1.4, 0.8, 1.3] as [number, number, number],
+      lighting: {
+        ambient: [64, 64, 64] as [number, number, number],
+        keys: [
+          { color: [128, 128, 128] as [number, number, number], direction: [0, -1, 0] as [number, number, number] },
+        ],
+      },
+    })),
   ]);
 
   // The main viewport intentionally has no MSAA (Stage's XR fill-cost contract), so a depth-writing cutout
@@ -260,6 +273,95 @@ async function run(): Promise<void> {
 
   scene.remove(native);
 
+  // Gem clips spin in raw Z after the placement. Native records are already in the original placement's
+  // frame: the shading must follow the new pose without applying placement yaw/scale a second time.
+  const rotatingGeometry = new THREE.PlaneGeometry(100, 100).rotateX(Math.PI / 2);
+  rotatingGeometry.setAttribute('ps2StoredNormal', rotatingGeometry.getAttribute('normal').clone());
+  const rotatingMaterial = textures.native(textures.neutral, false, true);
+  const rotating = new THREE.InstancedMesh(rotatingGeometry, rotatingMaterial, 1);
+  const rotatingPropPixels: number[][] = [];
+  for (const [index, yaw] of [0, 0.61].entries()) {
+    const rest = new THREE.Matrix4()
+      .compose(
+        new THREE.Vector3(),
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), yaw),
+        new THREE.Vector3(1.4, 0.8, 1.3),
+      )
+      .premultiply(RAW_TO_EDITOR);
+    rotating.setColorAt(0, propLightIndexColor(index + 2));
+    rotating.instanceColor!.needsUpdate = true;
+    for (const angle of [0, Math.PI / 3]) {
+      rotating.setMatrixAt(0, rest.clone().multiply(new THREE.Matrix4().makeRotationZ(-angle)));
+      rotating.instanceMatrix.needsUpdate = true;
+      rotating.computeBoundingSphere();
+      scene.add(rotating);
+      renderer.render(scene, camera);
+      rotatingPropPixels.push(centrePixel(renderer));
+      scene.remove(rotating);
+    }
+  }
+  if (rotatingPropPixels[0][0] < rotatingPropPixels[1][0] + 35)
+    throw new Error(`Native shading did not follow the gem spin: ${JSON.stringify(rotatingPropPixels)}`);
+  for (let pose = 0; pose < 2; pose++)
+    if (Math.abs(rotatingPropPixels[pose][0] - rotatingPropPixels[pose + 2][0]) > 3)
+      throw new Error(`Native animation reapplied the placement yaw/scale: ${JSON.stringify(rotatingPropPixels)}`);
+
+  // Authored gems use ordinary Mesh normals and the authored sun, rather than a reference record. Keep
+  // that path lit and pose-dependent too, including the quantised ground-light material variant.
+  const authoredKey = new THREE.DirectionalLight(0xffffff, propPreviewIntensity(1));
+  authoredKey.position.set(0, 0, 10);
+  const authoredAmbient = ambient.intensity;
+  ambient.intensity = propPreviewIntensity(0.5);
+  const authoredGem = new THREE.Mesh(rotatingGeometry, textures.groundLit(textures.neutral, 0.8));
+  scene.add(authoredKey, authoredGem);
+  for (const angle of [0, Math.PI / 3]) {
+    authoredGem.matrixAutoUpdate = false;
+    authoredGem.matrix.copy(RAW_TO_EDITOR).multiply(new THREE.Matrix4().makeRotationZ(-angle));
+    authoredGem.matrixWorldNeedsUpdate = true;
+    renderer.render(scene, camera);
+    rotatingPropPixels.push(centrePixel(renderer));
+  }
+  scene.remove(authoredKey, authoredGem);
+  ambient.intensity = authoredAmbient;
+  if (rotatingPropPixels[4][0] < rotatingPropPixels[5][0] + 25)
+    throw new Error(`Authored gem lost its directional shading: ${JSON.stringify(rotatingPropPixels)}`);
+
+  // Legacy gem selection clones the material for its highlight. Remove just the intentional emissive tint
+  // and compare the lit pixels: a direct Material.clone drops the PS2 hook and washes out the selected gem.
+  const gemRoot = new THREE.Group();
+  scene.add(gemRoot);
+  const legacyGems = createGemsLayer(
+    {
+      scene,
+      worldRoot: gemRoot,
+      gizmo: { dragging: false },
+      attachGizmo() {},
+      reframeGizmo() {},
+    } as unknown as Parameters<typeof createGemsLayer>[0],
+    {
+      propTex: textures,
+      propGeom: new Map([['WEBGL:0', [{ geometry: rotatingGeometry, level: 'WEBGL', tex: null }]]]),
+    } as unknown as Parameters<typeof createGemsLayer>[1],
+  );
+  legacyGems.setModels(new Map([[2, { level: 'WEBGL', model: 0 }]]));
+  const legacyGem = { id: 'legacy', pos: [0, 0, 0] as [number, number, number], value: 2 };
+  ambient.intensity = propPreviewIntensity(0.5);
+  legacyGems.setGems([legacyGem], null);
+  renderer.render(scene, camera);
+  const legacyUnselected = centrePixel(renderer);
+  legacyGems.setGems([legacyGem], legacyGem.id);
+  legacyGems.gemGroup.traverse(object => {
+    if (object instanceof THREE.Mesh) (object.material as THREE.MeshLambertMaterial).emissive.setRGB(0, 0, 0);
+  });
+  renderer.render(scene, camera);
+  const legacySelected = centrePixel(renderer);
+  if (Math.abs(legacySelected[0] - legacyUnselected[0]) > 3)
+    throw new Error(`Selecting a legacy gem lost its lighting shader: ${legacyUnselected} vs ${legacySelected}`);
+  scene.remove(gemRoot);
+  ambient.intensity = authoredAmbient;
+  rotatingGeometry.dispose();
+  rotating.dispose();
+
   // Static reference scenery uses BatchedMesh when WEBGL_multi_draw is present. Three r185 moved batching
   // colours from USE_COLOR to USE_COLOR_ALPHA; the RGB still carries our native light-table index. Keep
   // record zero deliberately dark and ask this batch for bright record one so a lost index is visible.
@@ -300,7 +402,7 @@ async function run(): Promise<void> {
   const bakedGeometry = new THREE.PlaneGeometry(1, 1);
   bakedGeometry.setAttribute('ps2StoredNormal', bakedGeometry.getAttribute('normal').clone());
   bakedGeometry.setAttribute('ps2LightIndex', new THREE.BufferAttribute(new Float32Array([0, 1, 2, 3]), 1));
-  const baked = textures.native(textures.neutral, true);
+  const baked = textures.native(textures.neutral, true, true); // baked colours must ignore pose-normal lookup
   if (!textures.isVertexLit(baked) || !textures.isNative(baked)) throw new Error('Vertex-lit variant lost its mode');
   const drawBaked = (material: THREE.Material, sourceIndex: number): number[] => {
     const mesh = new THREE.InstancedMesh(bakedGeometry, material, 1);
@@ -592,6 +694,7 @@ async function run(): Promise<void> {
     customPixel,
     nativePixel,
     batchedNativePixel,
+    rotatingPropPixels,
     bakedPixels: [bakedHalfPixel, bakedTruePixel, bakedOverPixel, bakedNonePixel, bakedBatchedPixel, bakedFadePixel],
     clayLitPixel,
     clayDarkPixel,

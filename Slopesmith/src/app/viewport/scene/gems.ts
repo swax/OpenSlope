@@ -137,7 +137,7 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
       tier,
       selected
         ? mat => {
-            const m = mat.clone();
+            const m = assets.propTex.variant(mat);
             m.emissive = new THREE.Color(0x666655);
             gemSelMats.push(m);
             return m;
@@ -205,7 +205,7 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
    *  stand-in octahedron until it registers), hidden until the cursor hovers the terrain. Never pickable. */
   function buildGemGhost() {
     const ghostMat = (m: THREE.MeshLambertMaterial): THREE.Material => {
-      const clone = m.clone();
+      const clone = assets.propTex.variant(m, false);
       clone.transparent = true;
       clone.opacity = 0.55;
       clone.depthWrite = false;

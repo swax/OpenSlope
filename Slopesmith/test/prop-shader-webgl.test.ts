@@ -20,6 +20,7 @@ interface ShaderSmokeResult {
   customPixel?: number[];
   nativePixel?: number[];
   batchedNativePixel?: number[];
+  rotatingPropPixels?: number[][];
   bakedPixels?: number[][];
   clayLitPixel?: number[];
   clayDarkPixel?: number[];
@@ -124,6 +125,7 @@ try {
     `PROP SHADER WEBGL TEST PASSED (${result.programs} programs, ${result.renderer}; ` +
       `custom ${result.customPixel?.join('/')}, native ${result.nativePixel?.join('/')}, ` +
       `batched native ${result.batchedNativePixel?.join('/')}, ` +
+      `rotating native/authored ${result.rotatingPropPixels?.map(pixel => pixel.join('/')).join(' ')}, ` +
       `baked half/true/over/none/batched/faded ${result.bakedPixels?.map(pixel => pixel.join('/')).join(' ')}, ` +
       `surface clay lit ${result.clayLitPixel?.join('/')} dark ${result.clayDarkPixel?.join('/')} ` +
       `no-sun ${result.clayNoSunPixel?.join('/')}, ` +
