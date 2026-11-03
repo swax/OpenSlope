@@ -1,9 +1,10 @@
 import { bakeAO, bakeSunShadow } from './occlusion';
 import { bakeRigLighting, type LightRig } from '../reference/lights';
 import { SIGN_TERRAIN_WEIGHT_K } from './sign-lights';
+import { lightingGeometry, type LightingOccluder, type LightingGeometry } from './occluders';
 
 /** Bump when the bake algorithms or their sampling settings change; stored results must remain exact. */
-export const TERRAIN_BAKE_VERSION = 'terrain-lighting/v1';
+export const TERRAIN_BAKE_VERSION = 'terrain-lighting/v3';
 export type TerrainBakePart = 'ao' | 'shadow' | 'glow';
 export type TerrainBakeResult = Partial<Record<TerrainBakePart, Float32Array>>;
 export interface TerrainBakeInput {
@@ -12,14 +13,38 @@ export interface TerrainBakeInput {
   indices: Uint32Array;
   dir: [number, number, number];
   rig: LightRig | null;
+  occluders?: readonly LightingOccluder[];
 }
 
 /** Shared by the worker and its compatibility fallback, using the editor's existing full-quality bake. */
 export function bakeTerrainParts(input: TerrainBakeInput, parts: readonly TerrainBakePart[]): TerrainBakeResult {
   const result: TerrainBakeResult = {};
+  const geometry: LightingGeometry = parts.some(part => part !== 'glow')
+    ? lightingGeometry(input, input.occluders)
+    : input;
   for (const part of parts) {
-    if (part === 'ao') result.ao = bakeAO(input.positions, input.indices, input.normals, 16, 1024);
-    else if (part === 'shadow') result.shadow = bakeSunShadow(input.positions, input.indices, input.dir, 1536);
+    if (part === 'ao')
+      result.ao = bakeAO(
+        geometry.positions,
+        geometry.indices,
+        input.normals,
+        16,
+        1024,
+        {
+          positions: input.positions,
+          normals: input.normals,
+        },
+        geometry.cutouts,
+      );
+    else if (part === 'shadow')
+      result.shadow = bakeSunShadow(
+        geometry.positions,
+        geometry.indices,
+        input.dir,
+        1536,
+        input.positions,
+        geometry.cutouts,
+      );
     else if (input.rig) result.glow = bakeRigLighting(input.positions, input.normals, input.rig, SIGN_TERRAIN_WEIGHT_K);
   }
   return result;

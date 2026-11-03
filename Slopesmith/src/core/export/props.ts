@@ -16,6 +16,8 @@ import {
 import { safeDataName } from './names';
 import type { MaterialCombiner } from './materials';
 import { parseTexRef } from '../paint/textures';
+import type { LightingOccluder } from '../lighting/occluders';
+import type { ShadowMask } from '../lighting/shadow-mask';
 
 /**
  * The OBJ bakes an export appends to `Props.obj` (and `GemModels.obj`): placed reference props, authored
@@ -48,6 +50,35 @@ export interface ModelGeometry {
 
 /** A (level, model) → geometry lookup, resolved before the bake so the emission loops stay synchronous. */
 export type GeometryLookup = (level: string, model: number) => ModelGeometry | null;
+
+/** Static authored/rest poses of render surfaces, shared by preview and exported terrain shadow bakes. */
+export function placedPropOccluders(
+  props: readonly PlacedProp[],
+  geometryOf: GeometryLookup,
+  maskOf?: (prop: PlacedProp, sub: GeomSub) => ShadowMask | null | undefined,
+): LightingOccluder[] {
+  const meshes = new Map<GeomSub, Pick<LightingOccluder, 'positions' | 'indices' | 'uvs'>>();
+  return props
+    .filter(p => !isEffectTriggerProp(p))
+    .flatMap(p => {
+      const matrix = placementMatrix(p);
+      return (geometryOf(p.level, p.model)?.subs ?? []).flatMap(sub => {
+        if (!sub.indices.length) return [];
+        const mask = maskOf?.(p, sub);
+        if (mask === null) return [];
+        let geometry = meshes.get(sub);
+        if (!geometry) {
+          geometry = {
+            positions: sub.positions instanceof Float32Array ? sub.positions : Float32Array.from(sub.positions),
+            indices: sub.indices instanceof Uint32Array ? sub.indices : Uint32Array.from(sub.indices),
+            uvs: sub.uvs instanceof Float32Array ? sub.uvs : Float32Array.from(sub.uvs),
+          };
+          meshes.set(sub, geometry);
+        }
+        return [{ ...geometry, matrix, ...(mask ? { mask } : {}) }];
+      });
+    });
+}
 
 /** One model's local axis-aligned bounding box (raw cm, Z-up) — the geometry a sign light is derived from
  *  (core/lighting/sign-lights deriveSignLight). Null when the model carries no static geometry. */

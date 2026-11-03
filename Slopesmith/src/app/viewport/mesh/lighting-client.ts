@@ -19,12 +19,28 @@ export type TerrainBakeResponse = { result: TerrainBakeResult } | { error: strin
 
 /** Hash binary mesh inputs instead of serializing the tessellated mesh into a large JSON string. */
 export async function terrainLightingKeys(input: TerrainBakeInput): Promise<Record<TerrainBakePart, string>> {
-  const hashes = await Promise.all(
-    [input.positions, input.normals, input.indices].map(values =>
-      sha256(new Uint8Array(values.buffer, values.byteOffset, values.byteLength)),
-    ),
-  );
+  const memo = new Map<ArrayBufferView, Promise<string>>();
+  const hash = (values: ArrayBufferView) => {
+    let result = memo.get(values);
+    if (!result) {
+      result = sha256(new Uint8Array(values.buffer, values.byteOffset, values.byteLength));
+      memo.set(values, result);
+    }
+    return result;
+  };
+  const hashes = await Promise.all([input.positions, input.normals, input.indices].map(hash));
   const geometry = hashes.join(':');
+  const blockers = await Promise.all(
+    (input.occluders ?? []).map(async mesh => [
+      await hash(mesh.positions),
+      await hash(mesh.indices),
+      mesh.matrix ?? null,
+      mesh.mask && mesh.uvs
+        ? [await hash(mesh.uvs), await hash(mesh.mask.alpha), mesh.mask.width, mesh.mask.height, mesh.mask.cutoff]
+        : null,
+    ]),
+  );
+  const blockerHash = await sha256(new TextEncoder().encode(canonicalAssetJson(blockers)));
   const rig = input.rig?.lights.map(light => [
     light.kind,
     light.category,
@@ -38,8 +54,8 @@ export async function terrainLightingKeys(input: TerrainBakeInput): Promise<Reco
   ]);
   const rigHash = await sha256(new TextEncoder().encode(canonicalAssetJson(rig ?? null)));
   return {
-    ao: `${TERRAIN_BAKE_VERSION}:ao:${geometry}`,
-    shadow: `${TERRAIN_BAKE_VERSION}:shadow:${geometry}:${input.dir.join(',')}`,
+    ao: `${TERRAIN_BAKE_VERSION}:ao:${geometry}:${blockerHash}`,
+    shadow: `${TERRAIN_BAKE_VERSION}:shadow:${geometry}:${blockerHash}:${input.dir.join(',')}`,
     glow: `${TERRAIN_BAKE_VERSION}:glow:${geometry}:${rigHash}`,
   };
 }
@@ -53,7 +69,12 @@ export function createTerrainLightingClient(
 ) {
   const cache = deps.cache ?? createTerrainLightingCache();
   const fallback = deps.fallback ?? bakeTerrainParts;
-  async function compute(input: TerrainBakeInput, parts: TerrainBakePart[]): Promise<TerrainBakeResult> {
+  async function compute(
+    input: TerrainBakeInput,
+    parts: TerrainBakePart[],
+    signal?: AbortSignal,
+  ): Promise<TerrainBakeResult> {
+    signal?.throwIfAborted();
     try {
       return await new Promise<TerrainBakeResult>((resolve, reject) => {
         let worker: BakeWorker;
@@ -64,13 +85,19 @@ export function createTerrainLightingClient(
           reject(error);
           return;
         }
+        let settled = false;
         const finish = (result?: TerrainBakeResult) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
+          signal?.removeEventListener('abort', abort);
           worker.terminate();
           if (result) resolve(result);
-          else reject(new Error('Terrain lighting worker unavailable'));
+          else reject(signal?.aborted ? signal.reason : new Error('Terrain lighting worker unavailable'));
         };
+        const abort = () => finish();
         const timer = setTimeout(() => finish(), 30_000);
+        signal?.addEventListener('abort', abort, { once: true });
         worker.onmessage = event => {
           const message = event.data as TerrainBakeResponse;
           if (!message || typeof message !== 'object') return finish();
@@ -90,25 +117,27 @@ export function createTerrainLightingClient(
         }
       });
     } catch {
+      signal?.throwIfAborted();
       return fallback(input, parts);
     }
   }
   return {
-    async prepare(source: TerrainBakeInput, parts: TerrainBakePart[]): Promise<TerrainBakeResult> {
+    async prepare(
+      source: TerrainBakeInput,
+      parts: TerrainBakePart[],
+      signal?: AbortSignal,
+    ): Promise<TerrainBakeResult> {
+      signal?.throwIfAborted();
       if (!parts.length) return {};
       // Editing can continue while storage/the worker runs. Hash and bake the same immutable snapshot.
-      const input: TerrainBakeInput = {
-        positions: source.positions.slice(),
-        normals: source.normals.slice(),
-        indices: source.indices.slice(),
-        dir: [...source.dir],
-        rig: source.rig ? structuredClone(source.rig) : null,
-      };
+      // Structured cloning preserves shared model buffers across many instances of the same prop.
+      const input: TerrainBakeInput = structuredClone(source);
       const trace = beginDiagnosticPhase('lighting', 'terrain:prepare', `${input.positions.length / 3} vertices`);
       try {
         const keys = await terrainLightingKeys(input).catch(() => undefined);
+        signal?.throwIfAborted();
         if (!keys) {
-          const result = await compute(input, parts);
+          const result = await compute(input, parts, signal);
           trace.complete('computed without persistent cache');
           return result;
         }
@@ -119,9 +148,11 @@ export function createTerrainLightingClient(
             if (validTerrainBake(cached, part, input.positions.length / 3)) result[part] = cached;
           }),
         );
+        signal?.throwIfAborted();
         const missing = parts.filter(part => !result[part]);
         if (missing.length) {
-          const computed = await compute(input, missing);
+          const computed = await compute(input, missing, signal);
+          signal?.throwIfAborted();
           for (const part of missing) {
             const values = computed[part];
             if (!validTerrainBake(values, part, input.positions.length / 3))
@@ -133,7 +164,8 @@ export function createTerrainLightingClient(
         trace.complete(parts.map(part => `${part}=${missing.includes(part) ? 'computed' : 'cached'}`).join(' '));
         return result;
       } catch (error) {
-        trace.fail(error);
+        if (signal?.aborted) trace.complete('superseded');
+        else trace.fail(error);
         throw error;
       }
     },

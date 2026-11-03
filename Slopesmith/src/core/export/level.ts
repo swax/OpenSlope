@@ -29,6 +29,7 @@ import { hexToRgb } from '../math/color';
 import { serializeEffectsDocument } from '../effects/document';
 import { particleVolumesToNative } from '../particles/volumes';
 import type { BakedPropGroup } from './props';
+import type { LightingOccluder } from '../lighting/occluders';
 
 /**
  * EditDoc -> the authored level folder snowknife consumes (`snowknife gltf <dir>` then
@@ -101,6 +102,8 @@ export function buildLevelFiles(doc: EditDoc, signLights?: PlacedLight[], opts?:
 }
 
 export interface LevelFileOpts {
+  /** Posed prop render meshes that block the baked sun and sky. */
+  propOccluders?: readonly LightingOccluder[];
   /** Bake terrain lightmaps + write Lights.json (default true). An export choice, independent of the
    *  viewport's sun preview toggle: off ships no lighting, so an ISO repack keeps the target level's
    *  original lights + _L.ssh verbatim. */
@@ -691,7 +694,14 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
     // a prop and the snow under it are lit by the same numbers.
     const litProps = (doc.props ?? []).filter(p => p.id && !isEffectTriggerProp(p));
     const standsAt = (p: PlacedProp): V3 => [p.pos[0], p.pos[1] + p.scale * (opts?.propBaseOffset?.(p) ?? 0), p.pos[2]];
-    const baked = bakeLightmaps(patches, sun, proceduralDiffuse(patches), rig, litProps.map(standsAt));
+    const baked = bakeLightmaps(
+      patches,
+      sun,
+      proceduralDiffuse(patches),
+      rig,
+      litProps.map(standsAt),
+      opts?.propOccluders,
+    );
     const light = (p: PlacedProp, i: number, fullBright: boolean) =>
       roundPropLight(propInstanceLight(sun, baked.probeLight[i], baked.probeAO[i], fullBright, p));
     // A group's members share its probe but each keeps its own self-lit flag (docs/069). Member keys go in

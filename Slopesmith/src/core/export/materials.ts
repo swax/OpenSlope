@@ -63,15 +63,22 @@ export interface MaterialCombiner {
   ): number;
 }
 
-/**
- * A combiner over every source level's `Materials[]`, keyed by sanitised level name.
- *
- * `resolveSlot` is called from inside the synchronous geometry loops of every bake step, so it must stay
- * synchronous — threading a promise through those loops would serialize the bake on one file read per
- * material. The tables are therefore fetched up front, together, and the combiner is pure thereafter. The
- * whole library's tables are a fraction of a megabyte, and an export reads them once. Authored tile analyses
- * are preloaded too, so their material modes use the preview's classifier without I/O inside a geometry loop.
- */
+/** Resolve scoped, versioned and legacy source banks identically for materials and shadow masks. */
+export function sourceMaterials(
+  tables: ReadonlyMap<string, readonly SourceMaterial[]>,
+  level: string,
+): readonly SourceMaterial[] {
+  const { source, name } = splitMapSource(level);
+  const table = (name: string) =>
+    tables.get(safeDataName(source ? mapSourceId(source, name) : name)) ??
+    (source === 'server' ? tables.get(safeDataName(name)) : undefined);
+  const own = table(name);
+  if (own) return own;
+  const fallback = legacyTrickyMapName(name);
+  return fallback ? (table(fallback) ?? []) : [];
+}
+
+/** Combine prefetched material tables; emission stays synchronous and performs no asset I/O. */
 export function buildMaterialCombiner(
   tables: ReadonlyMap<string, readonly SourceMaterial[]>,
   tileAnalyses: ReadonlyMap<string, TextureAlphaAnalysis> = new Map(),
@@ -83,17 +90,7 @@ export function buildMaterialCombiner(
   const slotOf = new Map<string, number>(); // "<safeLevel>:<MaterialID>" → combined id (or -1 = untextured)
   // A level absent from the library resolves to an empty table, which is the same "no such material" answer
   // a lazy read produced.
-  const materialsOf = (level: string): readonly SourceMaterial[] => {
-    const { source, name } = splitMapSource(level);
-    const table = (name: string) =>
-      tables.get(safeDataName(source ? mapSourceId(source, name) : name)) ??
-      (source === 'server' ? tables.get(safeDataName(name)) : undefined);
-    const own = table(name);
-    if (own) return own;
-    const fallback = legacyTrickyMapName(name);
-    if (!fallback) return [];
-    return table(fallback) ?? [];
-  };
+  const materialsOf = (level: string) => sourceMaterials(tables, level);
 
   return {
     materials,

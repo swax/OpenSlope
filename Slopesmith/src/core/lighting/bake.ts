@@ -1,6 +1,7 @@
 import { buildReferenceMesh, type RawPatch } from '../reference/terrain';
 import { computeModelColored } from './lightmap';
 import { bakeSunShadow, bakeAO } from './occlusion';
+import { lightingGeometry, type LightingOccluder } from './occluders';
 import { groundLightSampler } from './ground-light';
 import { bakeRigLighting, type LightRig } from '../reference/lights';
 import { SIGN_TERRAIN_WEIGHT_K } from './sign-lights';
@@ -168,6 +169,7 @@ export function compositeRigGlow(colored: Float32Array, glow: Float32Array): voi
  *  Pass `diffuse` to fold each patch's diffuse base C_D into the GS residual (the exact texture × light
  *  encode bxtools writes); omit it for the white-base encode (texture-free, the prior behaviour). Pass `rig`
  *  (the authored sign lights) to fold their glow into the terrain so a billboard's snow pool ships baked.
+ *  `occluders` adds posed prop render surfaces as blockers for the sun and ambient sky.
  *
  *  `probes` are extra editor-space points to resolve the SAME cast-shadow / AO terms at — the placed props,
  *  which need them for their per-instance lighting (docs/032 · lighting). They ride this bake rather than
@@ -181,13 +183,15 @@ export function bakeLightmaps(
   diffuse?: DiffuseSampler,
   rig?: LightRig,
   probes?: readonly V3[],
+  occluders?: readonly LightingOccluder[],
 ): BakedLightmaps {
   const mesh = buildReferenceMesh(patches, undefined, RES); // editor-space positions + analytic normals + tile UVs at the 8x8 lightmap tessellation
+  const blockers = lightingGeometry(mesh, occluders);
   const e = (sun.el * Math.PI) / 180,
     a = (sun.az * Math.PI) / 180;
   const dir: [number, number, number] = [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
   // Probes ride the terrain's own occlusion pass as extra QUERY points. They are kept out of the depth map's
-  // PROJECTION (`bakeSunShadow`/`bakeAO` still size it from `mesh.positions` alone) because the map's bounds
+  // PROJECTION (`bakeSunShadow`/`bakeAO` size it from terrain + prop blockers alone) because the map's bounds
   // and cell size derive from the geometry projected into it — letting a far-flung prop widen that would
   // coarsen the map the terrain itself is shaded with. Querying is just a lookup, so this costs a handful of
   // reads rather than a second rasterisation. Probe normals point at the sky: the openness an upright prop sees.
@@ -208,16 +212,18 @@ export function bakeLightmaps(
       qNrm[j + 1] = 1;
     });
   }
-  const shadow = sun.shadow > 0 ? bakeSunShadow(mesh.positions, mesh.indices, dir, 1536, qPos) : undefined;
+  const shadow =
+    sun.shadow > 0 ? bakeSunShadow(blockers.positions, blockers.indices, dir, 1536, qPos, blockers.cutouts) : undefined;
   const ao =
     sun.ao > 0
       ? bakeAO(
-          mesh.positions,
-          mesh.indices,
+          blockers.positions,
+          blockers.indices,
           mesh.normals,
           16,
           1024,
-          probeCount ? { positions: qPos, normals: qNrm } : undefined,
+          { positions: qPos, normals: qNrm },
+          blockers.cutouts,
         )
       : undefined;
   // the probes' tail of that shared pass; absent terms read as fully lit / fully open, which is what

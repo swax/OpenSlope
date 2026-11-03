@@ -1,3 +1,6 @@
+import type { ShadowCutout } from './occluders';
+import { shadowMaskVisible } from './shadow-mask';
+
 /**
  * Bake the occlusion a flat directional sun can't reproduce - cast shadow along the sun, and ambient
  * occlusion over the sky hemisphere - so the lighting model can close the residual against the baked
@@ -86,12 +89,15 @@ function project(positions: Float32Array, dx: number, dy: number, dz: number, re
 }
 
 /** Rasterise every triangle into the depth map, keeping the max depth (frontmost toward `dir`) per cell. */
-function rasterise(dm: DepthMap, positions: Float32Array, indices: Uint32Array) {
+function rasterise(dm: DepthMap, positions: Float32Array, indices: Uint32Array, cutouts: readonly ShadowCutout[] = []) {
   const { map, W, H, rx, ry, rz, ux, uy, uz, dx, dy, dz, minPx, minPy, cell } = dm;
   const cx = (i: number) => (positions[i] * rx + positions[i + 1] * ry + positions[i + 2] * rz - minPx) / cell;
   const cy = (i: number) => (positions[i] * ux + positions[i + 1] * uy + positions[i + 2] * uz - minPy) / cell;
   const cd = (i: number) => positions[i] * dx + positions[i + 1] * dy + positions[i + 2] * dz;
+  let cutoutIndex = 0;
   for (let t = 0; t + 2 < indices.length; t += 3) {
+    while (cutoutIndex < cutouts.length && t >= cutouts[cutoutIndex].start + cutouts[cutoutIndex].count) cutoutIndex++;
+    const cutout = cutouts[cutoutIndex]?.start <= t ? cutouts[cutoutIndex] : undefined;
     const i0 = indices[t] * 3,
       i1 = indices[t + 1] * 3,
       i2 = indices[t + 2] * 3;
@@ -128,6 +134,20 @@ function rasterise(dm: DepthMap, positions: Float32Array, indices: Uint32Array) 
         const d = w0 * ad + w1 * bd + w2 * ed;
         const idx = y * W + x;
         if (d > map[idx]) {
+          if (cutout) {
+            const { uvs, mask, vertexOffset } = cutout;
+            const a = (indices[t] - vertexOffset) * 2,
+              b = (indices[t + 1] - vertexOffset) * 2,
+              c = (indices[t + 2] - vertexOffset) * 2;
+            if (
+              !shadowMaskVisible(
+                mask,
+                w0 * uvs[a] + w1 * uvs[b] + w2 * uvs[c],
+                w0 * uvs[a + 1] + w1 * uvs[b + 1] + w2 * uvs[c + 1],
+              )
+            )
+              continue;
+          }
           map[idx] = d;
           dm.slopeX[idx] = slopeX;
           dm.slopeY[idx] = slopeY;
@@ -191,9 +211,10 @@ export function bakeSunShadow(
   L: [number, number, number],
   res = 1536,
   query?: Float32Array,
+  cutouts?: readonly ShadowCutout[],
 ): Float32Array {
   const dm = project(positions, L[0], L[1], L[2], res);
-  rasterise(dm, positions, indices);
+  rasterise(dm, positions, indices, cutouts);
   const pts = query ?? positions;
   const out = new Float32Array(pts.length / 3);
   visibility(dm, pts, out);
@@ -224,6 +245,7 @@ export function bakeAO(
   dirs = 16,
   res = 1024,
   query?: { positions: Float32Array; normals: Float32Array },
+  cutouts?: readonly ShadowCutout[],
 ): Float32Array {
   const pts = query?.positions ?? positions;
   const nrm = query?.normals ?? normals;
@@ -234,7 +256,7 @@ export function bakeAO(
   for (const [dx, dy, dz] of skyDirs(dirs)) {
     // occluders define the map (see bakeSunShadow); `query` only reads it
     const dm = project(positions, dx, dy, dz, res);
-    rasterise(dm, positions, indices);
+    rasterise(dm, positions, indices, cutouts);
     visibility(dm, pts, vis);
     for (let v = 0; v < n; v++) {
       const j = v * 3;

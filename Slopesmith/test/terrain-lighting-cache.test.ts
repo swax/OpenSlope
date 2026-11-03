@@ -147,6 +147,35 @@ const broken = createTerrainLightingClient({
 assert.deepEqual(await broken.prepare(input, parts), cold, 'malformed worker responses fall back instead of hanging');
 assert.equal(terminateCount, 1);
 
+const cancellation = new AbortController();
+let workerStarted!: () => void;
+const started = new Promise<void>(resolve => {
+  workerStarted = resolve;
+});
+let canceledWorkers = 0;
+const beforeCancel = computations.length;
+const cancellable = createTerrainLightingClient({
+  cache: failingCache,
+  fallback: compute,
+  createWorker: () => ({
+    onmessage: null,
+    onerror: null,
+    onmessageerror: null,
+    postMessage() {
+      workerStarted();
+    },
+    terminate() {
+      canceledWorkers++;
+    },
+  }),
+});
+const canceled = cancellable.prepare(original, parts, cancellation.signal);
+await started;
+cancellation.abort();
+await assert.rejects(canceled, { name: 'AbortError' });
+assert.equal(canceledWorkers, 1, 'superseded worker jobs are terminated');
+assert.equal(computations.length, beforeCancel, 'cancellation must not trigger the blocking fallback');
+
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 try {
   Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
@@ -232,6 +261,31 @@ layer.invalidateRigGlow();
 finish({ ao: new Float32Array(preview.positions.length / 3) });
 assert.equal(await lightChanged, false, 'light edits invalidate an in-flight result');
 layer.release();
+let masksReady!: () => void;
+let prematureBakes = 0;
+const masksPending = new Promise<void>(resolve => {
+  masksReady = resolve;
+});
+const waitingLayer = createTerrainLayer(
+  { worldRoot: new THREE.Group() } as Stage,
+  {} as TileMaterials,
+  { shading: () => 'none', rigData: () => null, rigVisible: () => false, prepareOccluders: () => masksPending },
+  { onGeometryRebuilt() {} },
+  {
+    lightingClient: {
+      prepare: async () => {
+        prematureBakes++;
+        return {};
+      },
+    },
+  },
+);
+waitingLayer.applyPreview(preview);
+const waitingForMasks = waitingLayer.prepareLighting(options);
+waitingLayer.release();
+masksReady();
+assert.equal(await waitingForMasks, false, 'document replacement while textures load cannot start a stale bake');
+assert.equal(prematureBakes, 0, 'the bake waits for required mask pixels');
 console.log(
   'TERRAIN LIGHTING CACHE PASS: exact keys, selective invalidation, warm reuse, failures, input snapshots and stale-result rejection',
 );

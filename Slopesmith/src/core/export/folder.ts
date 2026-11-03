@@ -28,15 +28,17 @@ import {
 import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../lighting/sign-lights';
 import { authoredGroupLights, expandGroupProps } from '../reference/groups';
-import { decodeProps } from '../reference/props';
-import { AUTHORED_MODEL_LEVEL, authoredModelFrames, modelNumber } from '../doc/models';
+import { decodeProps, type PropMaterial } from '../reference/props';
+import type { Rgba } from '../paint/ground-textures';
+import { AUTHORED_MODEL_LEVEL, authoredModelFrames, authoredModelLevelProps, modelNumber } from '../doc/models';
 import { analyzeTexturePixels, type TextureAlphaAnalysis } from '../props/texture-alpha';
 import { IMPORTED_PROP_LEVEL } from '../props/imported';
 import { placedPropSolid } from '../props/contact';
 import { groupMemberKey } from '../props/defaults';
 import { particleDonorLevel } from '../particles/volumes';
 import { buildLevelFiles, toRaw } from './level';
-import { buildMaterialCombiner } from './materials';
+import { buildMaterialCombiner, sourceMaterials } from './materials';
+import { preparePropShadowMasks } from './shadow-masks';
 import {
   bakeAuthoredModelProps,
   bakeEffectTriggerProps,
@@ -46,6 +48,7 @@ import {
   bakeRailTubes,
   modelGeometryBox,
   placementMatrix,
+  placedPropOccluders,
   placementSimilarity,
   rawInstanceQuat,
   type BakedGroups,
@@ -208,10 +211,69 @@ export async function buildExportFolder(
   // boundary so a route edited immediately before export cannot carry a stale native spline-table index.
   const exportDoc: EditDoc = doc.effects ? { ...doc, effects: cloneEffectsDocument(doc.effects) } : doc;
   if (exportDoc.effects) syncAuthoredMotionPathEffectResources(exportDoc.effects, exportDoc.rails);
+  const authoredProps = opts?.lighting === false ? undefined : authoredModelLevelProps(doc);
+  const authoredModels = new Map((authoredProps?.models ?? []).map(model => [model.id, model]));
+  const importedModels = new Map((imported?.models ?? []).map(model => [model.id, model]));
+  const tables = await provider.materialTables();
+  const shadowImages = new Map<string, Promise<Rgba | undefined>>();
+  const readShadowImage = (ref: string): Promise<Rgba | undefined> => {
+    let image = shadowImages.get(ref);
+    if (!image) {
+      image = (async () => {
+        const { level, name } = parseTexRef(ref);
+        try {
+          return await provider.decodePng(await provider.referenceTexture(level, name));
+        } catch (error) {
+          logLines.push(
+            `WARN: texture ${ref} alpha unavailable (${error instanceof Error ? error.message : error}); using preview fallback`,
+          );
+          return undefined;
+        }
+      })();
+      shadowImages.set(ref, image);
+    }
+    return image;
+  };
+  const shadowGeometry: typeof geometryOf = (level, model) =>
+    level === AUTHORED_MODEL_LEVEL
+      ? (authoredModels.get(model) ?? null)
+      : level === IMPORTED_PROP_LEVEL
+        ? (importedModels.get(model) ?? null)
+        : geometryOf(level, model);
+  const shadowProps = (doc.props ?? [])
+    .filter(p => !isEffectTriggerProp(p))
+    .flatMap(p => {
+      const def = p.group ? (p.groupDefinition ?? defIdx.get(`${p.level}:${p.group}`)) : undefined;
+      return def ? expandGroupProps(p, def) : [p];
+    });
+  const maskOf =
+    opts?.lighting === false
+      ? undefined
+      : await preparePropShadowMasks(
+          shadowProps,
+          shadowGeometry,
+          (level, mat): PropMaterial | undefined => {
+            if (level === AUTHORED_MODEL_LEVEL) return authoredProps?.materials.get(mat);
+            if (level === IMPORTED_PROP_LEVEL) return imported?.materials.get(mat);
+            const m = sourceMaterials(tables, level)[mat];
+            return m
+              ? {
+                  tex: m.TexturePath ?? null,
+                  frames: m.TextureFlipbook ?? [],
+                  alphaMode: m.AlphaMode,
+                  blend: !!((m.UnknownInt18 ?? 0) & 0x40000),
+                  prio: !!((m.UnknownInt18 ?? 0) & 0x20000),
+                }
+              : undefined;
+          },
+          readShadowImage,
+        );
+  const blockers = opts?.lighting === false ? [] : placedPropOccluders(shadowProps, shadowGeometry, maskOf);
   const files = buildLevelFiles(exportDoc, lights, {
     lighting: opts?.lighting,
     aiPaths: opts?.aiPaths,
     propBaseOffset: placedBaseOffset,
+    propOccluders: blockers,
   });
   const propGroups: BakedPropGroup[] = [];
 
@@ -244,18 +306,14 @@ export async function buildExportFolder(
   await Promise.all(
     [...authoredTiles].map(async ref => {
       const { level, name } = parseTexRef(ref);
-      try {
-        const image = await provider.decodePng(await provider.referenceTexture(level, name));
-        tileAnalyses.set(makeTexRef(level, name), analyzeTexturePixels(image.data, image.w, image.h));
-      } catch (e) {
-        tileAnalyses.set(makeTexRef(level, name), { kind: 'unknown', glow: false });
-        logLines.push(
-          `WARN: texture ${ref} alpha unavailable (${e instanceof Error ? e.message : e}); using preview fallback`,
-        );
-      }
+      const image = await readShadowImage(ref);
+      tileAnalyses.set(
+        makeTexRef(level, name),
+        image ? analyzeTexturePixels(image.data, image.w, image.h) : { kind: 'unknown', glow: false },
+      );
     }),
   );
-  const combiner = buildMaterialCombiner(await provider.materialTables(), tileAnalyses);
+  const combiner = buildMaterialCombiner(tables, tileAnalyses);
   const objCounts = () => {
     const obj = files.text['Props.obj'] ?? '';
     return { obj, v: (obj.match(/^v /gm) ?? []).length, vt: (obj.match(/^vt /gm) ?? []).length }; // faces index the combined file

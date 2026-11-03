@@ -42,6 +42,11 @@ import {
 } from '../../../core/reference/props';
 import { facingArrowMaterial, facingArrowSegments } from './facing-arrows';
 import type { GroupDef, GroupPropDef } from '../../../core/reference/groups';
+import { expandGroupProps } from '../../../core/reference/groups';
+import { placedPropOccluders, type ModelGeometry, type GeomSub } from '../../../core/export/props';
+import { createPropShadowMasks } from '../../props/shadow-masks';
+import type { ShadowMask } from '../../../core/lighting/shadow-mask';
+import type { LightingOccluder } from '../../../core/lighting/occluders';
 import { propRigGlow } from '../../../core/reference/lights';
 import { EFFECT_PROP_OVERLAY_RENDER_ORDER, PROP_RIG_MAX_BOOST } from '../constants';
 import { placementQuat } from '../../../core/props/pose';
@@ -102,7 +107,93 @@ interface RuntimeProp {
  * cache; the authored light rig (LightsLayer) tints billboards + lamps. The shell owns the input dispatch
  * (pickOrPlaceProp / the MMB prop-copy / the wheel-turn), reading this layer's public ghost + selection state.
  */
-export function createPropsLayer(stage: Stage, assets: PropAssets, lights: LightsLayer) {
+export function createPropsLayer(stage: Stage, assets: PropAssets, lights: LightsLayer, onLightingChanged = () => {}) {
+  const shadowMask = createPropShadowMasks(assets.propTex);
+  let lightingOccluders: LightingOccluder[] = [];
+  let lightingGeometryVersion = '';
+  function refreshLightingOccluders(props: readonly PlacedProp[]) {
+    shadowMask.begin();
+    const models = new Map<string, ModelGeometry | null>();
+    const masks = new Map<GeomSub, ShadowMask | null | undefined>();
+    let geometryVersion = '';
+    const expanded = props
+      .filter(p => !isEffectTriggerProp(p))
+      .flatMap(p => {
+        const def = p.group ? (p.groupDefinition ?? assets.groupDefs.get(`${p.level}:${p.group}`)) : undefined;
+        return def ? expandGroupProps(p, def) : [p];
+      });
+    const next = placedPropOccluders(
+      expanded,
+      (level, model) => {
+        const key = `${level}:${model}`;
+        if (!models.has(key))
+          models.set(
+            key,
+            assets.propGeom.has(key)
+              ? {
+                  subs: assets.propGeom.get(key)!.map(sub => {
+                    const positions = sub.geometry.getAttribute('position') as THREE.BufferAttribute;
+                    const indices = sub.geometry.index;
+                    geometryVersion += `${sub.geometry.uuid}:${positions.version}:${indices?.version}:${
+                      (sub.geometry.getAttribute('uv') as THREE.BufferAttribute | undefined)?.version
+                    };`;
+                    const geometry = {
+                      mat: sub.mat,
+                      positions: positions.array,
+                      indices: indices?.array ?? new Uint32Array(),
+                      uvs: sub.geometry.getAttribute('uv')?.array ?? [],
+                    };
+                    masks.set(
+                      geometry,
+                      shadowMask.read(sub.level, sub.frames[0] ?? sub.tex, {
+                        mode: sub.alphaMode,
+                        alphaPass: sub.blend,
+                        priority: sub.prio,
+                        pixelAlpha: sub.pixelAlpha,
+                      }),
+                    );
+                    return geometry;
+                  }),
+                }
+              : null,
+          );
+        return models.get(key)!;
+      },
+      (_prop, sub) => masks.get(sub),
+    );
+    const changed =
+      geometryVersion !== lightingGeometryVersion ||
+      next.length !== lightingOccluders.length ||
+      next.some((mesh, i) => {
+        const prior = lightingOccluders[i];
+        return (
+          mesh.positions !== prior.positions ||
+          mesh.indices !== prior.indices ||
+          mesh.mask !== prior.mask ||
+          (mesh.mask && mesh.uvs !== prior.uvs) ||
+          mesh.matrix!.some((value, j) => value !== prior.matrix![j])
+        );
+      });
+    lightingOccluders = next;
+    lightingGeometryVersion = geometryVersion;
+    if (changed) onLightingChanged();
+  }
+  async function prepareLightingOccluders(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    if (shadowMask.ready) return;
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        if (!signal?.aborted && !shadowMask.ready) return;
+        stop();
+        signal?.removeEventListener('abort', finish);
+        if (signal?.aborted) reject(signal.reason);
+        else resolve();
+      };
+      const stop = watchAssetLoads(finish);
+      signal?.addEventListener('abort', finish, { once: true });
+      finish();
+    });
+  }
   const triangleMeshes = (meshes: THREE.Mesh[]) => {
     const proxyOwners = new Set(
       meshes
@@ -164,7 +255,11 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       )
       .join(';');
   const stopAssetWatching = watchAssetLoads(() => {
-    if (!lastPlacedArgs || propLoadSignature(lastPlacedArgs.props) === loadSignature) return;
+    if (!lastPlacedArgs) return;
+    if (propLoadSignature(lastPlacedArgs.props) === loadSignature) {
+      refreshLightingOccluders(lastPlacedArgs.props);
+      return;
+    }
     const { props, selIdx, multiSel, effects, hiddenIndices } = lastPlacedArgs;
     setPlacedProps(props, selIdx, multiSel, effects, hiddenIndices);
   });
@@ -1236,6 +1331,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     if (shade !== 'textured') applyPropShade(placedPropGroup, shade); // fresh meshes arrive textured
     rebuildEffectPropOutlines(props);
     setSelection(selIdx, multiSel);
+    refreshLightingOccluders(props);
   }
 
   /** The authored region, drawn from the authored numbers directly: `authoredAmbientEmitter` reads in editor
@@ -1885,6 +1981,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   }
 
   return {
+    lightingOccluders: () => lightingOccluders,
+    prepareLightingOccluders,
     stopAssetWatching,
     showTriggerProps,
     /** Point props at the terrain's baked ground light (null to put them back on the studio rig). */

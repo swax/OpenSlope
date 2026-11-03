@@ -876,7 +876,10 @@ export class Viewport {
         if (this.contextLayer.terrainLit) this.contextLayer.applyTerrainLight();
       }
     };
-    this.props = createPropsLayer(this.stage, this.assets, this.lights); // authored placed props (Props mode)
+    this.props = createPropsLayer(this.stage, this.assets, this.lights, () => {
+      this.terrainLayer?.invalidateOccluders();
+      this.contextLayer?.invalidateOccluders();
+    }); // authored placed props (Props mode)
     // topology surgery (docs/017): reads the live mesh substrate the shell owns (preview / adjacency / cached
     // edge handle) through accessors; its ghost overlay parents under stage.worldRoot like the cage.
     this.surgery = createSurgeryLayer(this.stage, {
@@ -1171,8 +1174,11 @@ export class Viewport {
         shading: () => this.shading,
         rigData: () => this.lights.authoredRigData,
         rigVisible: () => this.lights.authoredLightsVisible,
+        occluders: () => this.props.lightingOccluders(),
+        prepareOccluders: signal => this.props.prepareLightingOccluders(signal),
       },
       {
+        onLightingUpdated: () => this.props.relightGround(),
         onGeometryRebuilt: g => {
           this.cageLayer.setDepthMaskGeometry(g); // share the rebuilt geometry so cage-view occlusion tracks edits
           this.speedShadeLayer.geometryRebuilt(g); // ...and the speed wash, which re-rides its prediction once it settles
@@ -1186,6 +1192,7 @@ export class Viewport {
           this.paint.invalidateGhostCell(); // the ghost's cached cell geometry is stale; the next hover rebuilds it
         },
       },
+      { deferLighting: true },
     );
     this.speedShadeLayer = createSpeedShade(this.stage.worldRoot, {
       quilt: () => {
@@ -3016,13 +3023,15 @@ export class Viewport {
         shading: () => this.shading,
         rigData: () => this.lights.authoredRigData,
         rigVisible: () => this.lights.authoredLightsVisible,
+        occluders: () => this.props.lightingOccluders(),
+        prepareOccluders: signal => this.props.prepareLightingOccluders(signal),
       },
       {
         onGeometryRebuilt: () => {
           /* no dependent overlays: the cage/selection stack reads the substrate */
         },
       },
-      { pickTarget: false },
+      { pickTarget: false, deferLighting: true },
     );
     this.contextLayer.applyPreview(buildMountainPreview(mountainDoc!));
     this.contextLayer.setTerrainLight(this.terrainLightOpts); // match the primary layer's sun state

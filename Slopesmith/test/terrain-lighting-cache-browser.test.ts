@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
 import { chromiumExecutable } from './browser-test-support';
+import { encodePng } from '../src/server/routes/png';
 
 const [fixture, worker] = await Promise.all([
   build({
@@ -21,7 +22,17 @@ const [fixture, worker] = await Promise.all([
     platform: 'browser',
   }),
 ]);
+const maskPng = encodePng({
+  w: 4,
+  h: 4,
+  data: Uint8Array.from({ length: 64 }, (_, i) => (i % 4 === 3 ? (Math.floor(i / 4) % 4 < 2 ? 255 : 0) : 80)),
+});
 const server = createServer((req, res) => {
+  if (req.url?.startsWith('/api/texture')) {
+    res.setHeader('content-type', 'image/png');
+    res.end(maskPng);
+    return;
+  }
   const script = req.url === '/fixture.js' ? fixture : req.url === '/worker.js' ? worker : undefined;
   res.setHeader('content-type', script ? 'text/javascript' : 'text/html');
   res.end(script ? script.outputFiles[0].text : '<!doctype html><script type="module" src="/fixture.js"></script>');
@@ -42,6 +53,12 @@ try {
   const warm = await page.evaluate(() => window.checkTerrainLighting());
   assert.equal(warm.workers, 0, 'a full reload restores lighting from IndexedDB without starting a worker');
   await page.evaluate(() => window.checkLightingEviction());
+  const updates = await page.evaluate(() => window.checkBatchedPropLighting());
+  assert(updates.heartbeat > 0, 'the browser stays responsive while updating real prop shadows');
+  assert.equal(updates.updates, 2);
+  const masked = await page.evaluate(() => window.checkMaskedPropLighting());
+  assert.equal(masked.workers, 1);
+  assert(masked.heartbeat > 0);
   assert.deepEqual(errors, []);
   console.log(
     `TERRAIN LIGHTING BROWSER PASS: exact cold/warm output, responsive worker, reload reuse and bounded LRU (${cold.elapsed.toFixed(1)}ms cold; ${warm.elapsed.toFixed(1)}ms warm)`,
