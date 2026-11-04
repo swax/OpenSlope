@@ -12,6 +12,7 @@ import { startSession } from '../src/server/accounts/sessions';
 import { createAccessToken } from '../src/server/accounts/tokens';
 import { isPublished, setPublished } from '../src/server/public-courses';
 import { REFERENCE_CHUNK_BYTES, type ReferenceManifest } from '../src/shared/reference-transfer';
+import { prepareReferenceMusic } from '../src/app/public/reference-music-preparation';
 
 const root = await mkdtemp(join(tmpdir(), 'slopesmith-reference-maps-'));
 const maps = join(root, 'Maps');
@@ -326,6 +327,39 @@ try {
   await call('PUT', `${freshPath}?offset=0`, Buffer.concat(freshMissing.map(index => [...fresh.values()][index])));
   assert.equal((await call('POST', `${freshPath}/complete`)).status, 201);
   assert.deepEqual(await readFile(join(maps, 'TRICKY_GARI/Source/repeated.bin')), freshBytes);
+  await call('DELETE', '/maps/TRICKY_GARI');
+  // Browser SSX 3/beta/On Tour imports already contain Opus, without an upload encoding index.
+  const nativeMusic = fixture(true);
+  const opus = Buffer.alloc(64);
+  opus.write('OggS');
+  opus.write('OpusHead', 28);
+  nativeMusic.set('Audio/Music/song/chunk_000.opus', opus);
+  nativeMusic.set('Audio/Intro/song-C1.opus', opus);
+  const unindexed = await upload(nativeMusic, true);
+  assert.equal(unindexed.result.status, 400, 'compressed uploads still require their validated index');
+  assert.match(unindexed.result.body.error, /missing Audio\/Music\/encoding\.json/);
+  const unexpectedConversion = async (): Promise<never> => {
+    throw new Error('Native Opus must not be encoded or looked up as WAV.');
+  };
+  const prepared = await prepareReferenceMusic(
+    manifest(nativeMusic, true).files.map(file => ({
+      ...file,
+      blob: new Blob([new Uint8Array(nativeMusic.get(file.path)!)]),
+    })),
+    unexpectedConversion,
+    unexpectedConversion,
+    new AbortController().signal,
+    () => {},
+  );
+  const indexedMusic = new Map(
+    await Promise.all(
+      (await prepared.files()).map(async file => [file.path, Buffer.from(await file.blob!.arrayBuffer())] as const),
+    ),
+  );
+  const compressedUpload = await upload(indexedMusic, true);
+  assert.equal(compressedUpload.result.status, 201, JSON.stringify(compressedUpload.result));
+  assert.deepEqual(await readFile(join(maps, 'TRICKY_GARI/Audio/Music/song/chunk_000.opus')), opus);
+  assert.deepEqual(await readFile(join(maps, 'TRICKY_GARI/Audio/Intro/song-C1.opus')), opus);
   await call('DELETE', '/maps/TRICKY_GARI');
   assert.notEqual((await call('DELETE', '/maps/..%2Foutside')).status, 200);
   console.log('Admin-only reference upload, chunk recovery, validation, source/music preservation and removal PASS');

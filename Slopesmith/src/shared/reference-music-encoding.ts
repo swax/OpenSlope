@@ -3,6 +3,7 @@ import { referenceFilePath, REFERENCE_MAX_FILES, type ReferenceFile } from './re
 export const REFERENCE_MUSIC_PROFILE = 'opus-128-v1';
 export const REFERENCE_MUSIC_INDEX = 'Audio/Music/encoding.json';
 export interface EncodedReferenceMusic extends ReferenceFile {
+  /** Hash of the supplied source: WAV before conversion, or an already encoded Opus file. */
   sourceSha256: string;
 }
 export interface ReferenceMusicEncoding {

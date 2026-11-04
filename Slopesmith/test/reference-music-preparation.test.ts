@@ -60,6 +60,46 @@ files = await reused.files();
 assert.equal(encodes, 2, 'a disappearing donor is encoded once and can be renegotiated');
 assert.equal(files[0].blob, compressed);
 assert.equal(files[1].blob, compressed);
+const precompressed = [
+  { path: 'Audio/Music/song/chunk_000.opus', blob: compressed, size: compressed.size, sha256: encodedHash },
+  { path: 'Audio/Intro/song-C1.opus', blob: compressed, size: compressed.size, sha256: encodedHash },
+  input[2],
+];
+const unused = async (): Promise<never> => {
+  throw new Error('Already compressed music must not look up WAV donors or encode again.');
+};
+const native = await prepareReferenceMusic(precompressed, unused, unused, signal, () => {});
+const nativeFiles = await native.files();
+assert.equal(nativeFiles[0], precompressed[0], 'native Opus bytes are uploaded unchanged');
+assert.equal(nativeFiles[2], input[2], 'native SFX are untouched');
+const nativeIndex = referenceMusicEncoding(
+  JSON.parse(await nativeFiles.find(file => file.path === REFERENCE_MUSIC_INDEX)!.blob!.text()),
+);
+assert.deepEqual(
+  nativeIndex.files,
+  precompressed.slice(0, 2).map(({ path, size, sha256 }) => ({ path, size, sha256, sourceSha256: sha256 })),
+  'native music and intros receive the required upload index without a second conversion',
+);
+const repeat = await prepareReferenceMusic(nativeFiles as typeof input, unused, unused, signal, () => {});
+assert.deepEqual(await repeat.files(), nativeFiles, 'precompressed preparation is repeatable');
+const mixed = await prepareReferenceMusic(
+  [
+    ...precompressed,
+    { ...input[1], path: 'Audio/Intro/another-C1.wav' },
+    ...files.filter(file => file.path === REFERENCE_MUSIC_INDEX),
+  ] as typeof input,
+  async () => ({ files: index.files }),
+  encode,
+  signal,
+  () => {},
+);
+const mixedFiles = await mixed.files();
+const mixedIndex = referenceMusicEncoding(
+  JSON.parse(await mixedFiles.find(file => file.path === REFERENCE_MUSIC_INDEX)!.blob!.text()),
+);
+assert.equal(mixedIndex.files.length, 3, 'mixed WAV and Opus preparation indexes every compressed file');
+assert.equal(mixedIndex.files[0].sourceSha256, sourceHash, 'verified prior WAV provenance is preserved');
+assert.equal(encodes, 2, 'existing Opus and reused WAV inputs do not encode again');
 const cancelled = new AbortController();
 cancelled.abort();
 await assert.rejects(

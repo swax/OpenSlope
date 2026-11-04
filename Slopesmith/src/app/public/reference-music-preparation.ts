@@ -18,6 +18,12 @@ export async function prepareReferenceMusic(
   signal: AbortSignal,
   progress: (message: string) => void,
 ) {
+  const compressedMusic = input.filter(file => /^Audio\/(Music|Intro)\/.+\.opus$/i.test(file.path));
+  const existingIndex = input.find(file => file.path === REFERENCE_MUSIC_INDEX);
+  const existingMusic = existingIndex
+    ? referenceMusicEncoding(JSON.parse(await existingIndex.blob.text())).files
+    : [];
+  const previous = new Map(existingMusic.map(file => [file.path, file]));
   const sources = new Map(
     input.filter(file => encodableReferenceMusic(file.path)).map(file => [file.sha256, file.blob]),
   );
@@ -40,11 +46,25 @@ export async function prepareReferenceMusic(
     });
   }
   for (const hash of sources.keys()) if (!encoded.has(hash)) await convert(hash);
-  const original = sources.size ? input.filter(file => file.path !== REFERENCE_MUSIC_INDEX) : input;
+  const original =
+    sources.size || compressedMusic.length ? input.filter(file => file.path !== REFERENCE_MUSIC_INDEX) : input;
   return {
     async files(): Promise<PreparedReferenceFile[]> {
       const music: EncodedReferenceMusic[] = [];
       const files = original.map(file => {
+        if (/^Audio\/(Music|Intro)\/.+\.opus$/i.test(file.path)) {
+          const old = previous.get(file.path);
+          // Native SSX 3/On Tour imports already encode to the same Opus profile.
+          // Preserve a verified WAV identity when available; otherwise index the supplied Opus bytes.
+          music.push({
+            path: file.path,
+            size: file.size,
+            sha256: file.sha256,
+            sourceSha256:
+              old?.sha256 === file.sha256 && old.size === file.size ? old.sourceSha256 : file.sha256,
+          });
+          return file;
+        }
         if (!encodableReferenceMusic(file.path)) return file;
         const result = encoded.get(file.sha256)!;
         const path = file.path.replace(/\.wav$/i, '.opus');
