@@ -2,6 +2,27 @@ import { applyReferenceLightmaps, referenceLightmapIds, type RawPatch, type Refe
 import { decodeReferenceLightmap, referenceLightmapEncoding } from '../../core/reference/lightmap';
 import type { LightmapSet } from '../../core/lighting/lightmap';
 import { clientFetch } from '../net/client';
+import type { EditDoc } from '../../core/doc/doc-edit';
+import { DEFAULT_SUN } from '../../core/doc/types';
+import { authoredFreeLights, authoredSignLights } from '../../core/lighting/sign-lights';
+import { authoredGroupLights } from '../../core/reference/groups';
+import type { Viewport } from '../viewport/viewport';
+
+/** Build the same light rig as the editor before props consume its sign tint and terrain glow. */
+export function lightPublicMountain(
+  viewport: Pick<Viewport, 'assets' | 'setAuthoredLights' | 'showAuthoredLights'>,
+  document: EditDoc,
+): void {
+  viewport.setAuthoredLights([
+    ...authoredSignLights(document.props, viewport.assets.propLocalBox),
+    ...authoredFreeLights(document.lights),
+    ...authoredGroupLights(
+      document.props,
+      prop => prop.groupDefinition ?? viewport.assets.groupDefs.get(`${prop.level}:${prop.group}`) ?? null,
+    ),
+  ]);
+  viewport.showAuthoredLights(document.sun?.on ?? DEFAULT_SUN.on);
+}
 
 /** Match the editor's extracted-lightmap decode while sourcing PNGs from local Blobs or original map files. */
 export async function lightPublicReference(mesh: ReferenceMesh, patches: RawPatch[], url: (id: number) => string): Promise<void> {

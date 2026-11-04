@@ -23,7 +23,7 @@ import { buildLevelPropsUncached, nativeArtSource } from '../../shared/map-props
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { DEFAULT_CHARACTER_MODEL_ID } from '../../core/characters/builtins';
-import { lightPublicReference } from './lighting';
+import { lightPublicMountain, lightPublicReference } from './lighting';
 import { installLocalSky, installServerSky } from './sky';
 import { cachedIsoCourses } from './iso-cache';
 import { publicMountainDocument, publicPropPayload } from './course-assets';
@@ -299,6 +299,7 @@ export async function preparePublicPlayer(
       viewport.setRailSkins(art.railSkins);
       viewport.setGemModels(new Map(art.gemTiers.map(tier => [tier.tier, { level: art.gemLevel, model: tier.model }])));
     }
+    lightPublicMountain(viewport, document);
     viewport.setPlacedProps(document.props ?? [], null, [], document.effects);
     viewport.setRails(document.rails ?? [], null, null);
     await courseSounds;
