@@ -110,9 +110,11 @@ void VulkanContext::create(bool window, bool request_ray_query) {
     const bool portability = std::any_of(available_extensions.begin(), available_extensions.end(), [](const auto& e) {
         return std::strcmp(e.extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0;
     });
-    if (portability && std::find_if(extensions.begin(), extensions.end(), [](const char* e) {
-                           return std::strcmp(e, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0;
-                       }) == extensions.end())
+    // SDL includes this loader extension even when loading MoltenVK directly.
+    // Remove it first so unsupported requests and duplicate entries cannot survive.
+    std::erase_if(extensions,
+                  [](const char* e) { return std::strcmp(e, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0; });
+    if (portability)
         extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
     VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     info.pApplicationInfo = &app;
