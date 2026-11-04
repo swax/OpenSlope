@@ -177,10 +177,13 @@ manifest and a fresh `SHA256SUMS.txt` covering all five application downloads.
 
 Native CI also builds the complete Linux/macOS player, runs conformance, exercises
 the window/swapchain and empty library, and tests the SDL audio callback with a
-dummy device. Standard hosted Mac VMs can lack a Metal device: that specific
-condition is explicitly reported, skips graphics smoke, and is recorded in the
-manifest/release notes; other graphics or launch failures still fail the job. The dummy device verifies audio delivery without requiring a CI
-speaker; physical audio, GPU/driver and desktop integration still need device tests.
+dummy device. A separate Metal probe checks device availability, nonzero placement-heap
+requirements and shared-buffer allocation. Some hosted virtual GPUs cannot provide
+these resources. That specific condition skips graphics smoke in GitHub Actions and
+is recorded in the manifest/release notes; application failures still fail the job.
+Conformance, audio and package checks remain required on those hosts. The dummy device
+verifies audio delivery without requiring a CI speaker; physical audio, GPU/driver
+and desktop integration still need device tests.
 
 For local Unix packaging, first build and test as described in Native/README.md,
 then select the host platform:

@@ -19,12 +19,12 @@ display=(env)
 render=true
 if [[ "$(uname -s)" == Darwin ]]; then
   player="$player.app/Contents/MacOS/openslope_player"
-  # Standard hosted Mac VMs can lack a Metal device. Other failures remain fatal.
+  # Hosted VMs can expose a Metal device with unusable resource requirements.
   status=0
-  swift -e 'import CoreGraphics; import Metal; import Darwin; exit(MTLCreateSystemDefaultDevice() == nil ? 77 : 0)' || status=$?
+  swift "$(dirname "${BASH_SOURCE[0]}")/probe_metal.swift" || status=$?
   if [[ "$status" == 77 && "${GITHUB_ACTIONS:-}" == true ]]; then
     render=false
-    echo '::notice::No Metal GPU on this Mac runner; graphics smoke needs a GPU-equipped Mac.'
+    echo '::notice::Metal resource probe unavailable on this runner; graphics smoke needs a Mac with working Metal resources.'
   elif [[ "$status" != 0 ]]; then
     exit "$status"
   fi

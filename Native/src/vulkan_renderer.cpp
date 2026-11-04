@@ -44,15 +44,6 @@ void vk_check(VkResult result, const char* operation) {
         throw std::runtime_error(std::string(operation) + ": Vulkan result " + std::to_string(result));
 }
 
-void configure_desktop_vulkan() {
-#if defined(OPENSLOPE_DESKTOP_SDL) && defined(__APPLE__) && defined(__x86_64__)
-    // Intel virtual Metal devices can report zero-sized placement heaps.
-    // Prefer MoltenVK's direct allocations unless the caller chooses a heap policy.
-    if (SDL_setenv_unsafe("MVK_CONFIG_USE_MTLHEAP", "0", 0) != 0)
-        throw std::runtime_error("Cannot configure MoltenVK heap policy");
-#endif
-}
-
 VulkanContext::~VulkanContext() {
     if (device) {
         vkDeviceWaitIdle(device);
@@ -69,7 +60,6 @@ VulkanContext::~VulkanContext() {
 }
 
 void VulkanContext::create(bool window, bool request_ray_query) {
-    configure_desktop_vulkan();
 #ifdef OPENSLOPE_DESKTOP_SDL
     if (window) {
         if (!SDL_Vulkan_LoadLibrary(nullptr))

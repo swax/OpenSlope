@@ -39,6 +39,12 @@ class RepoHygieneTests(unittest.TestCase):
         for path in ("Slopesmith/multiplayer/src/main.rs", "Slopesmith/multiplayer/Cargo.lock"):
             self.assertEqual("source", repo_hygiene.classify(path), path)
 
+    def test_swift_sources_are_scanned(self):
+        path = "Native/tools/probe_metal.swift"
+        self.assertEqual("source", repo_hygiene.classify(path))
+        findings = self.scan({path: "// sub_00123456 at @0x00123456\n"})
+        self.assertEqual({"native-symbol", "runtime-address"}, {finding.rule for finding in findings})
+
     def test_deployment_units_and_launcher_are_scanned(self):
         for path in (
             "Slopesmith/deploy/slopesmith.slice",

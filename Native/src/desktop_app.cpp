@@ -28,7 +28,6 @@ using namespace openslope;
 
 struct DesktopVideo {
     DesktopVideo() {
-        configure_desktop_vulkan();
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
             throw std::runtime_error(SDL_GetError());
 #ifdef __APPLE__

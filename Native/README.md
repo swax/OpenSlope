@@ -343,10 +343,11 @@ macOS builds default to desktop-only; `OPENSLOPE_BUILD_OPENXR` controls the opti
 OpenXR dependency on other platforms. See [release packaging](docs/releases.md)
 for portable archives and optional Apple signing/notarization.
 
-Intel macOS builds default to MoltenVK's direct resource allocations because some
-virtual Metal devices report invalid placement-heap requirements. An explicit
-`MVK_CONFIG_USE_MTLHEAP` setting overrides this default; see
-[MoltenVK's heap configuration](https://github.com/KhronosGroup/MoltenVK/blob/v1.3.0/Docs/MoltenVK_Configuration_Parameters.md#mvk_config_use_mtlheap).
+Mac CI checks Metal buffer and placement-heap support before graphics smoke.
+Some hosted virtual GPUs report invalid heap requirements. Those hosts still
+build, run conformance/audio checks and verify packages; their release metadata
+records that graphics smoke needs a working GPU. Apple Silicon CI also exercises
+window/swapchain and empty-library rendering when its Metal probe succeeds.
 
 ## OpenXR
 

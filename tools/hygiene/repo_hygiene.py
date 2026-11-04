@@ -93,6 +93,7 @@ TEXT_EXTENSIONS = {
     ".sh",
     ".shader",
     ".svg",
+    ".swift",
     ".toml",
     ".target",
     ".gradle",
