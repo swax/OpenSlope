@@ -12,9 +12,10 @@ distinguish sources. The launcher closes them after outstanding work finishes wh
 Browser imports retain up to two workers per page and serialize requests. Cancelling an active
 request terminates its worker; a retry starts a clean session.
 
-All six supported games use sessions. Music conversion is currently implemented for Tricky,
-1080 Avalanche and Mad Trix. Original SSX, SSX 3 and On Tour retain their existing deferred music
-status; they still benefit from reader, catalogue and browser write reuse.
+All supported games use sessions. Shared soundtrack conversion includes Tricky,
+SSX 3/beta, On Tour, 1080 Avalanche and Mad Trix; original SSX music remains
+deferred. Game-wide catalogues are partitioned before conversion as described in
+[music assignment](music-assignment.md). GBA course music uses its own importer.
 
 ## Music identity and publication
 

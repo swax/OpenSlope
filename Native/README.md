@@ -9,6 +9,11 @@ under **Custom / Authored** and unrecognized courses under **Unknown**. Quest's 
 filters courses by game. Changing a selector never plays or imports a map. Quest's **Ride mode** control
 is under **Ride settings**, keeping the map selectors and Play action visible in the initial panel.
 
+Build 0.91 brings the recent SSX 3/beta/On Tour import updates to PC and Quest,
+including stable per-map soundtrack shares, original fog sprites, admitted UV
+animations and pickups. Native props use per-placement baked vertex colours;
+riders use floor shade independently of scenery averages. See [build notes](releases/0.91.0.md).
+
 Current disc pickers display source course names on PC and Quest. PC **Choose disc** opens ISO/BIN/GCM/RVZ
 files from any folder, plus supported GBA ROMs; Quest uses its document picker. SSX 3 defaults to named runs, with an advanced
 map-type toggle for stations, connectors and peak bundles. See [disc selection](docs/desktop-iso-0.78.md).

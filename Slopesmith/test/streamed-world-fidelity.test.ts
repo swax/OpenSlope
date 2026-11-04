@@ -72,8 +72,9 @@ assert(
   bakeRigLighting(positions, normals, haloRig).every(value => value === 0),
   'A halo must not add diffuse light',
 );
-assert.equal(isoCourseCacheVersion('SSX3_A'), 11);
-assert.equal(isoCourseCacheVersion('SSXOT_ER1_DAY'), 7);
+assert.equal(isoCourseCacheVersion('SSX3_A'), 13);
+assert.equal(isoCourseCacheVersion('SSX3B_ESS3'), 13);
+assert.equal(isoCourseCacheVersion('SSXOT_ER1_DAY'), 11);
 assert.equal(isoCourseCacheVersion('SSX_SNOW'), 3);
 assert.equal(isoCourseCacheVersion('GARI'), 1);
 console.log('Streamed world fidelity: legacy/shared spotlight cones, halo reach and selective cache refresh PASS');

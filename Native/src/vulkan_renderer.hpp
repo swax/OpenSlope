@@ -72,7 +72,7 @@ private:
     struct Buffer {
         VkBuffer buffer{};
         VkDeviceMemory memory{};
-    } vertices_, indices_, local_lights_, light_cells_, light_indices_;
+    } vertices_, indices_, local_lights_, light_cells_, light_indices_, vertex_lights_;
 
     struct Image {
         VkImage image{};

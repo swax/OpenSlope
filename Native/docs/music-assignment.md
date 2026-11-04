@@ -33,3 +33,9 @@ Reload existing browser maps from their ISO to get the smaller playlists;
 re-upload the refreshed reference to update a hosted map. Previously converted
 songs can be reused from the shared cache. During playback, Random loads only
 the chosen song for the run, with two-chunk lookahead for segmented music.
+
+PC and Quest use the same assignment in their shared C++ importer. Existing
+installed folders are preserved: import into a fresh native Maps folder to
+receive the smaller playlists and updated effect assets. Native playback reads
+only the chosen song's graph and current/next chunks; it does not preload the
+other songs' decoded audio.

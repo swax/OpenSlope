@@ -19,6 +19,36 @@ namespace openslope {
 namespace {
 using Json = nlohmann::json;
 
+std::vector<std::uint32_t> vertex_colours(const std::string& text) {
+    if (text.size() > 24 * 1024 * 1024 || text.size() % 4)
+        throw std::runtime_error("Invalid prop vertex-light text extent");
+    const std::string_view alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::vector<std::uint8_t> bytes;
+    unsigned value = 0, bits = 0, padding = 0;
+    for (char c : text) {
+        if (c == '=') {
+            ++padding;
+            continue;
+        }
+        const auto digit = alphabet.find(c);
+        if (padding || digit == std::string_view::npos)
+            throw std::runtime_error("Invalid prop vertex-light encoding");
+        value = (value << 6) | unsigned(digit);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            bytes.push_back(std::uint8_t(value >> bits));
+        }
+    }
+    if (padding > 2 || bits != padding * 2 || (bits && (value & ((1u << bits) - 1))) || bytes.size() % 2)
+        throw std::runtime_error("Invalid prop vertex-light padding");
+    std::vector<std::uint32_t> result;
+    result.reserve(bytes.size() / 2);
+    for (std::size_t i = 0; i < bytes.size(); i += 2)
+        result.push_back(unsigned(bytes[i]) | (unsigned(bytes[i + 1]) << 8));
+    return result;
+}
+
 Vec3 vector3(const Json& value) {
     if (!value.is_array() || value.size() < 3)
         throw std::runtime_error("Invalid prop vector");
@@ -162,7 +192,7 @@ int index(const std::string& field, std::size_t size) {
 }
 
 void mesh_file(Props& props, const std::filesystem::path& path, const Transform& rest, PropPart& part, Bounds& bounds,
-               bool flag, bool faceted) {
+               bool flag, bool faceted, int lighting_base) {
     if (std::filesystem::file_size(path) > 64 * 1024 * 1024)
         throw std::runtime_error("OBJ exceeds 64 MiB");
     std::ifstream file(path);
@@ -230,7 +260,8 @@ void mesh_file(Props& props, const std::filesystem::path& path, const Transform&
                         const auto tex = t < 0 ? std::array<double, 2>{0, 0} : uv[std::size_t(t)];
                         vertex = static_cast<std::uint32_t>(props.geometry.vertices.size());
                         props.geometry.vertices.push_back({float(position.x), float(position.y), float(position.z), 1,
-                                                           1, 1, float(tex[0]), float(1 - tex[1]), 0, 0, 0, 0, 0, 0,
+                                                           1, 1, float(tex[0]), float(1 - tex[1]), 0, 0,
+                                                           lighting_base < 0 ? -1.f : float(lighting_base + p), 0, 0, 0,
                                                            float(shaded.x), float(shaded.y), float(shaded.z)});
                         bounds.add(position);
                         if (n >= 0 && !faceted)
@@ -471,6 +502,8 @@ SceneLighting SceneLighting::load(const std::filesystem::path& root, const Terra
     std::set<std::tuple<long long, long long, long long>> seen;
     for (std::size_t i = 0; i < rows.size(); ++i) {
         const auto& row = rows[i];
+        if (row.contains("VertexLighting") && !row.at("VertexLighting").empty() && !row.contains("RiderLighting"))
+            continue; // Scenery averages are not actor probes.
         const auto& lighting = row.contains("RiderLighting") ? row.at("RiderLighting") : row;
         if (!lighting.contains("AmbentLightColour"))
             continue;
@@ -504,9 +537,12 @@ SceneLighting SceneLighting::load(const std::filesystem::path& root, const Terra
         if (seen.insert(cell).second)
             probes.push_back(probe);
     }
-    auto attenuation = terrain ? terrain_attenuation(*terrain, probes.empty()) : std::function<Vec3(Vec3)>{};
+    const bool residual = probes.empty() && std::any_of(rows.begin(), rows.end(), [](const auto& row) {
+                              return row.contains("VertexLighting") && !row.at("VertexLighting").empty();
+                          });
+    auto attenuation = terrain ? terrain_attenuation(*terrain, probes.empty(), residual) : std::function<Vec3(Vec3)>{};
     if (!terrain && std::filesystem::is_regular_file(root / "Patches.json"))
-        attenuation = terrain_attenuation(Terrain::load(root), probes.empty());
+        attenuation = terrain_attenuation(Terrain::load(root), probes.empty(), residual);
     return SceneLighting(std::move(probes), std::move(attenuation));
 }
 
@@ -622,6 +658,7 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
         return result;
     const auto frames = material_flipbooks(root);
     result.models.resize(t.models.size());
+    std::vector<bool> vertex_models(t.models.size(), false);
     result.geometry.map_root = root;
     for (std::size_t model = 0; model < t.models.size(); ++model) {
         const auto& objects = t.models[model].at("ModelObjects");
@@ -678,11 +715,16 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
                 if (!part.frames.empty())
                     part.texture = part.frames.front();
                 part.object = i;
+                const auto lighting_base = data.value("VertexLightingBase", -1);
+                if (lighting_base < -1 || lighting_base > 8000000)
+                    throw std::runtime_error("Invalid prop vertex-light base");
                 mesh_file(result, asset(root, "Meshes/" + safe(data.at("MeshPath"))), resolve(i), part, part.bounds,
                           std::find(flag_models.begin(), flag_models.end(), model) != flag_models.end(),
-                          std::find(faceted_models.begin(), faceted_models.end(), model) != faceted_models.end());
+                          std::find(faceted_models.begin(), faceted_models.end(), model) != faceted_models.end(),
+                          lighting_base);
                 if (!part.count)
                     continue;
+                vertex_models[model] = vertex_models[model] || lighting_base >= 0;
                 result.models[model].bounds.add(part.bounds.min);
                 result.models[model].bounds.add(part.bounds.max);
                 result.models[model].parts.push_back(result.parts.size());
@@ -712,13 +754,23 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
         const auto ambient =
             row.contains("AmbentLightColour") ? vector3(row.at("AmbentLightColour")) : Vec3{256, 256, 256};
         instance.pose.ambient = {float(ambient.x / 256), float(ambient.y / 256), float(ambient.z / 256), 0};
+        if (vertex_models[instance.model] && row.contains("VertexLighting") && !row.at("VertexLighting").is_null()) {
+            const auto colours = vertex_colours(row.at("VertexLighting").get<std::string>());
+            if (result.vertex_lights.size() + colours.size() > 8000000)
+                throw std::runtime_error("Prop vertex lights exceed their 32 MiB GPU budget");
+            if (!colours.empty()) {
+                instance.pose.ambient[3] = float(result.vertex_lights.size() + 1);
+                instance.pose.direction[0][3] = float(colours.size());
+                result.vertex_lights.insert(result.vertex_lights.end(), colours.begin(), colours.end());
+            }
+        }
         for (unsigned key = 0; key < 3; ++key) {
             const auto colour = "LightColour" + std::to_string(key + 1),
                        direction = "LightVector" + std::to_string(key + 1);
             if (row.contains(colour)) {
                 const auto c = vector3(row.at(colour)), d = vector3(row.at(direction));
                 instance.pose.colour[key] = {float(c.x / 256), float(c.y / 256), float(c.z / 256), 0};
-                instance.pose.direction[key] = {float(d.x), float(d.y), float(d.z), 0};
+                instance.pose.direction[key] = {float(d.x), float(d.y), float(d.z), instance.pose.direction[key][3]};
             }
         }
         const auto& box = result.models[instance.model].bounds;

@@ -1,4 +1,5 @@
 #include "openslope/props.hpp"
+#include "openslope/scene_lighting.hpp"
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -183,6 +184,35 @@ int main(int argc, char** argv) {
         write(root / "Materials.json", original_materials);
         require(Props::load(std::filesystem::path(argv[1]) / "missing").instances.empty(),
                 "Terrain-only map remains valid");
+        auto baked_model = original;
+        baked_model["Models"][0]["ModelObjects"][0]["MeshData"][0]["VertexLightingBase"] = 2;
+        write(root / "Models.json", baked_model);
+        const auto original_instances = read(root / "Instances.json");
+        auto baked_instances = original_instances;
+        baked_instances["Instances"][0]["VertexLighting"] = "AAAAAAihEML//wAA";
+        baked_instances["Instances"][0]["LightColour1"] = {128, 128, 128};
+        baked_instances["Instances"][0]["LightVector1"] = {0, 0, 1};
+        write(root / "Instances.json", baked_instances);
+        const auto baked_props = Props::load(root);
+        require(baked_props.vertex_lights == std::vector<std::uint32_t>{0, 0, 0xa108, 0xc210, 0xffff, 0},
+                "Decode independent half/true/bright/transparent per-placement colours");
+        near(baked_props.instances[0].pose.ambient[3], 1, "First baked run is distinct from native records");
+        near(baked_props.instances[0].pose.direction[0][3], 6, "Fallback keys retain the baked run extent");
+        for (const auto& v : baked_props.geometry.vertices)
+            require(v.lx >= 2 && v.lx < 6, "OBJ corners retain their source vertex lighting offsets");
+        near(baked_props.instances[1].pose.ambient[3], 0, "Shared geometry preserves ordinary placement lighting");
+        auto isolated = baked_instances;
+        isolated["Instances"] = Json::array({baked_instances["Instances"][0]});
+        write(root / "Instances.json", isolated);
+        near(SceneLighting::load(root).sample({}).ambient.x, SceneLight::fallback().ambient.x,
+             "Scenery averages do not become rider probes");
+        for (const auto* invalid : {"AA=A", "AA=="}) {
+            isolated["Instances"][0]["VertexLighting"] = invalid;
+            write(root / "Instances.json", isolated);
+            rejects([&] { static_cast<void>(Props::load(root)); }, "Reject malformed packed vertex colours");
+        }
+        write(root / "Models.json", original);
+        write(root / "Instances.json", original_instances);
         std::cout << "PASS: " << checks << " prop contract, transform, light and visibility checks\n";
         return 0;
     } catch (const std::exception& e) {

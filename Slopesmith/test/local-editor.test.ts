@@ -150,6 +150,8 @@ try {
     // Site presence is independent of browser storage; it never reads or writes this mountain.
     if (request.method() === 'GET' && path === '/api/play/config') return;
     if (request.method() === 'POST' && path === '/api/public/visitor') return;
+    // Account moderation polling is independent of local mountain storage.
+    if (request.method() === 'GET' && path === '/api/chat/moderation') return;
     if (path.startsWith('/api/')) requests.push(`${request.method()} ${path}`);
   });
   page.on('websocket', socket => {

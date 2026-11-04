@@ -271,19 +271,20 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     pose_capacity_ = scene_->pose_capacity_;
     poses_ = create_buffer(pose_capacity_ * sizeof(PropPose), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, nullptr);
     lighting_ = create_buffer(sizeof(LightingUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, nullptr);
-    const std::array<VkDescriptorSetLayoutBinding, 5> bindings{
+    const std::array<VkDescriptorSetLayoutBinding, 6> bindings{
         {{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
          {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
          {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
          {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-         {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}}};
+         {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+         {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}}};
     VkDescriptorSetLayoutCreateInfo pose_layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     pose_layout.bindingCount = unsigned(bindings.size());
     pose_layout.pBindings = bindings.data();
     vk_check(vkCreateDescriptorSetLayout(context_.device, &pose_layout, nullptr, &pose_layout_),
              "Create eye placement layout");
     const std::array<VkDescriptorPoolSize, 2> sizes{
-        {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}}};
+        {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}}};
     VkDescriptorPoolCreateInfo pose_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pose_pool.maxSets = 1;
     pose_pool.poolSizeCount = unsigned(sizes.size());
@@ -492,9 +493,10 @@ void VulkanRenderer::clear_targets() {
 }
 
 void VulkanRenderer::bind_scene_lights() {
-    const std::array<VkDescriptorBufferInfo, 3> buffers{{{scene_->local_lights_.buffer, 0, VK_WHOLE_SIZE},
+    const std::array<VkDescriptorBufferInfo, 4> buffers{{{scene_->local_lights_.buffer, 0, VK_WHOLE_SIZE},
                                                          {scene_->light_cells_.buffer, 0, VK_WHOLE_SIZE},
-                                                         {scene_->light_indices_.buffer, 0, VK_WHOLE_SIZE}}};
+                                                         {scene_->light_indices_.buffer, 0, VK_WHOLE_SIZE},
+                                                         {scene_->vertex_lights_.buffer, 0, VK_WHOLE_SIZE}}};
     for (unsigned i = 0; i < buffers.size(); ++i) {
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = pose_set_;

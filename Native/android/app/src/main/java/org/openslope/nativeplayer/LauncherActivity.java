@@ -532,7 +532,7 @@ public final class LauncherActivity extends Activity {
             this.name = name;
             this.source = source;
             this.displayName = displayName.isEmpty() ? nativeCourseDisplayName(name) : displayName;
-            String section = name.startsWith("SSX3_") ? name.substring(5) : "";
+            String section = name.startsWith("SSX3B_") ? name.substring(6) : name.startsWith("SSX3_") ? name.substring(5) : "";
             this.mapType = Arrays.asList("run", "hub", "connector", "run-chain", "full-mountain").contains(mapType)
                 ? mapType
                 : section.isEmpty()
@@ -549,7 +549,7 @@ public final class LauncherActivity extends Activity {
         }
 
         boolean namedRun() {
-            return !name.startsWith("SSX3_") || mapType.equals("run");
+            return !(name.startsWith("SSX3_") || name.startsWith("SSX3B_")) || mapType.equals("run");
         }
 
         @Override

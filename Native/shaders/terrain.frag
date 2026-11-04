@@ -221,6 +221,7 @@ void main() {
     if(mode>0&&mode!=8&&mode!=9&&mode!=10&&mode!=12&&mode!=15) {
         vec4 base=texture(diffuseImage,textureUV);
         if(mode==3) {
+            if(lightmapTile.w>0.5)base.a*=effectAlpha;
             if(transform.options.z==1&&base.a<0.5)discard;
             if(transform.options.z==2){if(base.a<=1.0/255.0)discard;alpha=base.a;}
         }else if(base.a<=1.0/255.0)discard;
@@ -249,7 +250,7 @@ void main() {
             vec3 normal=length(propNormal)>0.00001?normalize(propNormal):vec3(0);
             vec3 light=vertexColour;
             for(int i=0;i<3;++i)light+=max(0.0,dot(normal,propDirections[i]))*propColours[i];
-            displayColour=base.rgb*clamp(light,0.0,1.0);
+            displayColour=min(base.rgb*clamp(light,0.0,lightmapTile.w>0.5?2.0:1.0),vec3(1));
         }
         if((mode==2||mode==17)&&!runtime) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]

@@ -35,7 +35,8 @@ public:
 private:
     std::vector<LightProbe> probes_;
     std::function<Vec3(Vec3)> attenuation_;
-    static std::function<Vec3(Vec3)> terrain_attenuation(const Terrain& terrain, bool vertex_fallback);
+    static std::function<Vec3(Vec3)> terrain_attenuation(const Terrain& terrain, bool vertex_fallback,
+                                                         bool residual_fallback = false);
     SceneLight attenuate(SceneLight light, Vec3 position) const;
     void build(std::size_t begin, std::size_t end, unsigned axis);
 };

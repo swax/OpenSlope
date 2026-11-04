@@ -69,9 +69,11 @@ async function run() {
     await cacheTransaction(db, 'files', 'readwrite', store => {
       for (const [path, blob] of files) store.put({ key: `${course}/${path.toLowerCase()}`, course, path, blob });
     });
-    await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: 7, files: files.size }));
+    await cacheTransaction(db, 'courses', 'readwrite', store =>
+      store.put({ course, version: course === day ? isoCourseCacheVersion(day) : 7, files: files.size }),
+    );
   }
-  check((await cachedIsoCourses()).join() === day, 'Keep revision-7 day imports; request a fresh empty night import');
+  check((await cachedIsoCourses()).join() === day, 'Keep current day imports; refresh pre-update night imports');
   await cacheTransaction(db, 'files', 'readwrite', store => {
     for (const course of [day, night])
       store.put({

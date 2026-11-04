@@ -1,5 +1,7 @@
 """Actual Vulkan pixels from persistent/delta players and end-latched instances."""
 import json
+import base64
+import struct
 from pathlib import Path
 import subprocess
 import sys
@@ -84,6 +86,37 @@ def main():
         assert abs(captures['delta-frozen'][0]-initial[0])<1,captures
         assert abs(captures['entering'][0]-initial[0])<1,captures
         assert all(abs(c[1]-initial[1])<1 and abs(c[3]-initial[3])<10 for c in captures.values()),captures
+        # Shared model, distinct placement lighting: exercise the actual storage lookup and byte-domain product.
+        animated['IncludeAnimation'] = False
+        animated['MeshData'][0]['VertexLightingBase'] = 0
+        (root/'Models.json').write_text(json.dumps(dict(Models=[model])))
+        (root/'Textures/white.png').write_bytes(rgba(1, 1, [128,128,128,255]))
+        (root/'Effects.json').unlink()
+        rows[0]['Location'] = [0,0,0]
+        shades = {}
+        green_counts = []
+        for name, red, covered in [('half',8,True),('true',16,True),('over',31,True),('hidden',16,False)]:
+            packed = red | (16 << 10) | (int(covered) << 15)
+            rows[0]['VertexLighting'] = base64.b64encode(struct.pack('<4H', *([packed]*4))).decode()
+            (root/'Instances.json').write_text(json.dumps(dict(Instances=rows)))
+            (root/'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='white.png',AlphaMode='blend')])))
+            sequence = root/'baked-replay.json'
+            sequence.write_text(json.dumps(dict(Schema='openslope-replay/v1',Placement=dict(Position=[-3,-.005,0],Forward=[1,0,0]),Steps=[dict(Ticks=1)])))
+            output = root/f'baked-{name}.ppm'
+            result = subprocess.run([executable,'--map',str(root),'--on-foot','--first-person',
+                '--replay',str(sequence),'--capture',str(output),'--no-audio','--lighting','original'],capture_output=True,text=True,timeout=120)
+            assert result.returncode == 0,result.stdout+result.stderr
+            rgb = output.read_bytes().split(b'\n',3)[3]
+            blue = [r for r,g,b in zip(rgb[0::3],rgb[1::3],rgb[2::3]) if b>100 and g<8]
+            green_counts.append(sum(g>80 and g>r*3 and g>b*3 for r,g,b in zip(rgb[0::3],rgb[1::3],rgb[2::3])))
+            if not covered:
+                assert len(blue)<10, 'Vertex coverage must hide a blended sheet'
+            else:
+                assert len(blue)>1000,(name,len(blue),result.stdout)
+                shades[name] = sum(blue)/len(blue)
+            frames += 1
+        assert abs(shades['half']-64)<5 and abs(shades['true']-128)<5 and abs(shades['over']-248)<5,shades
+        assert min(green_counts)>1000 and max(green_counts)-min(green_counts)<10,green_counts
     print(f'PASS: {frames} production Vulkan frames verify animated pixels, shared-model isolation, delta hold and node-end restoration/latch')
 
 

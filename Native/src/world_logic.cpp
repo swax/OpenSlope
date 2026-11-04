@@ -234,6 +234,8 @@ struct WorldLogic::Data {
     std::deque<Thread> ready, waiting;
     std::vector<WorldAction> actions;
     WorldParticles particles;
+    std::vector<ParticleSprite> fog;
+    std::size_t fog_volumes = 0;
     std::set<std::size_t> particle_hosts;
     std::size_t unknown = 0;
     unsigned budget = 4096;
@@ -1273,6 +1275,61 @@ WorldLogic& WorldLogic::operator=(WorldLogic&&) noexcept = default;
 
 WorldLogic WorldLogic::load(const std::filesystem::path& root) {
     WorldLogic result;
+    if (!root.empty() && std::filesystem::is_regular_file(root / "ParticleInstances.json") &&
+        std::filesystem::is_regular_file(root / "ParticleModels.json")) {
+        const auto instances = read(root, "ParticleInstances.json").at("Particles");
+        const auto models = read(root, "ParticleModels.json").at("ParticlePrefabs");
+        const auto names = particle_sprite_names();
+        const auto sprite = std::find(names.begin(), names.end(), "fog0");
+        if (!instances.is_array() || !models.is_array() || instances.size() > 100000 || models.size() > 16384 ||
+            sprite == names.end())
+            throw std::runtime_error("Invalid fog volume table");
+        auto& fog = result.data_->fog;
+        for (const auto& row : instances) {
+            const auto index = row.value("ParticleModelIndex", -1);
+            if (index < 0 || std::size_t(index) >= models.size())
+                continue;
+            const auto v = [](const Json& a) -> Vec3 {
+                const Vec3 value{a.at(0), a.at(1), a.at(2)};
+                if (!finite(value))
+                    throw std::runtime_error("Non-finite fog volume vector");
+                return value;
+            };
+            const auto scale = row.contains("Scale") ? v(row.at("Scale")) : Vec3{1, 1, 1};
+            const auto rotation = row.value("Rotation", std::array<double, 4>{0, 0, 0, 1});
+            for (const auto value : rotation)
+                if (!std::isfinite(value))
+                    throw std::runtime_error("Non-finite fog volume rotation");
+            const auto matrix = placement(v(row.at("Location")), rotation, scale);
+            const auto radius_scale = std::max({std::abs(scale.x), std::abs(scale.y), std::abs(scale.z)});
+            const auto before = fog.size();
+            for (const auto& header : models.at(index).at("ParticleObjectHeaders"))
+                for (const auto& frame : header.at("ParticleObject").at("AnimationFrames")) {
+                    if (fog.size() >= WorldParticles::maximum_sprites)
+                        throw std::runtime_error("Fog volumes exceed sprite budget");
+                    const auto p = transform_point(matrix, v(frame.at("Position")));
+                    if (!finite(p))
+                        throw std::runtime_error("Non-finite fog puff position");
+                    const auto s = frame.contains("Rotation") ? v(frame.at("Rotation")) : Vec3{1, 1, 1};
+                    const auto r = frame.value("Unknown", 1.0);
+                    if (!std::isfinite(r))
+                        throw std::runtime_error("Invalid fog puff radius");
+                    const auto radius =
+                        std::max(.01, std::max(1., r) * radius_scale *
+                                          std::max({std::abs(s.x), std::abs(s.y), std::abs(s.z)}) / 100);
+                    if (radius > 10000)
+                        throw std::runtime_error("Fog puff exceeds radius limit");
+                    // Same authored fog tint, alpha and four-radius quad as the shared viewport.
+                    fog.push_back({{p.x / 100, p.z / 100, -p.y / 100},
+                                   float(radius * 2),
+                                   {184.f / 255, 199.f / 255, 217.f / 255, .48f},
+                                   unsigned(sprite - names.begin()),
+                                   ParticleBlend::Alpha});
+                }
+            if (fog.size() > before)
+                ++result.data_->fog_volumes;
+        }
+    }
     if (root.empty() || !std::filesystem::exists(root / "Instances.json"))
         return result;
     auto& d = *result.data_;
@@ -1901,8 +1958,12 @@ std::size_t WorldLogic::chains() const { return data_->chains.size(); }
 std::size_t WorldLogic::unsupported() const { return data_->unknown; }
 
 std::vector<ParticleSprite> WorldLogic::particles(double alpha, Vec3 eye) const {
-    return data_->particles.draw(alpha, eye);
+    auto sprites = data_->particles.draw(alpha, eye);
+    for (const auto& puff : data_->fog)
+        if (sprites.size() < WorldParticles::maximum_sprites && length(puff.position - eye) <= 500 + puff.radius)
+            sprites.push_back(puff);
+    return sprites;
 }
 
-std::size_t WorldLogic::emitters() const { return data_->particles.emitters(); }
+std::size_t WorldLogic::emitters() const { return data_->particles.emitters() + data_->fog_volumes; }
 } // namespace openslope

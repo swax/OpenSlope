@@ -30,6 +30,12 @@ int main(int argc, char** argv) {
         require(argc == 2, "Supply authored PNG fixtures");
         const auto root = std::filesystem::path(argv[1]);
         const auto actor = SceneLighting::load(root / "rgb_actor_lighting");
+        const auto streamed_actor = SceneLighting::load(root / "streamed_actor_lighting");
+        const auto streamed_floor = streamed_actor.sample({0, 1, 0});
+        require(length(streamed_floor.ambient - Vec3{.6, .6, .6} * (32. / 255)) < 1e-6,
+                "Streamed scenery averages yield to the residual floor shade beneath the rider");
+        require(length(streamed_actor.sample({0, 9, 0}).ambient - SceneLight::fallback().ambient) < 1e-6,
+                "A roof above a shaded streamed floor remains independently lit");
         const auto shaded = actor.sample({0, 1, 0}).evaluate({0, 1, 0});
         require(length(shaded - Vec3{.6 * 32 / 255, .6 * 64 / 255, .7 * 128 / 255}) < 1e-6,
                 "RGB ground shade must attenuate the actor's separate ambient and directional rig");

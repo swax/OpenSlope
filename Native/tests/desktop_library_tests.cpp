@@ -197,6 +197,16 @@ int main(int argc, char** argv) {
         runs.iso_course_types.clear();
         check(runs.library_count() == 2,
               "Older scans must hide SSX3 structural sections and keep other games selectable");
+        RideUi beta;
+        beta.iso_library = true;
+        beta.iso_source = images[0];
+        beta.set_iso_courses({{"SSX3B_ARA1", 0}, {"SSX3B_A", 0}, {"SSX3B_A_ARA1", 0}, {"SSX3B_PEAK1", 0}});
+        for (auto& [id, type] : beta.iso_course_types)
+            type.clear(); // Explicitly emulate scans without map-type metadata (DiscCourse otherwise defaults to run).
+        check(beta.library_count() == 1 && beta.has_advanced_iso_courses(),
+              "Beta scans use the same run and advanced-type filters");
+        beta.toggle_iso_map_types();
+        check(beta.library_count() == 4, "Beta advanced sections remain selectable");
         runs.iso_course_names["GARI"] = "Disc Garibaldi";
         runs.iso_courses[0].second = true;
         check(runs.buttons()[0].text == "PLAY Disc Garibaldi",

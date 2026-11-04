@@ -99,10 +99,13 @@ SceneLight SceneLighting::attenuate(SceneLight light, Vec3 position) const {
     return light;
 }
 
-std::function<Vec3(Vec3)> SceneLighting::terrain_attenuation(const Terrain& terrain, bool vertex_fallback) {
-    if (std::none_of(terrain.patches().begin(), terrain.patches().end(), [vertex_fallback](const auto& patch) {
-            return patch.active && (patch.lightmap_multiply || (vertex_fallback && patch.light_colors));
-        }))
+std::function<Vec3(Vec3)> SceneLighting::terrain_attenuation(const Terrain& terrain, bool vertex_fallback,
+                                                             bool residual_fallback) {
+    if (std::none_of(terrain.patches().begin(), terrain.patches().end(),
+                     [vertex_fallback, residual_fallback](const auto& patch) {
+                         return patch.active && (patch.lightmap_multiply || (vertex_fallback && patch.light_colors) ||
+                                                 (residual_fallback && patch.lightmap >= 0));
+                     }))
         return {};
 
     struct GroundLight {
@@ -113,7 +116,8 @@ std::function<Vec3(Vec3)> SceneLighting::terrain_attenuation(const Terrain& terr
     auto ground = std::make_shared<GroundLight>(GroundLight{terrain, {}});
     std::size_t decoded = 0;
     for (const auto& patch : terrain.patches()) {
-        if (!patch.active || !patch.lightmap_multiply || patch.lightmap < 0 || ground->images.contains(patch.lightmap))
+        if (!patch.active || (!patch.lightmap_multiply && !residual_fallback) || patch.lightmap < 0 ||
+            ground->images.contains(patch.lightmap))
             continue;
         std::ostringstream page;
         page << std::setfill('0') << std::setw(4) << patch.lightmap << ".png";
@@ -133,9 +137,10 @@ std::function<Vec3(Vec3)> SceneLighting::terrain_attenuation(const Terrain& terr
     // RGB pages and baked vertex colours contain separable colour/shade factors.
     // Project onto the first surface below the body, keeping a cave floor distinct from its roof.
     // Vertex colours fill in for missing actor probes; existing probes remain authoritative.
-    // Legacy residual lightmaps already have local instance probes and do not
-    // enter this path. This projection is an OpenSlope approximation.
-    return [ground, vertex_fallback](Vec3 position) -> Vec3 {
+    // Residual pages contribute their intensity only for streamed scenery without
+    // actor probes. Tricky's existing actor records remain authoritative.
+    // This projection is an OpenSlope approximation.
+    return [ground, vertex_fallback, residual_fallback](Vec3 position) -> Vec3 {
         const auto hit = ground->terrain.intersect(position + Vec3{0, .25, 0},
                                                    {position.x, ground->terrain.bounds().min.y - 1, position.z});
         if (!hit)
@@ -146,7 +151,7 @@ std::function<Vec3(Vec3)> SceneLighting::terrain_attenuation(const Terrain& terr
             return {rgb[0], rgb[1], rgb[2]};
         }
         const auto image = ground->images.find(patch.lightmap);
-        if (!patch.lightmap_multiply || image == ground->images.end())
+        if ((!patch.lightmap_multiply && !residual_fallback) || image == ground->images.end())
             return {1, 1, 1};
         const auto& rect = patch.lightmap_rect;
         if (rect[2] <= 0 || rect[3] <= 0)
@@ -157,6 +162,10 @@ std::function<Vec3(Vec3)> SceneLighting::terrain_attenuation(const Terrain& terr
         const auto at = [&](double a, double b) {
             const auto offset = (std::size_t(std::clamp(b, 0., 127.)) * 128 + std::size_t(std::clamp(a, 0., 127.))) * 4;
             const auto& pixels = image->second.pixels;
+            if (!patch.lightmap_multiply) {
+                const auto shade = pixels[offset + 3] / 255.;
+                return Vec3{shade, shade, shade};
+            }
             return Vec3{pixels[offset] / 255., pixels[offset + 1] / 255., pixels[offset + 2] / 255.};
         };
         return (at(px, py) * (1 - fx) + at(px + 1, py) * fx) * (1 - fy) +

@@ -624,6 +624,27 @@ int main(int argc, char** argv) {
         interaction_resets(root);
         production(root);
         actor_ownership(root);
+        const auto fog_root = root / "fog-volumes";
+        std::filesystem::create_directory(fog_root);
+        const auto frames = Json::array({{{"Position", {100, 0, 50}}, {"Rotation", {1, 1, 1}}, {"Unknown", 200}}});
+        const Json model = {
+            {"ParticleObjectHeaders", Json::array({{{"ParticleObject", {{"AnimationFrames", frames}}}}})}};
+        write(fog_root, "ParticleModels.json", {{"ParticlePrefabs", Json::array({model})}});
+        write(fog_root, "ParticleInstances.json",
+              {{"Particles", Json::array({{{"Location", {1000, 2000, 3000}},
+                                           {"Rotation", {0, 0, 0, 1}},
+                                           {"Scale", {2, 2, 2}},
+                                           {"ParticleModelIndex", 0}}})}});
+        auto fog = WorldLogic::load(fog_root);
+        const auto puffs = fog.particles(1, {12, 31, -20});
+        check(puffs.size() == 1 && fog.emitters() == 1, "Common fog volumes load even without prop tables");
+        check(length(puffs[0].position - Vec3{12, 31, -20}) < 1e-6 && std::abs(puffs[0].radius - 8) < 1e-6,
+              "Fog applies placement scale, centimetres, axes and the common four-radius quad");
+        check(puffs[0].blend == ParticleBlend::Alpha && std::abs(puffs[0].colour[3] - .48) < 1e-6,
+              "Fog uses the shared authored alpha profile");
+        fog.restart(RunMode::Freeride);
+        check(fog.particles(1, {12, 31, -20}).size() == 1, "Ride reset retains static course fog");
+        check(fog.particles(1, {10000, 10000, 10000}).empty(), "Distant fog stays outside the sprite budget");
         if (argc == 2) {
             courses(argv[1]);
             owned_resets(argv[1]);

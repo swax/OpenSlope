@@ -119,19 +119,22 @@ std::vector<std::size_t> RideUi::visible_iso_courses() const {
     for (std::size_t i = 0; i < iso_courses.size(); ++i) {
         const auto& name = iso_courses[i].first;
         const auto type = iso_course_types.find(name);
-        const auto section = name.starts_with("SSX3_") ? name.substr(5) : std::string{};
+        const auto section = name.starts_with("SSX3B_")  ? name.substr(6)
+                             : name.starts_with("SSX3_") ? name.substr(5)
+                                                         : std::string{};
         const bool legacy_run = section.size() > 1 && section != "ALL" && !section.starts_with("PEAK") &&
                                 section.find('_') == std::string::npos;
         if (all_iso_map_types || section.empty() ||
-            (type != iso_course_types.end() ? type->second == "run" : legacy_run))
+            (type != iso_course_types.end() && !type->second.empty() ? type->second == "run" : legacy_run))
             result.push_back(i);
     }
     return result;
 }
 
 bool RideUi::has_advanced_iso_courses() const {
-    return std::any_of(iso_courses.begin(), iso_courses.end(),
-                       [](const auto& row) { return row.first.starts_with("SSX3_"); });
+    return std::any_of(iso_courses.begin(), iso_courses.end(), [](const auto& row) {
+        return row.first.starts_with("SSX3_") || row.first.starts_with("SSX3B_");
+    });
 }
 
 void RideUi::toggle_iso_map_types() {
@@ -482,9 +485,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : audio_options  ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
                                                   : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
                                 : speed + " KM/H  /  " +
-                                      (p.carrying_board() ? "CARRYING"
-                                       : p.on_foot()      ? "ON FOOT"
-                                                          : "RIDING"),
+                                     (p.carrying_board() ? "CARRYING"
+                                      : p.on_foot()      ? "ON FOOT"
+                                                         : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
         if (!avatar_options && !audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);

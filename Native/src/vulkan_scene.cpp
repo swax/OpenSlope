@@ -265,7 +265,7 @@ VulkanScene::~VulkanScene() {
         if (value.memory)
             vkFreeMemory(context_.device, value.memory, nullptr);
     }
-    for (auto* value : {&vertices_, &indices_, &local_lights_, &light_cells_, &light_indices_}) {
+    for (auto* value : {&vertices_, &indices_, &local_lights_, &light_cells_, &light_indices_, &vertex_lights_}) {
         if (value->buffer)
             vkDestroyBuffer(context_.device, value->buffer, nullptr);
         if (value->memory)
@@ -464,6 +464,14 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
     vkGetPhysicalDeviceProperties(context_.physical, &limits);
     if (pose_capacity_ > 1000000 || pose_capacity_ * sizeof(PropPose) > limits.limits.maxStorageBufferRange)
         throw std::runtime_error("Prop instance buffer exceeds this GPU's limit");
+    if (props_.vertex_lights.empty())
+        props_.vertex_lights.push_back(0xffff);
+    if (props_.vertex_lights.size() * sizeof(std::uint32_t) > limits.limits.maxStorageBufferRange)
+        throw std::runtime_error("Prop vertex-light buffer exceeds this GPU's limit");
+    vertex_lights_ = buffer(props_.vertex_lights.size() * sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                            props_.vertex_lights.data());
+    props_.vertex_lights.clear();
+    props_.vertex_lights.shrink_to_fit();
     VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sampler.magFilter = sampler.minFilter = VK_FILTER_LINEAR;
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;

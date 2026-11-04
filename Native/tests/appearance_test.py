@@ -51,6 +51,14 @@ def fixtures(root):
     rider = dict(AmbentLightColour=[102.4, 51.2, 25.6], LightColour1=[51.2, 102.4, 153.6], LightVector1=[0, 0, 1])
     (folder / 'Instances.json').write_text(json.dumps(dict(Instances=[dict(
         Location=[0, 0, 0], AmbentLightColour=[256, 0, 0], RiderLighting=rider)])))
+    residual = root / 'streamed_actor_lighting'
+    shutil.copytree(folder, residual)
+    residual_patches = json.loads(json.dumps(patches))
+    for row in residual_patches: row.pop('LightmapEncoding', None)
+    (residual / 'Patches.json').write_text(json.dumps(dict(Patches=residual_patches)))
+    (residual / 'Lightmaps/0000.png').write_bytes(rgba(128, 128, [180, 200, 220, 32] * (128 * 128)))
+    (residual / 'Instances.json').write_text(json.dumps(dict(Instances=[dict(
+        Location=[0, 0, 0], AmbentLightColour=[224, 224, 224], VertexLighting='//8=')])))
     vertex = root / 'vertex_actor_lighting'
     vertex.mkdir()
     vertex_patches = json.loads(json.dumps(patches))

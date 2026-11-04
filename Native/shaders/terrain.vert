@@ -9,6 +9,7 @@ layout(location=4) in vec4 tile;
 layout(location=5) in vec3 modelNormal;
 struct Pose {mat4 matrix;vec4 ambient;vec4 direction[3];vec4 colour[3];vec4 uv;};
 layout(std430,set=1,binding=0) readonly buffer Placements {Pose poses[];};
+layout(std430,set=1,binding=5) readonly buffer PropVertexLights {uint packedColours[];};
 layout(location=0) out vec3 vertexColour;
 layout(location=1) out vec2 textureUV;
 layout(location=2) out vec2 lightmapUV;
@@ -48,12 +49,22 @@ void main() {
         vertexColour=pose.ambient.rgb;
         propNormal=modelNormal;
         for(int i=0;i<3;++i){propDirections[i]=pose.direction[i].xyz;propColours[i]=pose.colour[i].rgb;}
+        // [Trailmap: 513-vertex-light, 513-vertex-light-scale, 513-vertex-alpha]
+        if(pose.ambient.w>0.0){
+            vertexColour=vec3(1);effectAlpha=1.0;propDirections=mat3(0);propColours=mat3(0);
+            if(tile.x>=0.0&&tile.x<pose.direction[0].w){
+                uint encoded=packedColours[int(pose.ambient.w)-1+int(tile.x)];
+                vertexColour=vec3(encoded&31u,(encoded>>5)&31u,(encoded>>10)&31u)/16.0;
+                effectAlpha=float((encoded>>15)&1u);
+            }
+        }
     }
     textureUV=diffuseUV;
     if(mode==3)textureUV+=poses[gl_InstanceIndex].uv.xy;
     if(mode==5&&transform.options.w==1)textureUV.x=1.0-diffuseUV.x;
     lightmapUV=lightUV;
     lightmapTile=tile;
+    if(mode==3&&poses[gl_InstanceIndex].ambient.w>0.0)lightmapTile.w=1.0;
     gl_Position=transform.mvp*vec4(worldPosition,1.0);
     if(mode==10||mode==11)gl_Position=vec4(position.xy,0.5*lightUV.y,lightUV.y);
     if(mode==7)gl_Position.z=0.0;

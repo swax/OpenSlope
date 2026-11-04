@@ -63,6 +63,8 @@ struct PropInstance {
 
 struct Props {
     Mesh geometry;
+    // Packed per-placement colours, indexed by pose ambient.w (base + 1) and the model vertex's tile.x.
+    std::vector<std::uint32_t> vertex_lights;
     std::vector<PropPart> parts;
     std::vector<PropModel> models;
     std::vector<PropInstance> instances;
