@@ -6,6 +6,7 @@ target_sources(openslope_core PRIVATE
   src/import/session.cpp
   src/import/hash.cpp
   src/import/music_cache.cpp
+  src/import/music_assignment.cpp
   src/import/maps.cpp
   src/import/png.cpp
 

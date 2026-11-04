@@ -53,7 +53,7 @@ function copyNotice(source, destination) {
       .trimEnd()}\n`,
   );
 }
-for (const name of ['json', 'lodepng', 'zstd', 'opus'])
+for (const name of ['json', 'lodepng', 'zstd', 'opus', 'minimp3'])
   copyNotice(join(root, 'Native/ThirdPartyNotices', `${name}.txt`), join(output, `${name}-license.txt`));
 copyNotice(join(sdk, 'upstream/emscripten/LICENSE'), join(output, 'emscripten-license.txt'));
 console.log('Built the browser ISO importer from Native and copied runtime files and notices.');

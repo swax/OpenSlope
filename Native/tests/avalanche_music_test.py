@@ -90,7 +90,11 @@ def main():
         run('extract', root / 'maps', course='AVALANCHE_CRS00_00')
         imported = root / 'maps/AVALANCHE_CRS00_00'
         assert (imported / 'Audio/Music/fixture/chunk_001.wav').read_bytes() == (music / 'fixture/chunk_001.wav').read_bytes()
-        assert json.loads((imported / 'Import.json').read_text())['Music']['Songs'] == 2
+        assert json.loads((imported / 'Import.json').read_text())['Music']['Songs'] == 1
+        assert json.loads((imported / 'Audio/Music/playlist.json').read_text()) == ['fixture']
+        assert not (imported / 'Audio/Music/second').exists(), 'Unassigned tracks must not be converted or copied'
+        assignment = json.loads((imported / 'Audio/Music/MusicImport.json').read_text())['Assignment']
+        assert assignment['Mode'] == 'map-index-v1' and assignment['CatalogueSongs'] == 2
         if len(sys.argv) > 2:
             expected_uv = root / 'uv.json'
             expected_uv.write_text(json.dumps([portable_uvs(TERRAIN_UVS[0])]))

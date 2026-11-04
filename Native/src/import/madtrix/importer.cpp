@@ -616,7 +616,7 @@ void extract(const DiscInput& disc, const std::string& course, const std::filesy
     notify("Converting Mad Trix ski sounds");
     write_madtrix_audio(pak, course, output, cancel);
     notify("Converting Mad Trix music");
-    const auto music = write_madtrix_music(disc, output, cancel);
+    const auto music = write_madtrix_music(disc, output, cancel, course);
     notify("Validating Mad Trix terrain and authored start");
     const auto terrain = Terrain::load(output);
     start_path(pak, terrain, output, cancel);
@@ -678,8 +678,8 @@ void extract(const DiscInput& disc, const std::string& course, const std::filesy
 }
 } // namespace
 
-const GameImporter madtrix_importer{accepts, courses, extract, madtrix_titles,
-                                    [](const DiscInput& disc, const std::string&, const std::filesystem::path& output,
-                                       const ImportProgress&,
-                                       const ImportCancel& cancel) { write_madtrix_music(disc, output, cancel); }};
+const GameImporter madtrix_importer{
+    accepts, courses, extract, madtrix_titles,
+    [](const DiscInput& disc, const std::string& course, const std::filesystem::path& output, const ImportProgress&,
+       const ImportCancel& cancel) { write_madtrix_music(disc, output, cancel, course); }};
 } // namespace openslope::import_detail

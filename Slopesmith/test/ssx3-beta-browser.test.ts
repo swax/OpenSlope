@@ -186,7 +186,7 @@ try {
     metadata.musicSongs > 0 && metadata.musicNodes > 0 && metadata.musicFrames > 0,
     'Imported music routes decode',
   );
-  if (!process.env.SLOPESMITH_SSX3_BETA_ISO) assert.equal(metadata.musicSongs, 2);
+  if (!process.env.SLOPESMITH_SSX3_BETA_ISO) assert.equal(metadata.musicSongs, 1);
   assert(metadata.fogSize.every((size: number) => size > 0));
   assert(metadata.fogTexture?.startsWith('asset2:'), 'Fog binds the imported sprite by its exact asset identity');
   assert(

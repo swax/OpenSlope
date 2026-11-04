@@ -107,8 +107,17 @@ export function pickReferenceRideSong(
   return selected?.id ?? songs[Math.floor(random() * songs.length)]?.id ?? null;
 }
 
-/** Warm the intro tier and the first two ordinary chunks of each candidate when a reference is selected. This keeps the
- * first mount off the network/decode path without decoding hundreds of PathFinder chunks up front. */
+function preloadReferenceSong(level: string, song: string, graph: ReferenceMusicGraph): void {
+  const first = resolveMusicSampleNode(graph, 0, 80);
+  if (first < 0) return;
+  const second = resolveMusicSampleNode(graph, pickLink(graph, first, 80), 80);
+  preloadAudio(
+    [first, second].filter(node => node >= 0).map(node => referenceRaceMusicUrl(level, song, graph.Nodes[node].Sample)),
+  );
+}
+
+/** Warm ambience and the selected song's first two chunks. Random waits for the runtime's per-run choice;
+ * preloading every candidate would decode an entire soundtrack when samples contain complete songs. */
 export function preloadReferenceRideMusic(level: string, selection = ''): void {
   void referenceMusicIndex(level).then(async index => {
     if (!index) return;
@@ -117,20 +126,9 @@ export function preloadReferenceRideMusic(level: string, selection = ''): void {
     if (index.environment) preloadAudio([referenceEnvironmentUrl(level, index.environment)]);
     else preloadAudio(index.intro?.stems.map(stem => referenceIntroMusicUrl(level, stem)) ?? []);
     const selected = index.songs.find(song => song.id === selection);
-    await Promise.all(
-      (selected ? [selected] : index.songs).map(async ({ id: song }) => {
-        const graph = await referenceMusicGraph(level, song);
-        if (!graph) return;
-        const first = resolveMusicSampleNode(graph, 0, 80);
-        if (first < 0) return;
-        const second = resolveMusicSampleNode(graph, pickLink(graph, first, 80), 80);
-        preloadAudio(
-          [first, second]
-            .filter(node => node >= 0)
-            .map(node => referenceRaceMusicUrl(level, song, graph.Nodes[node].Sample)),
-        );
-      }),
-    );
+    if (!selected) return;
+    const graph = await referenceMusicGraph(level, selected.id);
+    if (graph) preloadReferenceSong(level, selected.id, graph);
   });
 }
 
@@ -330,6 +328,7 @@ export class RideMusicRuntime {
       this.raceGraph = graph;
       this.raceLevel = level;
       this.raceSong = song;
+      preloadReferenceSong(level, song, graph);
     }
   }
 

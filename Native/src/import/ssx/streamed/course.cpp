@@ -1537,7 +1537,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
                             : write_ssx3_audio(disc, output, course, progress, cancel);
     if (audio)
         write_streamed_ambient_audio(output, tour, cancel);
-    const auto music = tour ? 0u : write_ssx3_music(disc, course, output, progress, cancel);
+    const auto music = write_streamed_music(disc, course, output, progress, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
                                   {"Game", streamed_game(course, tour)},
                                   {"Origin", "retail"},

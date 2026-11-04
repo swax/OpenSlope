@@ -8,23 +8,21 @@ import { createIsoImportSessions } from './iso-import-sessions';
 import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
-// SSX 3 generation 11 imports the SSX Mix soundtrack into common music graphs.
-// Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
+// Game-wide soundtracks now import only each map's stable share of the catalogue.
+// SSX 3/beta: 12; On Tour: 10; Avalanche: 4; Mad Trix: 9.
 // GBA generation 9 rematches terrain into larger quads without subdividing isolated faces.
 export const isoCourseCacheVersion = (course: string): number =>
   /^SSX3B?_/i.test(course)
-    ? 11
+    ? 12
     : /^SSXGBA_/i.test(course)
       ? 9
       : /^AVALANCHE_/i.test(course)
-        ? 3
+        ? 4
         : /^MADTRIX_/i.test(course)
-          ? 8
-          : /^SSXOT_.*_NIGHT$/i.test(course)
-            ? 8
-            : /^(SSX3B?_|SSXOT_)/i.test(course)
-              ? 7
-              : /^SSX_/i.test(course)
+          ? 9
+          : /^SSXOT_/i.test(course)
+            ? 10
+            : /^SSX_/i.test(course)
                 ? 3
                 : ISO_CACHE_VERSION;
 interface CachedFile {

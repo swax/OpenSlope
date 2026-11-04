@@ -1,6 +1,7 @@
 #include "openslope/music.hpp"
 #include "formats.hpp"
 #include "import/containers/disc.hpp"
+#include "import/music_assignment.hpp"
 #include "import/music_cache.hpp"
 #include "import/strings.hpp"
 #include "openslope/audio.hpp"
@@ -186,7 +187,7 @@ Json song(const DiscInput& disc, const DiscEntry& entry, const std::string& id, 
 } // namespace
 
 unsigned write_avalanche_music(const DiscInput& disc, const std::filesystem::path& output,
-                               const ImportProgress& progress, const ImportCancel& cancel) {
+                               const ImportProgress& progress, const ImportCancel& cancel, const std::string& course) {
     check_cancel(cancel);
     const auto header = disc.read(0, 6);
     require(Bytes{header}.text(0, 6) == "GTEE01", "Unsupported Avalanche music source");
@@ -221,6 +222,13 @@ unsigned write_avalanche_music(const DiscInput& disc, const std::filesystem::pat
 
     std::set<std::string> ids;
     Json playlist = Json::array(), sources = Json::array();
+
+    struct Track {
+        DiscEntry entry;
+        std::string id, title, artist;
+    };
+
+    std::vector<Track> tracks;
     std::uint64_t decoded_bytes = 0;
     for (unsigned i = 0; i < count; ++i) {
         check_cancel(cancel);
@@ -235,11 +243,17 @@ unsigned write_avalanche_music(const DiscInput& disc, const std::filesystem::pat
         const auto entry = std::find_if(files.begin(), files.end(),
                                         [&](const auto& e) { return upper(e.name) == upper(id + ".adp"); });
         require(entry != files.end(), "Missing named Avalanche music stream");
-        decoded_bytes += entry->bytes / 32 * 28 * 4;
+        tracks.push_back({*entry, id, title, artist});
+    }
+    const auto assignment = assign_map_music(disc, course, tracks.size(), cancel);
+    for (const auto index : assignment.indices) {
+        check_cancel(cancel);
+        const auto& [entry, id, title, artist] = tracks[index];
+        decoded_bytes += entry.bytes / 32 * 28 * 4;
         require(decoded_bytes <= 1280ull * 1024 * 1024, "Avalanche soundtrack exceeds its decoded limit");
         if (progress)
             progress("Preparing Avalanche music: " + title);
-        sources.push_back(song(disc, *entry, id, title, artist, root, cancel));
+        sources.push_back(song(disc, entry, id, title, artist, root, cancel));
         playlist.push_back(id);
     }
     require(!playlist.empty(), "Avalanche music catalogue has no named songs");
@@ -249,6 +263,7 @@ unsigned write_avalanche_music(const DiscInput& disc, const std::filesystem::pat
           {"Game", "1080-avalanche"},
           {"SourceBank", "1080Data/sound/snddata.obj"},
           {"Songs", sources},
+          {"Assignment", assignment.metadata},
           {"Policy",
            "Named soundtrack streams in catalogue order; duplicate streams decoded once; OpenSlope full-track looping"},
           {"OriginalMusicScheduling", "Deferred"},

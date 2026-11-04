@@ -6,6 +6,21 @@ Slopesmith's `/isos` worker and native Windows/Quest builds. It writes the usual
 local in IndexedDB. Failed or cancelled imports remove only their new staging
 folder; existing maps and edits are preserved.
 
+Each map's indexed share of the **Collective** soundtrack imports into the common music graph
+format using complete jukebox songs, with titles, artists, tempo and volume.
+EA Layer 3 audio is decoded, with four-channel songs downmixed to stereo.
+Native output keeps PCM WAVs; browser output uses portable Opus with shared
+song caching. Day and night maps share the same two or three assigned songs
+and soundtrack cache. See [music assignment](music-assignment.md). Reload an
+older local map from its ISO to add music, then upload that refreshed reference
+if it is also hosted on the server.
+
+This is approximate full-song playback. Original gameplay segmentation,
+scripted cuts, asynchronous layers and playlist scheduling remain deferred.
+Per-song source configuration and MPF files are preserved, and unsupported
+codecs are reported without preventing the remaining songs or map from loading.
+[Trailmap: 549-ontour-music]
+
 Discovery offers 15 individual tracks and the 10 night variants present on the
 disc. Track codes are ER1–ER4, NP2, NP3, NPP, VB1, VB2, VB4, VH1, and WR1–WR4.
 Night variants exist for ER3, ER4, NP3, VB1, VB4, VH1, and WR1–WR4. There is no
@@ -63,7 +78,7 @@ Path events remain `SourceEvents` until their meanings are established.
 Mission behavior, animated models, other material animation modes,
 secondary terrain textures, exact surface labels, sphere-tree collision, complex
 collision admission, sound-trigger routing, some sound codecs, board-surface
-selection and music playback remain deferred. Source terrain currently uses
+selection and original music scheduling remain deferred. Source terrain currently uses
 neutral snow contact behavior. Native prop vertex-colour rendering and local
 spot-cone playback have the same limitations as the SSX3 importer.
 [Trailmap: 520-scripts, 520-paths, 520-other-records, 520-instance]

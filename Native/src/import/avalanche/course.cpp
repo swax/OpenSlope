@@ -1172,7 +1172,7 @@ void write_avalanche_course(const DiscInput& disc, const std::string& course, co
                                {"RaceLines", Json::array()},
                                {"StartPosList", {0}}});
     notify("Converting Avalanche music");
-    const auto music = write_avalanche_music(disc, output, progress, cancel);
+    const auto music = write_avalanche_music(disc, output, progress, cancel, course);
     Json outputs = {"Patches.json", "Textures",    "AIP.json",       "Origin.json",
                     "Collision",    "Models.json", "Materials.json", "Instances.json"};
     if (music)

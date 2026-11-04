@@ -1,5 +1,6 @@
 #include "openslope/music.hpp"
 #include "audio.hpp"
+#include "import/music_assignment.hpp"
 #include "import/music_cache.hpp"
 #include "import/strings.hpp"
 #include "openslope/audio.hpp"
@@ -169,7 +170,8 @@ Json song(const DiscInput& disc, Bytes source, const std::string& voice, const s
 }
 } // namespace
 
-unsigned write_madtrix_music(const DiscInput& disc, const std::filesystem::path& output, const ImportCancel& cancel) {
+unsigned write_madtrix_music(const DiscInput& disc, const std::filesystem::path& output, const ImportCancel& cancel,
+                             const std::string& course) {
     check_cancel(cancel);
     Iso iso(disc);
     const auto entries = iso.children(iso.find(""));
@@ -188,6 +190,7 @@ unsigned write_madtrix_music(const DiscInput& disc, const std::filesystem::path&
     std::filesystem::create_directories(root);
     Json playlist = Json::array(), sources = Json::array();
     std::set<std::string> voices;
+    std::vector<std::pair<std::string, unsigned>> catalogue;
     for (unsigned i = 0; i < bank.entries.size(); ++i) {
         check_cancel(cancel);
         const auto descriptor = bank.resource(i);
@@ -199,7 +202,15 @@ unsigned write_madtrix_music(const DiscInput& disc, const std::filesystem::path&
         const auto voice = name(descriptor, 64, 12);
         require(valid_map_name(voice) && voices.insert(upper(voice)).second && voices.size() <= 64,
                 "Invalid Mad Trix music voice table");
-        const auto entry = song(disc, bank.resource(reference(name(descriptor, 136, 16))), voice, root, cancel);
+        const auto resource = reference(name(descriptor, 136, 16));
+        require(resource < bank.entries.size(), "Invalid Mad Trix music resource reference");
+        catalogue.emplace_back(voice, resource);
+    }
+    const auto assignment = assign_map_music(disc, course, catalogue.size(), cancel);
+    for (const auto index : assignment.indices) {
+        check_cancel(cancel);
+        const auto& [voice, resource] = catalogue[index];
+        const auto entry = song(disc, bank.resource(resource), voice, root, cancel);
         playlist.push_back(entry.at("Song"));
         sources.push_back(entry);
     }
@@ -210,7 +221,8 @@ unsigned write_madtrix_music(const DiscInput& disc, const std::filesystem::path&
           {"Game", "jonny-moseley-mad-trix"},
           {"SourceBank", "MUSIC/MUSIC.MET"},
           {"Songs", sources},
-          {"Policy", "All source music voices; OpenSlope per-run selection and full-track looping"},
+          {"Assignment", assignment.metadata},
+          {"Policy", "Map-index share of source music voices; OpenSlope per-run selection and full-track looping"},
           {"OriginalMusicScheduling", "Deferred"}});
     return unsigned(playlist.size());
 }

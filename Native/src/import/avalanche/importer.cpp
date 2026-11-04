@@ -15,6 +15,7 @@ bool accepts(const DiscInput& disc) {
 
 const GameImporter avalanche_importer{
     accepts, avalanche_courses, write_avalanche_course, avalanche_titles,
-    [](const DiscInput& disc, const std::string&, const std::filesystem::path& output, const ImportProgress& progress,
-       const ImportCancel& cancel) { write_avalanche_music(disc, output, progress, cancel); }};
+    [](const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
+       const ImportProgress& progress,
+       const ImportCancel& cancel) { write_avalanche_music(disc, output, progress, cancel, course); }};
 } // namespace openslope::import_detail

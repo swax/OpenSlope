@@ -158,7 +158,7 @@ def material_animation(rows, conditional=False):
     return result + [(9, 65536, texture(), 3), (21, 0, struct.pack('<7I', 0xffffffff, 0, *([0xffffffff] * 5)), 3)]
 
 
-def full_disc(fidelity=False, night_sky=False):
+def full_disc(fidelity=False, night_sky=False, music=None):
     def wrapper(payload):
         b = bytearray(80)
         b[:4] = b'ABKC'
@@ -202,6 +202,7 @@ def full_disc(fidelity=False, night_sky=False):
             ('mdl_er4_trg_fw_finish_final_9999', 'mdl_er1_ordinary') if fidelity else None)),
         'DATA/WORLDS/SKYBOX.BIG': archive(sky_files),
         'DATA/AUDIO/AUDIO.BIG': archive(sounds),
+        **(music or {}),
     }))
 
 

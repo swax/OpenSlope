@@ -92,13 +92,15 @@ load a Tricky map on the same device to make those clips available. Source clips
 always take priority. No donor disc or audio is downloaded, and the fallback
 does not import the donor map's terrain.
 
-`Audio/Music` imports the disc's twelve full-length music streams (about 46
-minutes) through the existing music playlist and graph contract. Four-second
+`Audio/Music` imports each map's indexed share of the disc's twelve full-length
+music streams through the existing music playlist and graph contract. See
+[music assignment](music-assignment.md) for the catalogue/map ratio. Four-second
 WAV chunks retain decoder history and keep startup preload small. Both native
 and Slopesmith Play select from this game's tracks; Random chooses a track for
 each run, and the selected full track loops. The original game's music scheduling
 and fades are not reproduced. Labels retain source track numbers; song titles
-and tempos have not been recovered. Music adds roughly 125 MiB per imported map.
+and tempos have not been recovered. The complete catalogue is roughly 125 MiB;
+maps now store only their assigned songs.
 
 Reload older Slopesmith caches from the saved disc to receive music. Existing
 native map folders are preserved; re-extract into a new output folder to update

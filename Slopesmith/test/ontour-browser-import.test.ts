@@ -21,7 +21,7 @@ try {
   const fixture = join(work, 'mountain.iso');
   const generated = spawnSync(
     process.platform === 'win32' ? 'python' : 'python3',
-    [join(root, 'Native/tests/ontour_import_test.py'), '--fixture', fixture],
+    [join(root, 'Native/tests/ontour_music_import_test.py'), '--fixture', fixture],
     { encoding: 'utf8', windowsHide: true },
   );
   assert.equal(generated.status, 0, generated.stderr);
@@ -65,7 +65,11 @@ try {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   assert(address && typeof address === 'object');
-  browser = await chromium.launch({ executablePath: chromiumExecutable(), headless: true });
+  browser = await chromium.launch({
+    executablePath: chromiumExecutable(),
+    headless: true,
+    args: ['--autoplay-policy=no-user-gesture-required'],
+  });
   const page = await browser.newPage();
   await page.addInitScript('globalThis.__name = fn => fn;');
   await page.goto(`http://127.0.0.1:${address.port}`);
@@ -134,9 +138,38 @@ try {
     const missing = await (
       await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=4&level=MISSING'))
     ).arrayBuffer();
+    const musicIndex = await (await fetch(local.resolveAsset('/api/reference-music?level=SSXOT_ER1_NIGHT'))).json();
+    const musicGraph = await (
+      await fetch(local.resolveAsset('/api/reference-music?level=SSXOT_ER1_NIGHT&song=song_4'))
+    ).json();
+    const musicResponse = await fetch(
+      local.resolveAsset('/api/reference-music-sample?level=SSXOT_ER1_NIGHT&song=song_4&sample=1'),
+    );
+    const musicBytes = await musicResponse.arrayBuffer();
+    const context = new AudioContext({ sampleRate: 48000 });
+    const decodedMusic = await context.decodeAudioData(musicBytes.slice(0));
+    await context.resume();
+    const playing = context.createBufferSource();
+    playing.buffer = decodedMusic;
+    playing.connect(context.destination);
+    const ended = new Promise<void>(resolve => {
+      playing.onended = () => resolve();
+    });
+    playing.start();
+    await ended;
+    const musicPlayback = {
+      channels: decodedMusic.numberOfChannels,
+      seconds: decodedMusic.duration,
+      state: context.state,
+      signature: new TextDecoder().decode(musicBytes.slice(0, 4)),
+    };
+    await context.close();
     local.dispose();
     return {
       courses: scan.courses,
+      musicIndex,
+      musicGraph,
+      musicPlayback,
       ridingBanks: [bankInfo.boardBank, bankInfo.boostBank],
       patches: patches.Patches.length,
       instances: instances.Instances.length,
@@ -178,6 +211,16 @@ try {
     };
   }, readFileSync(fixture).toString('base64'));
   assert(result.courses?.includes('SSXOT_ER1_DAY'));
+  assert.equal(result.musicIndex.songs.length, 2, 'On Tour soundtrack reaches the common local music catalogue');
+  assert.equal(result.musicGraph.Song, 'First song - Fixture artist');
+  assert.equal(result.musicGraph.Samples.length, 1);
+  assert.equal(result.musicPlayback.signature, 'OggS', 'Browser music uses the portable Opus sibling');
+  assert.equal(result.musicPlayback.channels, 2);
+  assert.equal(result.musicPlayback.state, 'running');
+  assert(
+    Math.abs(result.musicPlayback.seconds - 4655 / 48000) < 1 / 48000,
+    'Playable decoded music preserves duration',
+  );
   assert(result.courses?.includes('SSXOT_ER1_NIGHT'));
   assert(!result.courses?.some(course => course.includes('ALL')));
   assert.equal(result.patches, 1);

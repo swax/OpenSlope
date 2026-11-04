@@ -231,7 +231,7 @@ own sun/cloud art. OpenSlope's user-controlled snowfall remains available.
 
 ## Music
 
-New imports include the named soundtrack from the disc's sound catalogue in
+New map imports include an indexed share of the named soundtrack from the disc's sound catalogue in
 `Audio/Music`. The USA source contains 46 distinct streams with track titles and
 artists, including named intro/outro variants. Duplicate stream references are
 decoded once; blank-title/artist cues and the explicit music-off entry are excluded.
@@ -246,7 +246,9 @@ choice, explicit song selection and mount/dismount fades. This is OpenSlope
 playback policy; original per-course selection, cue timing, transitions and mix
 automation remain unresolved. See [Trailmap 606](../../Trailmap/specs/606-avalanche-music.md).
 
-The full decoded soundtrack occupies about 1 GiB per independently stored map.
+See [music assignment](music-assignment.md) for the catalogue/map ratio.
+The full decoded soundtrack occupies about 1 GiB; ordinary map imports now
+convert and store only their assigned songs.
 Quest folder caching admits up to 1536 MiB of audio while retaining its entry,
 file-size, cancellation and partial-cache cleanup limits. Playback still loads
 only the current song's bounded chunks. Reload an older browser course to import
@@ -260,7 +262,8 @@ Add music to an existing local map, or extract a standalone soundtrack folder:
 
 The command requires an absent `Audio/Music` destination and preserves existing
 terrain and other map files. A failed or cancelled music conversion removes its
-new music tree. Fresh course imports include the same conversion automatically.
+new music tree. This explicit command exports the entire soundtrack; fresh
+course imports use the smaller map assignment automatically.
 
 ## Current limits
 

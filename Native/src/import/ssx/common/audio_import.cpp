@@ -1,4 +1,6 @@
 #include "external_sounds.hpp"
+#include "import/containers/big.hpp"
+#include "import/music_assignment.hpp"
 #include "import/music_cache.hpp"
 #include "import/ssx/formats.hpp"
 #include "import/ssx/streamed/music.hpp"
@@ -169,6 +171,36 @@ struct Library {
 
     std::vector<std::uint8_t> read(const std::string& leaf) const {
         return disc_archive_file(disc, path, member(leaf));
+    }
+
+    std::uint64_t size(const std::string& leaf) const {
+        const auto name = member(leaf);
+        return std::find_if(entries.begin(), entries.end(), [&](const auto& row) { return row.name == name; })->bytes;
+    }
+
+    std::vector<std::uint8_t> slice(const std::string& leaf, std::size_t offset, std::size_t length) const {
+        const auto source = logical_disc(disc);
+        Iso image(source);
+        const auto index = archive_index(source, image.find(path));
+        const auto name = upper(member(leaf));
+        const auto row =
+            std::find_if(index.begin(), index.end(), [&](const auto& entry) { return upper(entry.name) == name; });
+        if (row == index.end() || offset > row->size || length > row->size - offset)
+            throw std::runtime_error("Music slice is outside its archive member");
+        return source.read(row->offset + offset, length);
+    }
+
+    std::string single(const std::string& extension) const {
+        std::string found;
+        for (const auto& entry : entries)
+            if (!entry.directory && upper(std::filesystem::path(entry.name).extension().string()) == extension) {
+                if (!found.empty())
+                    throw std::runtime_error("Ambiguous music archive member");
+                found = filename(entry.name);
+            }
+        if (found.empty())
+            throw std::runtime_error("Music archive member is missing");
+        return found;
     }
 };
 
@@ -403,8 +435,8 @@ void tricky_music(const DiscInput& disc, const std::string& course, const std::m
 
 void write_tricky_music(const DiscInput& disc, const std::string& requested, const std::filesystem::path& output,
                         const ImportProgress& progress, const ImportCancel& cancelled) {
-    if (requested.starts_with("SSX3_") || requested.starts_with("SSX3B_")) {
-        write_ssx3_music(disc, requested, output, progress, cancelled);
+    if (requested.starts_with("SSX3_") || requested.starts_with("SSX3B_") || requested.starts_with("SSXOT_")) {
+        write_streamed_music(disc, requested, output, progress, cancelled);
         return;
     }
     if (requested.starts_with("SSX"))
@@ -429,10 +461,11 @@ void write_tricky_music(const DiscInput& disc, const std::string& requested, con
     tricky_music(disc, requested.starts_with("TRICKY_") ? requested.substr(7) : requested, configs, w);
 }
 
-unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
-                          const ImportProgress& progress, const ImportCancel& cancelled) {
-    // [Trailmap: 548-ssx3-music] PLAYLIST.INF supplies the default SSX Mix;
-    // each MUSIC.INF song chooses MUSIC.BIG or MUSIC2.BIG independently.
+unsigned write_streamed_music(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
+                              const ImportProgress& progress, const ImportCancel& cancelled) {
+    // [Trailmap: 548-ssx3-music, 549-ontour-music] Both catalogues adapt to the
+    // common music graph; On Tour selects complete frontend jukebox streams.
+    const bool tour = course.starts_with("SSXOT_");
     check_cancel(cancelled);
     const auto data = disc_directory(disc, "DATA");
     if (std::none_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "CONFIG"; }))
@@ -447,37 +480,81 @@ unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, cons
     const auto music_bytes = disc_file(disc, "DATA/CONFIG/MUSIC.INF"),
                playlist_bytes = disc_file(disc, "DATA/CONFIG/PLAYLIST.INF");
     const auto songs = config(music_bytes), playlists = config(playlist_bytes);
-    const auto names = values(playlists, section_for(playlists, "SSX MIX"), "SONG");
+    const auto names = values(playlists, section_for(playlists, tour ? "ALL" : "SSX MIX"), "SONG");
     if (names.empty() || names.size() > 64)
         throw std::runtime_error("Invalid SSX 3 music playlist");
     Writer w{disc, output / "Audio", progress, cancelled, 0, {}, Json::array()};
     w.limit = 2ull * 1024 * 1024 * 1024;
     std::filesystem::create_directories(w.root / "Music");
     std::map<unsigned, std::unique_ptr<Library>> archives;
+    std::vector<std::uint8_t> tour_graph;
+    std::size_t tour_audio_size = 0;
+    std::uint32_t tour_audio_id = 0;
+    std::string tour_path, tour_stream;
+    if (tour) {
+        archives[1] = std::make_unique<Library>(disc, "DATA/AUDIO/FEMUSIC.BIG");
+        tour_path = archives[1]->single(".MPF");
+        tour_stream = archives[1]->single(".MUS");
+        tour_graph = archives[1]->read(tour_path);
+        tour_audio_size = std::size_t(archives[1]->size(tour_stream));
+        tour_audio_id = Bytes{archives[1]->slice(tour_stream, 0, 4)}.le(0);
+    }
     std::set<std::string> converted;
     Json playlist = Json::array(), sources = Json::array(), deferred_songs = Json::array();
     // Browser imports keep the established logical WAV identity and store its
     // portable Opus sibling, avoiding gigabytes of PCM in the worker's 2 GiB heap.
     const bool compressed = disc.context && disc.context->external;
-    for (const auto& alias : names) {
-        w.notify("Preparing SSX 3 music: " + alias);
+    const auto assignment = assign_map_music(disc, course, names.size(), cancelled);
+    auto candidates = assignment.indices;
+    for (std::size_t i = 1; i <= names.size(); ++i) {
+        const auto index = (assignment.indices.back() + i) % names.size();
+        if (std::find(assignment.indices.begin(), assignment.indices.end(), index) == assignment.indices.end())
+            candidates.push_back(index);
+    }
+    std::vector<std::size_t> imported_indices;
+    for (const auto song_index : candidates) {
+        if (playlist.size() >= assignment.indices.size())
+            break;
+        const auto& alias = names[song_index];
+        w.notify(std::string("Preparing ") + (tour ? "On Tour" : "SSX 3") + " music: " + alias);
         const auto section = section_for(songs, alias);
-        const auto archive_id = number(songs, section, "SONGBIG", 1);
+        const auto archive_id = tour ? 1 : number(songs, section, "SONGBIG", 1);
         if (archive_id != 1 && archive_id != 2)
             throw std::runtime_error("Invalid SSX 3 music archive selector");
         const auto bank = unsigned(archive_id);
-        const auto archive = bank == 1 ? "DATA/AUDIO/MUSIC.BIG" : "DATA/AUDIO/MUSIC2.BIG";
+        const auto archive = tour        ? "DATA/AUDIO/FEMUSIC.BIG"
+                             : bank == 1 ? "DATA/AUDIO/MUSIC.BIG"
+                                         : "DATA/AUDIO/MUSIC2.BIG";
         if (!archives.contains(bank))
             archives[bank] = std::make_unique<Library>(disc, archive);
         const auto& library = *archives.at(bank);
-        const auto path = filename(one(songs, section, "PATHDATA")), stream = filename(one(songs, section, "MUSDATA"));
-        const auto id = std::filesystem::path(path).stem().string();
+        const auto path = tour ? tour_path : filename(one(songs, section, "PATHDATA")),
+                   stream = tour ? tour_stream : filename(one(songs, section, "MUSDATA"));
+        const auto jukebox = tour ? number(songs, section, "JUKEBOXSONGINDEX", 0) : 0;
+        if (tour && (jukebox < 1 || jukebox > 63 || std::floor(jukebox) != jukebox))
+            throw std::runtime_error("Invalid On Tour jukebox song index");
+        const auto id =
+            tour ? "song_" + std::to_string(unsigned(jukebox)) : std::filesystem::path(path).stem().string();
         if (!valid_map_name(id))
             throw std::runtime_error("Unsafe SSX 3 music identifier");
         if (!converted.insert(upper(id)).second)
             continue;
-        const auto graph_bytes = library.read(path), audio = library.read(stream);
-        const auto graph = ssx3_main_music(Bytes{graph_bytes}, cancelled);
+        const auto own_graph = tour ? std::vector<std::uint8_t>{} : library.read(path);
+        auto own_audio = tour ? std::vector<std::uint8_t>{} : library.read(stream);
+        const auto& graph_bytes = tour ? tour_graph : own_graph;
+        auto graph = tour ? MusicGraph{} : ssx3_main_music(Bytes{graph_bytes}, cancelled);
+        std::span<const std::uint8_t> encoded = own_audio;
+        std::size_t audio_base = 0;
+        if (tour) {
+            auto song =
+                ontour_jukebox_music(Bytes{graph_bytes}, tour_audio_id, tour_audio_size, unsigned(jukebox), cancelled);
+            graph = std::move(song.graph);
+            audio_base = graph.samples[0].offset;
+            own_audio = library.slice(stream, audio_base, song.source_end - audio_base);
+            encoded = own_audio;
+            if (Bytes{encoded}.text(0, 4) != "SCHl")
+                throw std::runtime_error("Missing On Tour jukebox stream header");
+        }
         const auto title = one(songs, section, "TITLE", alias), artist = one(songs, section, "ARTIST");
         const auto bpm = number(songs, section, "BPM", 120), volume = number(songs, section, "PATHLEVEL", 100) / 100;
         if (bpm <= 0 || bpm > 1000 || volume < 0 || volume > 1)
@@ -486,9 +563,9 @@ unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, cons
         for (const auto& [key, value] : songs.at(section))
             settings.push_back({key, value});
         const auto key = music_key(
-            "ssx3-main-music-v2",
+            tour ? "ontour-jukebox-music-v1" : "ssx3-main-music-v2",
             Json{{"Song", section}, {"Settings", settings}, {"Encoding", compressed ? "opus-128-v1" : "pcm16"}}.dump(),
-            {graph_bytes, audio});
+            {graph_bytes, encoded});
         const auto folder = w.root / "Music" / id;
         const auto before = w.bytes;
         try {
@@ -501,7 +578,7 @@ unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, cons
                     Json sample_info = Json::array();
                     for (const auto& sample : graph.samples) {
                         w.check();
-                        const auto decoded = decode_audio_stream(audio, sample.offset);
+                        const auto decoded = decode_audio_stream(encoded, sample.offset - audio_base);
                         w.wave(folder / sample.wav, decoded.clip);
                         if (compressed) {
                             const auto wav = folder / sample.wav;
@@ -552,6 +629,7 @@ unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, cons
                     w.reserve(file.file_size());
         }
         playlist.push_back(id);
+        imported_indices.push_back(song_index);
         sources.push_back({{"Song", id},
                            {"Title", title},
                            {"Artist", artist},
@@ -559,20 +637,29 @@ unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, cons
                            {"SourceGraph", path},
                            {"SourceStream", stream},
                            {"SourceLoopBank", one(songs, section, "LOOPDATA")},
+                           {"SourceJukeboxSection", tour ? Json(unsigned(jukebox)) : Json(nullptr)},
                            {"MainTrackSamples", graph.samples.size()},
                            {"Fidelity", "Approximate"}});
     }
     json_file(w.root / "Music/playlist.json", playlist);
+    auto assignment_metadata = assignment.metadata;
+    assignment_metadata["ImportedSongIndices"] = imported_indices;
     json_file(
         w.root / "Music/MusicImport.json",
         {{"Schema", "openslope-music-import/v1"},
-         {"Game", course.starts_with("SSX3B_") ? "ssx-3-beta" : "ssx-3"},
+         {"Game", tour                           ? "ssx-on-tour"
+                  : course.starts_with("SSX3B_") ? "ssx-3-beta"
+                                                 : "ssx-3"},
          {"Songs", sources},
          {"DeferredSongs", deferred_songs},
+         {"Assignment", assignment_metadata},
          {"Encoding", compressed ? "opus-128-v1" : "pcm16"},
-         {"Policy", "Default SSX Mix; reachable main-track intensity branches; zero-count loop exits and song restart"},
+         {"Policy",
+          tour ? "Collective playlist; complete jukebox songs with common song repeat"
+               : "Default SSX Mix; reachable main-track intensity branches; zero-count loop exits and song restart"},
          {"OriginalMusicScheduling", "Deferred"},
-         {"Deferred", {"scripted-events", "async-loop-layer", "playlist-scheduling"}},
+         {"Deferred", tour ? Json{"gameplay-segmentation", "scripted-events", "async-loop-layer", "playlist-scheduling"}
+                           : Json{"scripted-events", "async-loop-layer", "playlist-scheduling"}},
          {"OutputBytes", w.bytes}});
     if (std::filesystem::is_regular_file(w.root / "Import.json")) {
         auto report = json_read(w.root / "Import.json");

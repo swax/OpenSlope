@@ -100,14 +100,16 @@ def main():
             game = 'beta' if beta else 'retail'
             source = root / f'{game}.iso'
             source.write_bytes(fixture(beta))
-            course = 'SSX3B_ARA1' if beta else 'SSX3_A'
+            course = 'SSX3B_PEAK1' if beta else 'SSX3_PEAK1'
             maps = root / game
             run(importer, 'extract', source, course, maps)
             music = maps / course / 'Audio/Music'
-            assert json.loads((music / 'playlist.json').read_text()) == ['other', 'FIRST']
+            assert json.loads((music / 'playlist.json').read_text()) == ['FIRST']
             report = json.loads((music / 'MusicImport.json').read_text())
             assert report['Game'] == ('ssx-3-beta' if beta else 'ssx-3')
             assert report['OriginalMusicScheduling'] == 'Deferred'
+            assert report['Assignment']['MapIndex'] == 1 and report['Assignment']['MapCount'] == 2
+            assert report['Assignment']['CatalogueSongs'] == 2 and report['Assignment']['SongIndices'] == [1]
             graph = json.loads((music / 'FIRST/graph.json').read_text())
             assert graph['Song'] == 'First song - Fixture artist' and graph['Artist'] == 'Fixture artist'
             assert graph['Bpm'] == 92 and graph['Volume'] == .8 and graph['Fidelity'] == 'Approximate'
@@ -121,14 +123,21 @@ def main():
                     assert sample['Seconds'] == decoded.getnframes() / decoded.getframerate()
                     assert struct.unpack('<4h', decoded.readframes(2)) == (1, 2, -8, 7)
             assert (music / 'FIRST/source.mpf').read_bytes()[:6] == b'xDFP\x04\x00'
-            assert json.loads((maps / course / 'Import.json').read_text())['MusicSongs'] == 2
+            assert json.loads((maps / course / 'Import.json').read_text())['MusicSongs'] == 1
+            other_course = 'SSX3B_ARA1' if beta else 'SSX3_A'
+            run(importer, 'extract', source, other_course, maps)
+            other_music = maps / other_course / 'Audio/Music'
+            assert json.loads((other_music / 'playlist.json').read_text()) == ['other']
+            assert not (other_music / 'FIRST').exists(), 'Unassigned tracks must not be converted or copied'
             if len(sys.argv) > 2:
-                run(Path(sys.argv[2]).resolve(), source, root / f'{game}-sessions', '2')
+                run(Path(sys.argv[2]).resolve(), source, root / f'{game}-sessions', '1')
         source = root / 'unsupported.iso'
         source.write_bytes(fixture(unsupported=True))
         run(importer, 'extract', source, 'SSX3_A', root / 'unsupported')
         music = root / 'unsupported/SSX3_A/Audio/Music'
         assert json.loads((music / 'playlist.json').read_text()) == ['FIRST']
+        assigned = json.loads((music / 'MusicImport.json').read_text())['Assignment']
+        assert assigned['SongIndices'] == [0] and assigned['ImportedSongIndices'] == [1]
         deferred = json.loads((music / 'MusicImport.json').read_text())['DeferredSongs']
         assert deferred[0]['Song'] == 'other' and deferred[0]['Reason'] == 'unsupported-audio-codec'
         assert not (music / 'other').exists()
@@ -146,8 +155,8 @@ def main():
             source = root / f'invalid-{i}.iso'
             source.write_bytes(fixture(**kwargs))
             maps = root / f'invalid-{i}'
-            run(importer, 'extract', source, 'SSX3_A', maps, succeeds=False)
-            assert not (maps / 'SSX3_A').exists(), 'A rejected song must not publish a partial map'
+            run(importer, 'extract', source, 'SSX3_PEAK1', maps, succeeds=False)
+            assert not (maps / 'SSX3_PEAK1').exists(), 'A rejected song must not publish a partial map'
     print('SSX 3/preview music playlist, split banks, playable paths, PCM, cache and rejection checks PASS')
 
 

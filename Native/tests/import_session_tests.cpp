@@ -144,15 +144,26 @@ int main(int argc, char** argv) {
         const auto plan = nlohmann::json::parse(session.music_plan(catalogue[0].name));
         check(plan.size() == count && session.stats().music_misses == 0, "Planning must not decode music");
         session.extract(catalogue[0].name, root / "cold");
-        const auto alternate = count && catalogue.size() > 1 ? catalogue[1].name : catalogue[0].name;
+        auto alternate = count && catalogue.size() > 1 ? catalogue[1].name : catalogue[0].name;
+        const auto keys = [](const auto& entries) {
+            std::vector<std::string> result;
+            for (const auto& entry : entries)
+                result.push_back(entry.at("Key").template get<std::string>());
+            std::sort(result.begin(), result.end());
+            return result;
+        };
+        if (keys(nlohmann::json::parse(session.music_plan(alternate))) != keys(plan))
+            alternate = catalogue[0].name;
         session.extract(alternate, root / "warm");
         const auto stats = session.stats();
         check(stats.scans == 1 && stats.extractions == 2 && stats.read_hits > 0,
               "Disc reads and metadata must survive between maps");
         check(stats.music_misses == count && stats.music_hits == count,
               "Music must be converted once per source track");
-        check(files(root / "cold/Audio/Music") == files(root / "warm/Audio/Music"),
-              "Shared music must remain byte-identical between maps");
+        auto cold = files(root / "cold/Audio/Music"), warm = files(root / "warm/Audio/Music");
+        cold.erase("MusicImport.json");
+        warm.erase("MusicImport.json");
+        check(cold == warm, "Shared music must remain byte-identical between maps");
         openslope::ImportSession reopened(openslope::open_disc(image), root / "cache");
         reopened.extract(catalogue[0].name, root / "reopened");
         check(reopened.stats().music_hits == count && reopened.stats().music_misses == 0,

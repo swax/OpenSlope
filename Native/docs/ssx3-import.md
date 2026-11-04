@@ -17,11 +17,13 @@ Preview local-light records remain in `Source/`; terrain lightmaps and baked
 prop lighting are converted, but the preview's distinct local-light layout is
 not yet interpreted.
 
-Both games import the default **SSX Mix** playlist into the common music graph
+Both games import each map's indexed share of the default **SSX Mix** into the common music graph
 format, with source song titles, artists, tempo, volume and intensity branches.
 The July preview supplies 25 songs. Retail supplies 35 entries across two music
 archives; unsupported codecs are listed in `Audio/Music/MusicImport.json` and
 skipped without preventing map import (including retail “Screw Up”, codec 4).
+See [music assignment](music-assignment.md) for the catalogue/map ratio,
+deterministic selection and supported-song fallback.
 Native folders retain PCM WAVs; browser imports store portable Opus siblings
 under the existing logical WAV identities and reuse the shared song cache.
 Load the map again from its ISO once to add music to an older browser conversion.

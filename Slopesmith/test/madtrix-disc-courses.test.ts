@@ -33,7 +33,7 @@ for (const [stem, label] of Object.entries(catalogue))
     assert.equal(discCourseName(course), `${label} (Mad Trix)`);
     assert.equal(isoGameForCourse(course), 'madtrix');
     assert.equal(supportsCollisionSoundUpdate(course), false);
-    assert.equal(isoCourseCacheVersion(course), 8, 'Reload earlier caches missing source music');
+    assert.equal(isoCourseCacheVersion(course), 9, 'Reload earlier caches with game-wide music');
   }
 for (const course of [
   'MADTRIX_UNKNOWN',

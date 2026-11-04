@@ -24,7 +24,7 @@ for (const [family, variants] of titles.entries())
     assert.equal(mapDisplayName({ name: 'RENAMED', course, game: '1080-avalanche' }), title);
     assert.equal(isoGameForCourse(course), 'avalanche');
     assert.equal(supportsCollisionSoundUpdate(course), false);
-    assert.equal(isoCourseCacheVersion(course), 3, 'Old Avalanche caches need source colour lighting');
+    assert.equal(isoCourseCacheVersion(course), 4, 'Reload earlier caches with game-wide music');
   }
 assert(isDiscCourse('AVALANCHE_CRS00_00'));
 for (const unknown of [

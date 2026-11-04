@@ -1,4 +1,5 @@
 #include "openslope/audio_data.hpp"
+#include "audio_ealayer3.hpp"
 #include "import/shared.hpp"
 #include <fstream>
 #include <map>
@@ -180,9 +181,17 @@ AudioStream decode_audio_stream(std::span<const std::uint8_t> source, std::size_
     b.range(offset, header_size);
     std::size_t cursor = offset + 8;
     const auto fields = patches(Bytes{source.first(offset + header_size)}, cursor);
+    const auto codec = fields.contains(0xa0) ? fields.at(0xa0) : 5;
+    if (codec == 23) {
+        const auto field = [&](unsigned key, unsigned fallback) {
+            const auto found = fields.find(key);
+            return found == fields.end() ? fallback : found->second;
+        };
+        return decode_ealayer3_stream(source, offset + header_size, field(0x82, 1), field(0x84, 22050), field(0x85, 0),
+                                      field(6, 90));
+    }
     AudioStream result;
     result.clip = format(fields);
-    const auto codec = fields.contains(0xa0) ? fields.at(0xa0) : 5;
     std::array<AdpcmState, 2> histories;
     std::size_t p = offset + header_size, blocks = 0;
     std::optional<unsigned> expected;
