@@ -27,7 +27,8 @@ import { lightPublicReference } from './lighting';
 import { installLocalSky, installServerSky } from './sky';
 import { cachedIsoCourses } from './iso-cache';
 import { publicMountainDocument, publicPropPayload } from './course-assets';
-import type { V3 } from '../../core/doc/types';
+import { DEFAULT_SUN, type V3 } from '../../core/doc/types';
+import { applyViewportSun } from '../viewport/sun-lighting';
 import { readLocalProject } from '../state/local-projects';
 import { bundleAssets, bundleProps } from './bundle-assets';
 import { installLocalAssetApi } from './local-asset-api';
@@ -171,6 +172,7 @@ export async function preparePublicPlayer(
   const target = course.kind === 'reference' ? 'reference' : 'authored';
   let localSky: Awaited<ReturnType<typeof installLocalSky>>;
   if (course.kind === 'reference') {
+    applyViewportSun(viewport, DEFAULT_SUN);
     const level = course.id;
     if (course.retailData) {
       const patches = await levels.readLevelPatches(local.source, level);
@@ -241,6 +243,7 @@ export async function preparePublicPlayer(
         .map(file => sharedAudioBuffer(customSoundUrl(file))),
     );
     store.mdoc = document;
+    applyViewportSun(viewport, { ...DEFAULT_SUN, ...document.sun });
     await viewport.setMountainProgressive(document, null, [], noop, yieldFrame);
     viewport.syncLiveModels(authoredModelLevelProps(document));
     const donors = new Set(

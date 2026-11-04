@@ -782,6 +782,11 @@ while props hang under `worldRoot`, which flips Z to show the game's handedness,
 editor lights props from the opposite side to the ISO. Terrain never needed this — its lighting is
 per-vertex colour computed in JS against data-space normals, not a real light in the scene graph.
 
+The `/play` player uses the same lighting setup as the editor. Reference maps enable their native prop
+records and baked vertex colours on load. Authored maps restore their saved sun, including the on/off
+setting and bake-only overrides; props keep the raw sun/ambient pair while terrain uses the bake values.
+This rendering setup also applies to existing imported maps without reimporting their assets.
+
 Retail reference props do **not** borrow that authored per-ground value. Their `Instances.json` already owns
 the answer, so the reference payload preserves `AmbentLightColour` plus all three `LightColour` /
 `LightVector` pairs. It also preserves the extracted OBJ's `vn` stream through object rest transforms instead

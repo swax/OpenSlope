@@ -10,6 +10,7 @@ import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { defaultMountain } from '../src/core/doc/mountain';
+import { DEFAULT_SUN } from '../src/core/doc/types';
 import { MAP_ORIGIN_SCHEMA, retailExtractOrigin } from '../src/core/export/origin';
 import { addUser } from '../src/server/accounts/users';
 import { createEmptyEffectsDocument } from '../src/core/effects/authoring';
@@ -145,6 +146,7 @@ try {
   adminCookie = bootstrap.headers.get('set-cookie')!.split(';')[0];
   const mountain = defaultMountain();
   mountain.name = 'PUBLIC_RUN';
+  mountain.sun = { ...DEFAULT_SUN, on: true, sun: 2, bakeExposure: 0.25, bakeAmbient: 0.1, ao: 0, shadow: 0 };
   const created = await checked('/api/projects', 'POST', { document: mountain });
   writeFileSync(join(created.project.folder, 'assets', 'skies', 'fixture-sky.png'), tile);
   const privateMap = await checked('/api/projects', 'POST', {
@@ -743,6 +745,19 @@ try {
     'ISO remains available in the player',
   );
   assert(await linked.locator('.sp-navgizmo').isHidden(), 'the public player hides the editor navigation gizmo');
+  assert.deepEqual(
+    await linked.evaluate(() => {
+      const viewport = (window as any).startTestViewport;
+      return {
+        native: viewport.assets.propTex.ps2Normals.value,
+        sun: viewport.propKey.visible,
+        studio: viewport.studioSun.visible,
+        terrain: viewport.terrainLayer.terrainLit,
+      };
+    }),
+    { native: 1, sun: true, studio: false, terrain: true },
+    'authored public play enables prop lighting and its matching terrain sun',
+  );
   assert.equal(
     (await linked.locator('.public-header').boundingBox())?.height,
     40,
@@ -1763,6 +1778,11 @@ try {
   });
   await guest.locator('.library-catalogue').getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  assert.equal(
+    await guest.evaluate(() => (window as any).publicTestViewport.assets.propTex.ps2Normals.value),
+    1,
+    'ISO reference play enables baked prop lighting without an editor toggle',
+  );
   assert.deepEqual(
     await guest.evaluate(() => {
       const group = (window as any).publicTestViewport.scene.getObjectByName('Reference ambient particles');

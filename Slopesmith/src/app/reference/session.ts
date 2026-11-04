@@ -43,6 +43,7 @@ import {
 import { bakeSunShadow, bakeAO } from '../../core/lighting/occlusion';
 import { DEFAULT_GODRAY_COURSE, normalizeGodRayCourse, type GodRayCourse } from '../../core/lighting/god-rays';
 import type { Viewport } from '../viewport/viewport';
+import { applyViewportSun, terrainSunOptions } from '../viewport/sun-lighting';
 import type { Store } from '../state/store';
 import { referenceStorageKey, loadStored, type StoredRef } from '../state/storage';
 import { clearGui, note, tip } from '../ui/components/gui';
@@ -1849,11 +1850,6 @@ export function createReference(deps: ReferenceDeps) {
   // typed SunLight so the optional bake-only overrides (bakeExposure / bakeAmbient) can be set or cleared
   const sunLight: SunLight = { ...DEFAULT_SUN, on: false }; // off until requested; imported records may replace this authored starting point
 
-  const hex2rgb = (h: string): [number, number, number] => {
-    const n = parseInt(h.replace('#', ''), 16);
-    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-  };
-
   // view-only (not doc data): preview the authored terrain as it bakes in-game — the light through the real GS
   // lightmap encode -> decode (quantization/clamp) with the full-res tile riding on top (texture × baked-light).
   const terrainView = { baked: false };
@@ -1882,21 +1878,6 @@ export function createReference(deps: ReferenceDeps) {
     bakeAmbCtl?.updateDisplay();
   }
 
-  function terrainSunOptions(sun: SunLight) {
-    const e = (sun.el * Math.PI) / 180,
-      a = (sun.az * Math.PI) / 180;
-    const dir: [number, number, number] = [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
-    return {
-      dir,
-      ambient: effectiveBakeAmbient(sun),
-      sun: effectiveBakeSun(sun),
-      shadow: sun.shadow,
-      ao: sun.ao,
-      sunTint: hex2rgb(sun.sunTint),
-      skyTint: hex2rgb(sun.skyTint),
-    };
-  }
-
   async function prepareSunFromDoc() {
     const sun = store.mdoc.sun ?? sunLight;
     if (sun.on) await viewport.prepareTerrainLighting(terrainSunOptions(sun), store.propLightsVisible);
@@ -1911,30 +1892,7 @@ export function createReference(deps: ReferenceDeps) {
       if (edited) persistDocumentEdit();
       else persistDoc(); // restore/repaint still keeps the immediate local recovery copy current
     }
-    viewport.setPlayLightingVisibility(sunLight.on);
-    if (!sunLight.on) {
-      viewport.setTerrainLight(null);
-      viewport.setPropLight(null);
-      applyGodRays();
-      return;
-    }
-    const terrainOptions = terrainSunOptions(sunLight),
-      dir = terrainOptions.dir;
-    // Props preview from the RAW record pair because that is what their per-instance lighting ships with
-    // (docs/032 · lighting). Terrain normalises independently through bakeExposure/lightmap saturation;
-    // passing its exposed pair here would make an HDR reference-seeded preview disagree with the packed PBD.
-    viewport.setPropLight({
-      dir,
-      ambient: sunLight.ambient,
-      sun: sunLight.sun,
-      sunTint: hex2rgb(sunLight.sunTint),
-      skyTint: hex2rgb(sunLight.skyTint),
-    });
-    // WYSIWYG: preview the terrain at the BAKED sun + ambient (the exact effective values bakeLightmaps uses,
-    // incl. the safe clamp), so a record-seeded HDR sun (e.g. 2.47) reads at its baked ~0.67 and the record's
-    // hot ambient reads at the lightmap-effective ~0.3 — not blown out. Export (buildLightsJson) keeps the raw
-    // sun.sun / ambient; with no records both overrides are absent, so this matches the authored values.
-    viewport.setTerrainLight(terrainOptions);
+    applyViewportSun(viewport, sunLight);
     applyGodRays();
   }
 
