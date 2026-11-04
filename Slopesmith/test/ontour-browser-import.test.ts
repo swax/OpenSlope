@@ -12,6 +12,7 @@ import type { MapDataSource } from '../src/shared/map-data';
 import { readReferenceEffects } from '../src/shared/map-effects';
 import { decodeReferenceEffects, referenceUvScroll } from '../src/core/reference/effects';
 import { editorUvScrollDelta } from '../src/core/effects/world-effects';
+import { parseAssetVersion } from '../src/core/reference/asset-version';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const work = mkdtempSync(join(tmpdir(), 'slopesmith-ontour-'));
@@ -113,6 +114,8 @@ try {
     const instances = await read('Instances.json');
     const effects = await read('Effects.json');
     const materials = await read('Materials.json');
+    const particleModels = await read('ParticleModels.json');
+    const particleInstances = await read('ParticleInstances.json');
     const soundBindings = await read('SoundBindings.json');
     const lights = (await read('Lights.json')).Lights;
     const spot = lights.find((light: { UnknownFloat2?: number }) => light.UnknownFloat2 === 0.75);
@@ -131,6 +134,9 @@ try {
     const adapterUrl = '/local-data.js';
     const { localMapData } = await import(adapterUrl);
     const local = await localMapData(['SSXOT_ER1_NIGHT']);
+    const fogSprite = await (
+      await fetch(local.resolveAsset('/api/particle-texture?name=fog0.png&level=SSXOT_ER1_NIGHT'))
+    ).arrayBuffer();
     const bankInfo = await (await fetch(local.resolveAsset('/api/board-audio?level=SSXOT_ER1_NIGHT'))).json();
     const wave = await (
       await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=4&loop=1&level=SSXOT_ER1_NIGHT'))
@@ -183,6 +189,9 @@ try {
       frames: materials.Materials[0].TextureFlipbook,
       effectDocument: effects,
       instanceDocument: instances,
+      particleModels,
+      particleInstances,
+      fogSprite: Array.from(new Uint8Array(fogSprite)),
       soundsDeferred: soundBindings.ResolverState,
       soundRows: soundBindings.Bindings.length,
       riding: riding.Fidelity,
@@ -244,13 +253,15 @@ try {
     async readJsonOr<T>(path: string, fallback: T): Promise<T> {
       if (path.endsWith('/Effects.json')) return result.effectDocument as T;
       if (path.endsWith('/Instances.json')) return result.instanceDocument as T;
+      if (path.endsWith('/ParticleModels.json')) return result.particleModels as T;
+      if (path.endsWith('/ParticleInstances.json')) return result.particleInstances as T;
       return fallback;
     },
     async readTextOrNull() {
       return null;
     },
-    async readBytesOrNull() {
-      return null;
+    async readBytesOrNull(path: string) {
+      return path.endsWith('/Textures/Particles/fog0.png') ? new Uint8Array(result.fogSprite) : null;
     },
     async listDir() {
       return [];
@@ -262,7 +273,15 @@ try {
       return true;
     },
   };
-  const playback = decodeReferenceEffects(await readReferenceEffects(io, 'SSXOT_ER1_NIGHT'));
+  assert.deepEqual(result.fogSprite.slice(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]);
+  const reference = await readReferenceEffects(io, 'SSXOT_ER1_NIGHT');
+  const volumes = reference.particleVolumes;
+  assert(volumes);
+  assert.equal(volumes.length, 1);
+  const fogAsset = parseAssetVersion(volumes[0].texture!);
+  assert.equal(fogAsset?.game, 'ssx-on-tour');
+  assert.equal(fogAsset?.key, 'particles/fog0.png');
+  const playback = decodeReferenceEffects(reference);
   const scroll = referenceUvScroll(playback, 1);
   assert(scroll, 'Imported instance -> persistent slot -> normalized graph must reach material playback');
   const [u, v] = editorUvScrollDelta(scroll, 30);

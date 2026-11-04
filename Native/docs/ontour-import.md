@@ -122,6 +122,13 @@ this fix needs no ISO reimport. Ordinary fences and authored collision profiles
 remain unchanged. The v4 playtest repair can persist it while retaining earlier
 backups. See [the fidelity audit](streamed-world-fidelity.md).
 
+Shared fog sprites are imported from the game's packed particle bank into
+`Textures/Particles`. The compact `ShpS` directory and indexed image headers
+have their own bounded decoder, including mip extents, PS2 pixel/palette
+ordering and console alpha. Existing fog volumes resolve the exported sprite
+through the common particle texture reference. Reimport older cached maps to
+add the asset. [Trailmap: 210-tour-particles]
+
 See [the fidelity audit](streamed-world-fidelity.md) for the remaining geometry,
 audio, animation and effect gaps and their implementation priorities.
 

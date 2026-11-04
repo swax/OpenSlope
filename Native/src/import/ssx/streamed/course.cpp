@@ -50,16 +50,24 @@ void raw(const std::filesystem::path& path, std::span<const std::uint8_t> bytes)
     require(bool(file), "cannot save source record");
 }
 
-void shared_particle_sprites(const DiscInput& disc, const std::filesystem::path& output, const ImportCancel& cancel) {
+void shared_particle_sprites(const DiscInput& disc, const std::filesystem::path& output, const ImportCancel& cancel,
+                             bool tour) {
     const auto data = disc_directory(disc, "DATA");
     if (std::none_of(data.begin(), data.end(),
                      [](const auto& e) { return e.directory && upper(e.name) == "TEXTURES"; }))
         return;
     const auto textures = disc_directory(disc, "DATA/TEXTURES");
+    const auto bank = tour ? "TEX.BIG" : "PARTICLE.SSH";
     if (std::none_of(textures.begin(), textures.end(),
-                     [](const auto& e) { return !e.directory && upper(e.name) == "PARTICLE.SSH"; }))
+                     [&](const auto& e) { return !e.directory && upper(e.name) == bank; }))
         return;
-    const auto source = disc_file(disc, "DATA/TEXTURES/PARTICLE.SSH");
+    if (tour) {
+        const auto entries = disc_archive_directory(disc, "DATA/TEXTURES/TEX.BIG");
+        if (std::none_of(entries.begin(), entries.end(), [](const auto& e) { return upper(e.name) == "PARTICLE.SSH"; }))
+            return;
+    }
+    const auto source = tour ? disc_archive_file(disc, "DATA/TEXTURES/TEX.BIG", "particle.ssh")
+                             : disc_file(disc, "DATA/TEXTURES/PARTICLE.SSH");
     const auto sprites = decode_ssh(source, false, cancel, true, false, "fog0");
     std::filesystem::create_directories(output / "Textures/Particles");
     for (const auto& sprite : sprites) {
@@ -1512,8 +1520,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     notify("Decoding local sound banks and preserving source records");
     std::filesystem::create_directory(output / "Source");
     std::filesystem::create_directory(output / "Audio");
-    if (!tour)
-        shared_particle_sprites(disc, output, cancel);
+    shared_particle_sprites(disc, output, cancel, tour);
     raw(output / "Source/bam.sdb", database);
     raw(output / "Source/bam.phm", identifiers);
     raw(output / "Source/bam.psm", strings);

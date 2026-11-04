@@ -158,7 +158,39 @@ def material_animation(rows, conditional=False):
     return result + [(9, 65536, texture(), 3), (21, 0, struct.pack('<7I', 0xffffffff, 0, *([0xffffffff] * 5)), 3)]
 
 
-def full_disc(fidelity=False, night_sky=False, music=None):
+def particle_bank():
+    # Authored compact ShpS image: hardware-order indices, one ignored mip,
+    # and a separate hardware-order CLUT. No game assets in the fixture.
+    image = bytearray(32)
+    palette = 32 + 64 + 16
+    struct.pack_into('<4I', image, 0, 0x10400102, palette, 32, palette)
+    struct.pack_into('<2I', image, 24, 16, 4)
+    image += bytes(range(64)) + bytes([253]) * 16
+    clut = bytearray(32)
+    struct.pack_into('<4I', clut, 0, 0x00400121, 1056, 32, 1024)
+    image += clut + b''.join(bytes([150 + i % 100, 200, 220, (i % 3) * 64]) for i in range(256))
+    entries = {'auxiliary': b'not a selected image', 'fog0': bytes(image)}
+    end = 16 + sum(9 + len(name) for name in entries) + 8
+    result = bytearray(b'ShpS' + bytes(4) + struct.pack('>2I', len(entries), end))
+    cursor = end
+    for name, payload in entries.items():
+        result += struct.pack('>2I', cursor, len(payload)) + name.encode() + b'\0'
+        cursor += len(payload)
+    result += bytes(8) + b''.join(entries.values())
+    struct.pack_into('<I', result, 4, len(result))
+    return bytes(result)
+
+
+def check_fog_sprite(path):
+    rgba = png_pixels(path)
+    assert len(rgba) == 16 * 4 * 4
+    for pixel, expected in [(0, [150, 200, 220, 0]), (1, [154, 200, 220, 128]),
+                            (12, [160, 200, 220, 128]), (16, [182, 200, 220, 255]),
+                            (32, [159, 200, 220, 0])]:
+        assert rgba[pixel * 4:pixel * 4 + 4] == bytes(expected), 'Pixel/CLUT order, straight RGB and console alpha'
+
+
+def full_disc(fidelity=False, night_sky=False, music=None, particles=None):
     def wrapper(payload):
         b = bytearray(80)
         b[:4] = b'ABKC'
@@ -202,6 +234,7 @@ def full_disc(fidelity=False, night_sky=False, music=None):
             ('mdl_er4_trg_fw_finish_final_9999', 'mdl_er1_ordinary') if fidelity else None)),
         'DATA/WORLDS/SKYBOX.BIG': archive(sky_files),
         'DATA/AUDIO/AUDIO.BIG': archive(sounds),
+        'DATA/TEXTURES/TEX.BIG': archive({'particle.ssh': refpack(particle_bank() if particles is None else particles)}),
         **(music or {}),
     }))
 
@@ -339,6 +372,25 @@ def main():
         audio_source = root / 'sky-and-audio.iso'; audio_source.write_bytes(full_disc())
         run(executable, 'extract', audio_source, 'SSXOT_ER1_NIGHT', root / 'full')
         full = root / 'full/SSXOT_ER1_NIGHT'
+        check_fog_sprite(full / 'Textures/Particles/fog0.png')
+        assert (full / 'Source/particle.ssh').read_bytes() == particle_bank()
+        run(executable, 'extract', audio_source, 'SSXOT_ER1_DAY', root / 'full')
+        check_fog_sprite(root / 'full/SSXOT_ER1_DAY/Textures/Particles/fog0.png')
+        for invalid in ['directory', 'pixels', 'palette']:
+            damaged = bytearray(particle_bank())
+            entry = damaged.index(b'fog0\0') - 8
+            at = struct.unpack_from('>I', damaged, entry)[0]
+            if invalid == 'directory':
+                struct.pack_into('>I', damaged, entry + 4, len(damaged))
+            elif invalid == 'pixels':
+                struct.pack_into('<I', damaged, at + 4, 32)
+            else:
+                damaged[at + 112] = 0
+            broken_source = root / f'fog-{invalid}.iso'
+            broken_source.write_bytes(full_disc(particles=bytes(damaged)))
+            destination = root / f'fog-{invalid}'
+            run(executable, 'extract', broken_source, 'SSXOT_ER1_DAY', destination, succeeds=False)
+            assert not list(destination.iterdir()), 'Invalid particle bank must not leave a partial map'
         assert (full / 'Skybox/Models.json').exists() and (full / 'Skybox/Textures/0000_o.png').exists()
         assert len(json.loads((full / 'Skybox/Models.json').read_text())['Models']) == 1, 'Day fallback retains day-mask sky records'
         night_source = root / 'night-sky.iso'; night_source.write_bytes(full_disc(night_sky=True))

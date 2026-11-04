@@ -20,7 +20,8 @@ def fixtures():
         ('ssx', iso(big(ssx())), 0),
         ('ssx3', disc({'DATA/WORLDS/BAM.BIG': archive(ssx3())}), 0),
         ('ontour', disc({'DATA/WORLDS/BAM.BIG': archive(tour())}), 0),
-        ('avalanche', rvz(gcm(course_packages() | music_files()), packing=True), 2),
+        # Avalanche's first map receives one song from its two-song game-wide bank.
+        ('avalanche', rvz(gcm(course_packages() | music_files()), packing=True), 1),
         ('madtrix', mad_iso(package(madtrix()), music=music_bank()), 2),
     ]
 

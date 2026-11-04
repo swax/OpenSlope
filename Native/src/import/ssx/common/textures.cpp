@@ -37,6 +37,116 @@ void finish_texture(Image& image) {
     }
 }
 
+void finish_particle_texture(Image& decoded) {
+    // [Trailmap: 180-bank] The shared bank mixes full/half-bright art.
+    // This explicit bank profile infers half range from RGB bounds and
+    // keeps sprite alpha straight; course alpha inference is separate.
+    bool half = true;
+    for (std::size_t p = 0; p < decoded.rgba.size(); p += 4)
+        for (unsigned c = 0; c < 3; ++c)
+            if (decoded.rgba[p + c] > 128)
+                half = false;
+    if (half)
+        for (std::size_t p = 0; p < decoded.rgba.size(); p += 4)
+            for (unsigned c = 0; c < 3; ++c)
+                decoded.rgba[p + c] = std::uint8_t(std::clamp(int(decoded.rgba[p + c]) * 2 - 1, 0, 255));
+    bool associated = true, fractional = false;
+    for (std::size_t p = 0; p < decoded.rgba.size(); p += 4) {
+        const auto a = decoded.rgba[p + 3];
+        if (!a || a == 255)
+            continue;
+        fractional = true;
+        for (unsigned c = 0; c < 3; ++c)
+            if (decoded.rgba[p + c] > a)
+                associated = false;
+    }
+    if (associated && fractional)
+        for (std::size_t p = 0; p < decoded.rgba.size(); p += 4) {
+            const auto a = decoded.rgba[p + 3];
+            if (!a || a == 255)
+                continue;
+            for (unsigned c = 0; c < 3; ++c)
+                decoded.rgba[p + c] = std::uint8_t((unsigned(decoded.rgba[p + c]) * 255u + a / 2u) / a);
+        }
+}
+
+// [Trailmap: 210-tour-particles] Shared sprites have a named, mixed-endian
+// directory and compact image headers, unlike streamed world textures.
+std::vector<Image> decode_shps_particles(Bytes bank, const ImportCancel& cancelled, const std::string& only) {
+    const auto count = bank.be(8), directory_end = bank.be(12);
+    if (bank.le(4) != bank.data.size() || !count || count > 4096 || directory_end < 16)
+        throw std::runtime_error("Invalid ShpS particle bank");
+    bank.range(0, directory_end);
+    std::vector<Image> result;
+    std::set<std::string> names;
+    std::size_t cursor = 16, memory = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        check_cancel(cancelled);
+        if (cursor > directory_end || directory_end - cursor < 9)
+            throw std::runtime_error("Truncated ShpS directory");
+        const auto start = bank.be(cursor), size = bank.be(cursor + 4);
+        cursor += 8;
+        const auto begin = cursor;
+        while (cursor < directory_end && bank.data[cursor])
+            ++cursor;
+        if (cursor == directory_end || cursor - begin > 64)
+            throw std::runtime_error("Invalid ShpS sprite name");
+        const auto name = bank.text(begin, cursor++ - begin);
+        if (!valid_map_name(name) || !names.insert(name).second || start < directory_end || !size)
+            throw std::runtime_error("Invalid ShpS sprite entry");
+        bank.range(start, size);
+        if (!only.empty() && name != only)
+            continue;
+        Bytes image{bank.data.subspan(start, size)};
+        image.range(0, 32);
+        const auto format = image.le(0), width = image.le(24), height = image.le(28), mips = format >> 28;
+        if ((format & 0x0fffffffu) != 0x00400102 || !width || !height || width > 4096 || height > 4096 || mips > 12)
+            throw std::runtime_error("Unsupported ShpS particle image");
+        const auto pixels = std::size_t(width) * height;
+        std::size_t payload = pixels;
+        auto w = width, h = height;
+        for (unsigned mip = 0; mip < mips; ++mip) {
+            if (w == 1 && h == 1)
+                throw std::runtime_error("Invalid ShpS mip count");
+            w = std::max(1u, w / 2);
+            h = std::max(1u, h / 2);
+            payload += std::size_t(w) * h;
+        }
+        const std::size_t base = image.le(8), palette = image.le(4);
+        if (base < 32 || palette < base || payload > palette - base || memory + pixels * 4 > 128 * 1024 * 1024)
+            throw std::runtime_error("Invalid ShpS pixel extent");
+        image.range(base, payload);
+        image.range(palette, 32 + 256 * 4);
+        if (image.le(palette) != 0x00400121 || image.le(palette + 8) != 32)
+            throw std::runtime_error("Unsupported ShpS palette");
+        Image decoded{name, width, height, std::vector<std::uint8_t>(pixels * 4)};
+        memory += decoded.rgba.size();
+        for (unsigned y = 0; y < height; ++y) {
+            check_cancel(cancelled);
+            for (unsigned x = 0; x < width; ++x) {
+                std::size_t source = std::size_t(y) * width + x;
+                if (width >= 16 && height >= 4) {
+                    const auto swap = (((y + 2) >> 2) & 1) * 4;
+                    const auto row = (((y & ~3u) >> 1) + (y & 1)) & 7;
+                    source = (y & ~15u) * width + (x & ~15u) * 2 + row * width * 2 + ((x + swap) & 7) * 4 +
+                             ((y >> 1) & 1) + ((x >> 2) & 2);
+                }
+                if (source >= pixels)
+                    throw std::runtime_error("Invalid ShpS hardware-order pixels");
+                const auto index = image.le(base + source, 1);
+                const auto slot = (index & 0xe7) | ((index & 8) << 1) | ((index & 16) >> 1);
+                const auto colour = palette + 32 + slot * 4, dest = (std::size_t(y) * width + x) * 4;
+                for (unsigned c = 0; c < 4; ++c)
+                    decoded.rgba[dest + c] =
+                        std::uint8_t(c == 3 ? std::min(255u, image.le(colour + c, 1) * 2) : image.le(colour + c, 1));
+            }
+        }
+        finish_particle_texture(decoded);
+        result.push_back(std::move(decoded));
+    }
+    return result;
+}
+
 } // namespace
 
 // [Trailmap: 210-directory, 210-chunk, 210-types, 210-palette, 210-swizzle,
@@ -45,6 +155,8 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap,
                               bool particle, bool original, const std::string& only) {
     Bytes bank{data};
     bank.range(0, 16);
+    if (particle && !lightmap && !original && bank.text(0, 4) == "ShpS")
+        return decode_shps_particles(bank, cancelled, only);
     if (bank.text(0, 4) != "SHPS" || bank.le(4) != data.size())
         throw std::runtime_error("Unsupported or truncated PS2 SSH texture bank");
     const auto count = bank.le(8);
@@ -189,38 +301,9 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap,
                                 decoded.rgba.begin() + static_cast<std::ptrdiff_t>(p * 4));
                 }
             }
-        if (particle) {
-            // [Trailmap: 180-bank] The shared bank mixes full/half-bright art.
-            // This explicit bank profile infers half range from RGB bounds and
-            // keeps sprite alpha straight; course alpha inference is separate.
-            bool half = true;
-            for (std::size_t p = 0; p < decoded.rgba.size(); p += 4)
-                for (unsigned c = 0; c < 3; ++c)
-                    if (decoded.rgba[p + c] > 128)
-                        half = false;
-            if (half)
-                for (std::size_t p = 0; p < decoded.rgba.size(); p += 4)
-                    for (unsigned c = 0; c < 3; ++c)
-                        decoded.rgba[p + c] = std::uint8_t(std::clamp(int(decoded.rgba[p + c]) * 2 - 1, 0, 255));
-            bool associated = true, fractional = false;
-            for (std::size_t p = 0; p < decoded.rgba.size(); p += 4) {
-                const auto a = decoded.rgba[p + 3];
-                if (!a || a == 255)
-                    continue;
-                fractional = true;
-                for (unsigned c = 0; c < 3; ++c)
-                    if (decoded.rgba[p + c] > a)
-                        associated = false;
-            }
-            if (associated && fractional)
-                for (std::size_t p = 0; p < decoded.rgba.size(); p += 4) {
-                    const auto a = decoded.rgba[p + 3];
-                    if (!a || a == 255)
-                        continue;
-                    for (unsigned c = 0; c < 3; ++c)
-                        decoded.rgba[p + c] = std::uint8_t((unsigned(decoded.rgba[p + c]) * 255u + a / 2u) / a);
-                }
-        } else if (!lightmap)
+        if (particle)
+            finish_particle_texture(decoded);
+        else if (!lightmap)
             finish_texture(decoded);
         result.push_back(std::move(decoded));
     }
