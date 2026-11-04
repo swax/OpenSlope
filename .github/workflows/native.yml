@@ -22,5 +22,36 @@ jobs:
         with:
           node-version: 24.x
       - name: Distribution boundary checks
-        run: python Native/tests/package_release_test.py
+        run: |
+          python Native/tests/package_release_test.py
+          python Native/tests/desktop_package_test.py
       - run: npm run verify:native
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libdbus-1-dev libwayland-dev wayland-protocols libegl1-mesa-dev libxkbcommon-dev libasound2-dev libpulse-dev libvulkan1 mesa-vulkan-drivers xvfb xauth
+      - name: Build and check complete desktop player
+        shell: bash
+        run: |
+          set -euo pipefail
+          options=()
+          if [[ "$RUNNER_OS" == macOS ]]; then options+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DOPENSLOPE_BUILD_OPENXR=OFF); fi
+          cmake -S Native -B temp/native-desktop -DCMAKE_BUILD_TYPE=Release -DOPENSLOPE_BUILD_PLAYER=ON "${options[@]}"
+          cmake --build temp/native-desktop --parallel 4
+          ctest --test-dir temp/native-desktop --output-on-failure
+          bash Native/tools/smoke_desktop.sh temp/native-desktop

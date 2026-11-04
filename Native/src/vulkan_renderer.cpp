@@ -15,6 +15,10 @@
 #include <map>
 #include <stdexcept>
 #include <tuple>
+#ifdef OPENSLOPE_DESKTOP_SDL
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#endif
 
 namespace openslope {
 namespace {
@@ -47,10 +51,41 @@ VulkanContext::~VulkanContext() {
     }
     if (instance)
         vkDestroyInstance(instance, nullptr);
+#ifdef OPENSLOPE_DESKTOP_SDL
+    if (sdl_vulkan)
+        SDL_Vulkan_UnloadLibrary();
+    if (desktop_loader)
+        SDL_UnloadObject(static_cast<SDL_SharedObject*>(desktop_loader));
+#endif
 }
 
 void VulkanContext::create(bool window, bool request_ray_query) {
+#ifdef OPENSLOPE_DESKTOP_SDL
+    if (window) {
+        if (!SDL_Vulkan_LoadLibrary(nullptr))
+            throw std::runtime_error(SDL_GetError());
+        sdl_vulkan = true;
+        volkInitializeCustom(reinterpret_cast<PFN_vkGetInstanceProcAddr>(SDL_Vulkan_GetVkGetInstanceProcAddr()));
+    } else {
+#ifdef __APPLE__
+        const auto library =
+            (std::filesystem::u8path(SDL_GetBasePath()) / "../Frameworks/libMoltenVK.dylib").lexically_normal();
+        if (std::filesystem::exists(library)) {
+            desktop_loader = SDL_LoadObject(library.string().c_str());
+            if (!desktop_loader)
+                throw std::runtime_error(SDL_GetError());
+            const auto address =
+                SDL_LoadFunction(static_cast<SDL_SharedObject*>(desktop_loader), "vkGetInstanceProcAddr");
+            if (!address)
+                throw std::runtime_error(SDL_GetError());
+            volkInitializeCustom(reinterpret_cast<PFN_vkGetInstanceProcAddr>(address));
+        } else
+#endif
+            vk_check(volkInitialize(), "Load Vulkan driver");
+    }
+#else
     vk_check(volkInitialize(), "Load Vulkan driver");
+#endif
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "OpenSlope Native";
     std::uint32_t loader_version = VK_API_VERSION_1_1;
@@ -58,15 +93,31 @@ void VulkanContext::create(bool window, bool request_ray_query) {
         vk_check(vkEnumerateInstanceVersion(&loader_version), "Query Vulkan version");
     app.apiVersion = std::min(loader_version, VK_API_VERSION_1_2);
     std::vector<const char*> extensions;
-#ifdef _WIN32
-    if (window)
-        extensions = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
-#else
-    if (window)
-        throw std::runtime_error("Desktop window preview is currently Windows-only; use OpenXR or capture mode");
+#ifdef OPENSLOPE_DESKTOP_SDL
+    if (window) {
+        Uint32 count = 0;
+        const auto names = SDL_Vulkan_GetInstanceExtensions(&count);
+        if (!names)
+            throw std::runtime_error(SDL_GetError());
+        extensions.assign(names, names + count);
+    }
 #endif
+    std::uint32_t available_count = 0;
+    vk_check(vkEnumerateInstanceExtensionProperties(nullptr, &available_count, nullptr), "Count instance extensions");
+    std::vector<VkExtensionProperties> available_extensions(available_count);
+    vk_check(vkEnumerateInstanceExtensionProperties(nullptr, &available_count, available_extensions.data()),
+             "Read instance extensions");
+    const bool portability = std::any_of(available_extensions.begin(), available_extensions.end(), [](const auto& e) {
+        return std::strcmp(e.extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0;
+    });
+    if (portability && std::find_if(extensions.begin(), extensions.end(), [](const char* e) {
+                           return std::strcmp(e, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0;
+                       }) == extensions.end())
+        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
     VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     info.pApplicationInfo = &app;
+    if (portability)
+        info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     info.enabledExtensionCount = std::uint32_t(extensions.size());
     info.ppEnabledExtensionNames = extensions.data();
     vk_check(vkCreateInstance(&info, nullptr, &instance), "Create Vulkan instance");
@@ -85,6 +136,10 @@ void VulkanContext::create(bool window, bool request_ray_query) {
         vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, queues.data());
         for (std::uint32_t i = 0; i < families; ++i)
             if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+#ifdef OPENSLOPE_DESKTOP_SDL
+                if (window && !SDL_Vulkan_GetPresentationSupport(instance, candidate, i))
+                    continue;
+#endif
                 const int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2 : 1;
                 if (score > best) {
                     physical = candidate;
@@ -107,6 +162,15 @@ void VulkanContext::create(bool window, bool request_ray_query) {
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
     std::vector<const char*> device_extensions;
+    std::uint32_t extension_count = 0;
+    vk_check(vkEnumerateDeviceExtensionProperties(physical, nullptr, &extension_count, nullptr),
+             "Count device extensions");
+    std::vector<VkExtensionProperties> supported_extensions(extension_count);
+    vk_check(vkEnumerateDeviceExtensionProperties(physical, nullptr, &extension_count, supported_extensions.data()),
+             "Read device extensions");
+    for (const auto& extension : supported_extensions)
+        if (std::strcmp(extension.extensionName, "VK_KHR_portability_subset") == 0)
+            device_extensions.push_back("VK_KHR_portability_subset");
     if (window)
         device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     VkPhysicalDeviceProperties device_properties;

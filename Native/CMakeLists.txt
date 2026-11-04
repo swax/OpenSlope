@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
+if(CMAKE_HOST_APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum supported macOS version")
+endif()
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" OPENSLOPE_VERSION LIMIT_COUNT 1)
 project(OpenSlopeNative VERSION ${OPENSLOPE_VERSION} LANGUAGES C CXX)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION.txt)
@@ -40,6 +43,10 @@ set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
 set(OPUS_DRED OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(opus)
 set_target_properties(opus PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC AND CMAKE_MSVC_RUNTIME_LIBRARY)
+  # Opus otherwise overrides the portable release's static runtime selection.
+  set_property(TARGET opus PROPERTY MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+endif()
 
 # Embed the tracked contract, rather than maintaining another table by hand.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ../Contracts/ride-v1.json)

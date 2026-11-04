@@ -46,6 +46,8 @@ struct VulkanContext {
     std::uint32_t family{};
     float texture_anisotropy = 1;
     bool ray_query = false;
+    void* desktop_loader = nullptr;
+    bool sdl_vulkan = false;
     VulkanContext() = default;
     VulkanContext(const VulkanContext&) = delete;
     ~VulkanContext();

@@ -11,10 +11,11 @@
 #include "openslope/version.hpp"
 #include "openxr_app.hpp"
 #include "vulkan_renderer.hpp"
-#include <windows.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_vulkan.h>
 #include <atomic>
 #include <chrono>
-#include <commdlg.h>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -25,30 +26,65 @@
 namespace {
 using namespace openslope;
 
-std::filesystem::path executable_folder() {
-    std::vector<wchar_t> buffer(32768);
-    const auto length = GetModuleFileNameW(nullptr, buffer.data(), DWORD(buffer.size()));
-    if (!length || length >= buffer.size())
-        throw std::runtime_error("Cannot locate the application folder");
-    return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+struct DesktopVideo {
+    DesktopVideo() {
+        if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+            throw std::runtime_error(SDL_GetError());
+#ifdef __APPLE__
+        const auto library =
+            (std::filesystem::u8path(SDL_GetBasePath()) / "../Frameworks/libMoltenVK.dylib").lexically_normal();
+        if (std::filesystem::exists(library))
+            SDL_SetHint(SDL_HINT_VULKAN_LIBRARY, library.string().c_str());
+#endif
+    }
+
+    ~DesktopVideo() { SDL_QuitSubSystem(SDL_INIT_VIDEO); }
+};
+
+std::filesystem::path library_folder() {
+    // Bundles and installed Unix applications keep their writable library in user data.
+#ifdef _WIN32
+    return std::filesystem::u8path(SDL_GetBasePath());
+#else
+    char* folder = SDL_GetPrefPath("", "OpenSlope");
+    if (!folder)
+        throw std::runtime_error(SDL_GetError());
+    const auto result = std::filesystem::u8path(folder);
+    SDL_free(folder);
+    return result;
+#endif
 }
 
-std::optional<std::filesystem::path> choose_disc(HWND owner) {
-    std::vector<wchar_t> path(32768);
-    OPENFILENAMEW dialog{};
-    dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = owner;
-    dialog.lpstrFilter =
-        L"Game images (*.iso;*.bin;*.gcm;*.rvz;*.gba)\0*.iso;*.bin;*.gcm;*.rvz;*.gba\0All files\0*.*\0";
-    dialog.lpstrFile = path.data();
-    dialog.nMaxFile = DWORD(path.size());
-    dialog.lpstrTitle = L"Choose a game disc image";
-    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
-    if (GetOpenFileNameW(&dialog))
-        return std::filesystem::path(path.data());
-    if (CommDlgExtendedError())
-        throw std::runtime_error("Could not open the disc chooser");
-    return {};
+std::optional<std::filesystem::path> choose_disc(SDL_Window* owner) {
+    struct Selection {
+        std::atomic<bool> done{false};
+        std::optional<std::filesystem::path> path;
+        std::string error;
+    } selection;
+
+    static const SDL_DialogFileFilter filters[] = {{"Game images", "iso;bin;gcm;rvz;gba"}, {"All files", "*"}};
+    SDL_ShowOpenFileDialog(
+        [](void* context, const char* const* files, int) {
+            auto& result = *static_cast<Selection*>(context);
+            try {
+                if (!files)
+                    result.error = SDL_GetError();
+                else if (*files)
+                    result.path = std::filesystem::u8path(*files);
+            } catch (const std::exception& error) {
+                result.error = error.what();
+            }
+            result.done.store(true, std::memory_order_release);
+        },
+        &selection, owner, filters, 2, nullptr, false);
+    // The portal backend needs SDL's event pump while its asynchronous dialog is open.
+    while (!selection.done.load(std::memory_order_acquire)) {
+        SDL_PumpEvents();
+        SDL_Delay(10);
+    }
+    if (!selection.error.empty())
+        throw std::runtime_error(selection.error);
+    return selection.path;
 }
 
 struct LibraryTask {
@@ -383,7 +419,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
 struct Window {
     VulkanContext& context;
     VulkanRenderer renderer;
-    HWND handle{};
+    SDL_Window* handle{};
     VkSurfaceKHR surface{};
     VkSwapchainKHR swapchain{};
     VkSemaphore available{}, finished{};
@@ -394,34 +430,28 @@ struct Window {
     RideUi ui;
     double mouse_dx = 0, mouse_dy = 0, wheel = 0, fps = 0;
     bool mouse_captured = false;
-    POINT restore_cursor{};
 
     void capture_mouse(bool capture) {
         if (capture == mouse_captured)
             return;
+        if (!SDL_SetWindowRelativeMouseMode(handle, capture))
+            throw std::runtime_error(SDL_GetError());
         mouse_captured = capture;
-        if (capture) {
-            GetCursorPos(&restore_cursor);
-            SetCapture(handle);
-            RECT r;
-            GetClientRect(handle, &r);
-            MapWindowPoints(handle, nullptr, reinterpret_cast<POINT*>(&r), 2);
-            ClipCursor(&r);
-            ShowCursor(FALSE);
-        } else {
-            ClipCursor(nullptr);
-            ReleaseCapture();
-            ShowCursor(TRUE);
-            SetCursorPos(restore_cursor.x, restore_cursor.y);
-        }
         mouse_dx = mouse_dy = 0;
     }
 
-    explicit Window(VulkanContext& ctx) : context(ctx), renderer(ctx) {}
+    explicit Window(VulkanContext& ctx) : context(ctx), renderer(ctx) {
+        handle = SDL_CreateWindow("OpenSlope Native", 1280, 720,
+                                  SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN |
+                                      SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        if (!handle)
+            throw std::runtime_error(SDL_GetError());
+    }
 
     ~Window() {
-        capture_mouse(false);
-        vkDeviceWaitIdle(context.device);
+        SDL_SetWindowRelativeMouseMode(handle, false);
+        if (context.device)
+            vkDeviceWaitIdle(context.device);
         renderer.clear_targets();
         if (available)
             vkDestroySemaphore(context.device, available, nullptr);
@@ -431,62 +461,13 @@ struct Window {
             vkDestroySwapchainKHR(context.device, swapchain, nullptr);
         if (surface)
             vkDestroySurfaceKHR(context.instance, surface, nullptr);
-        if (handle && IsWindow(handle))
-            DestroyWindow(handle);
-    }
-
-    static LRESULT CALLBACK procedure(HWND handle, UINT message, WPARAM wparam, LPARAM lparam) {
-        auto* window = reinterpret_cast<Window*>(GetWindowLongPtrW(handle, GWLP_USERDATA));
-        if (message == WM_NCCREATE) {
-            window = static_cast<Window*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);
-            SetWindowLongPtrW(handle, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
-        }
-        if (window) {
-            if (message == WM_MOUSEWHEEL) {
-                window->wheel += double(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA;
-                return 0;
-            }
-            if (message == WM_KILLFOCUS)
-                window->capture_mouse(false);
-            if (message == WM_INPUT && window->mouse_captured) {
-                RAWINPUT data{};
-                UINT size = sizeof(data);
-                if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam), RID_INPUT, &data, &size,
-                                    sizeof(RAWINPUTHEADER)) != UINT(-1) &&
-                    data.header.dwType == RIM_TYPEMOUSE && !(data.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
-                    window->mouse_dx += data.data.mouse.lLastX;
-                    window->mouse_dy += data.data.mouse.lLastY;
-                }
-                return 0;
-            }
-            if (message == WM_SIZE)
-                window->resized = true;
-            if (message == WM_CLOSE) {
-                window->quit = true;
-                DestroyWindow(handle);
-                return 0;
-            }
-        }
-        return DefWindowProcW(handle, message, wparam, lparam);
+        SDL_DestroyWindow(handle);
     }
 
     void create(const Mesh& mesh, bool visible = true, std::span<const std::size_t> flag_models = {},
                 std::span<const std::size_t> faceted_models = {}) {
-        WNDCLASSW cls{};
-        cls.lpfnWndProc = procedure;
-        cls.hInstance = GetModuleHandleW(nullptr);
-        cls.lpszClassName = L"OpenSlopeNativePreview";
-        cls.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-            throw std::runtime_error("Cannot register preview window");
-        handle = CreateWindowExW(0, cls.lpszClassName, L"OpenSlope Native", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
-                                 CW_USEDEFAULT, 1280, 720, nullptr, nullptr, cls.hInstance, this);
-        if (!handle)
-            throw std::runtime_error("Cannot create preview window");
-        VkWin32SurfaceCreateInfoKHR info{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
-        info.hinstance = cls.hInstance;
-        info.hwnd = handle;
-        vk_check(vkCreateWin32SurfaceKHR(context.instance, &info, nullptr, &surface), "Create preview surface");
+        if (!SDL_Vulkan_CreateSurface(handle, context.instance, nullptr, &surface))
+            throw std::runtime_error(SDL_GetError());
         VkBool32 supported = VK_FALSE;
         vk_check(vkGetPhysicalDeviceSurfaceSupportKHR(context.physical, context.family, surface, &supported),
                  "Check presentation support");
@@ -497,13 +478,13 @@ struct Window {
         vk_check(vkCreateSemaphore(context.device, &semaphore, nullptr, &finished), "Create present semaphore");
         renderer.upload(mesh, flag_models, faceted_models);
         if (visible)
-            ShowWindow(handle, SW_SHOW);
+            SDL_ShowWindow(handle);
     }
 
     bool resize() {
-        RECT rect{};
-        GetClientRect(handle, &rect);
-        if (rect.right <= 0 || rect.bottom <= 0)
+        int pixel_width = 0, pixel_height = 0;
+        SDL_GetWindowSizeInPixels(handle, &pixel_width, &pixel_height);
+        if (pixel_width <= 0 || pixel_height <= 0 || (SDL_GetWindowFlags(handle) & SDL_WINDOW_MINIMIZED))
             return false;
         vk_check(vkDeviceWaitIdle(context.device), "Wait for resize");
         renderer.clear_targets();
@@ -526,9 +507,9 @@ struct Window {
             }
         const auto extent = capabilities.currentExtent.width != UINT32_MAX
                                 ? capabilities.currentExtent
-                                : VkExtent2D{std::clamp(unsigned(rect.right), capabilities.minImageExtent.width,
+                                : VkExtent2D{std::clamp(unsigned(pixel_width), capabilities.minImageExtent.width,
                                                         capabilities.maxImageExtent.width),
-                                             std::clamp(unsigned(rect.bottom), capabilities.minImageExtent.height,
+                                             std::clamp(unsigned(pixel_height), capabilities.minImageExtent.height,
                                                         capabilities.maxImageExtent.height)};
         width = extent.width;
         height = extent.height;
@@ -543,7 +524,12 @@ struct Window {
         info.imageArrayLayers = 1;
         info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         info.preTransform = capabilities.currentTransform;
-        info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        for (const auto alpha : {VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+                                 VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR})
+            if (capabilities.supportedCompositeAlpha & alpha) {
+                info.compositeAlpha = alpha;
+                break;
+            }
         info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
         info.clipped = VK_TRUE;
         info.oldSwapchain = swapchain;
@@ -571,12 +557,20 @@ struct Window {
     }
 
     bool events() {
-        MSG message;
-        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
-            if (message.message == WM_QUIT)
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 quit = true;
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
+            else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED || event.type == SDL_EVENT_WINDOW_RESTORED)
+                resized = true;
+            else if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
+                capture_mouse(false);
+            else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+                wheel += event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y;
+            else if (event.type == SDL_EVENT_MOUSE_MOTION && mouse_captured) {
+                mouse_dx += event.motion.xrel;
+                mouse_dy += event.motion.yrel;
+            }
         }
         return !quit;
     }
@@ -585,7 +579,7 @@ struct Window {
     GlareVisibility glare_visibility;
 
     void draw(Player& player, bool first_person, bool look_down, double seconds) {
-        if (quit || !IsWindow(handle))
+        if (quit)
             return;
         if (resized && !resize())
             return;
@@ -645,7 +639,7 @@ struct Window {
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path map, output, replay, audio_output, preferences_path, graphics_path;
+        std::filesystem::path map, output, replay, audio_output, preferences_path, graphics_path, library_root;
         bool xr = false, smoke_window = false, no_audio = false, audio_smoke = false, msaa_set = false,
              terrain_culling = true, first_person_option = false, look_down_option = false, on_foot_option = false;
         double seconds = 0;
@@ -683,9 +677,11 @@ int main(int argc, char** argv) {
                     (ai_count = unsigned(std::stoul(value))) > 16)
                     throw std::runtime_error("AI riders must be between zero and sixteen");
             } else if (option == "--audio-preferences" && i + 1 < argc)
-                preferences_path = argv[++i];
+                preferences_path = std::filesystem::u8path(argv[++i]);
             else if (option == "--graphics-preferences" && i + 1 < argc)
-                graphics_path = argv[++i];
+                graphics_path = std::filesystem::u8path(argv[++i]);
+            else if (option == "--library-root" && i + 1 < argc)
+                library_root = std::filesystem::u8path(argv[++i]);
             else if (option == "--no-ray-tracing")
                 ray_tracing = false;
             else if (option == "--lighting" && i + 1 < argc) {
@@ -740,13 +736,13 @@ int main(int argc, char** argv) {
                      i + 1 < argc) {
                 const std::string argument = argv[++i];
                 if (option == "--map")
-                    map = argument;
+                    map = std::filesystem::u8path(argument);
                 else if (option == "--capture")
-                    output = argument;
+                    output = std::filesystem::u8path(argument);
                 else if (option == "--replay")
-                    replay = argument;
+                    replay = std::filesystem::u8path(argument);
                 else if (option == "--audio-capture")
-                    audio_output = argument;
+                    audio_output = std::filesystem::u8path(argument);
                 else
                     seconds = std::stod(argument);
             } else if (option == "--help") {
@@ -757,7 +753,7 @@ int main(int argc, char** argv) {
                        "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
                        "<file>] [--lighting original|enhanced|runtime] [--no-ray-tracing] [--ui-graphics] "
                        "[--no-terrain-culling] "
-                       "[--audio-preferences <file>] "
+                       "[--audio-preferences <file>] [--library-root <folder>] "
                        "[--ui-audio] [--ai-riders 0..16]\nDesktop: "
                        "A/D strafe on foot or steer/spin riding, W/S walk or tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
@@ -819,7 +815,11 @@ int main(int argc, char** argv) {
             platform.audio_preferences = preferences_path;
             platform.graphics_preferences = graphics_path;
             platform.default_avatar = AvatarPreferences::random_rider();
+#ifdef OPENSLOPE_BUILD_OPENXR
             return run_openxr(*player, platform, seconds);
+#else
+            throw std::runtime_error("This build provides desktop play; OpenXR is not included");
+#endif
         }
         if (!audio_output.empty() && output.empty())
             throw std::runtime_error("Audio capture requires --capture");
@@ -831,9 +831,10 @@ int main(int argc, char** argv) {
                            preferences, ui_graphics_option, ray_tracing);
         if (smoke_window && seconds == 0)
             seconds = 3;
+        DesktopVideo video;
         VulkanContext context;
-        context.create(true, ray_tracing);
         Window window(context);
+        context.create(true, ray_tracing);
         window.renderer.cull_terrain(terrain_culling);
         window.graphics = graphics;
         avatar_preferences.present(window.ui, avatar_path);
@@ -860,10 +861,7 @@ int main(int argc, char** argv) {
             if (device && !device->active())
                 std::cerr << "Audio output unavailable; use --no-audio for silent playback\n";
         }
-        RAWINPUTDEVICE mouse{1, 2, 0, window.handle};
-        if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)))
-            throw std::runtime_error("Cannot register relative mouse input");
-        DesktopLibrary library(executable_folder());
+        DesktopLibrary library(library_root.empty() ? library_folder() : library_root);
         CourseImportQueue imports(library);
         window.ui.import_root = library.maps_root();
         std::set<std::filesystem::path> picked_images;
@@ -1028,9 +1026,12 @@ int main(int argc, char** argv) {
                     previous = std::chrono::steady_clock::now();
                 }
             }
-            const bool focused = GetForegroundWindow() == window.handle;
-            const auto key = [&](int value) { return focused && (GetAsyncKeyState(value) & 0x8000) != 0; };
-            const bool escape = (!window.ui.loading || window.ui.importing) && key(VK_ESCAPE);
+            const bool focused = (SDL_GetWindowFlags(window.handle) & SDL_WINDOW_INPUT_FOCUS) != 0;
+            const auto key = [&](SDL_Scancode value) { return focused && SDL_GetKeyboardState(nullptr)[value]; };
+            const auto mouse = [&](unsigned value) {
+                return focused && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MASK(value)) != 0;
+            };
+            const bool escape = (!window.ui.loading || window.ui.importing) && key(SDL_SCANCODE_ESCAPE);
             if (escape && !last_escape) {
                 if (window.ui.importing) {
                     library_task.cancel();
@@ -1044,12 +1045,12 @@ int main(int argc, char** argv) {
                 }
             }
             last_escape = escape;
-            const auto camera = key('F') || key('V');
+            const auto camera = key(SDL_SCANCODE_F) || key(SDL_SCANCODE_V);
             if (camera && !last_camera) {
                 first_person = !first_person;
             }
             last_camera = camera;
-            const auto pause = !window.ui.loading && key('P');
+            const auto pause = !window.ui.loading && key(SDL_SCANCODE_P);
             if (pause && !last_pause) {
                 paused = !paused;
                 window.ui.visible = paused;
@@ -1057,7 +1058,7 @@ int main(int argc, char** argv) {
                     player->release_inputs();
             }
             last_pause = pause;
-            const auto mute = !window.ui.loading && key('M');
+            const auto mute = !window.ui.loading && key(SDL_SCANCODE_M);
             if (mute && !last_mute) {
                 preferences.toggle_mute();
                 if (audio)
@@ -1073,7 +1074,7 @@ int main(int argc, char** argv) {
             if (!focused && last_focus)
                 player->release_inputs();
             if (focused && !last_focus)
-                look_blocked = key(VK_LBUTTON) || key(VK_RBUTTON);
+                look_blocked = mouse(SDL_BUTTON_LEFT) || mouse(SDL_BUTTON_RIGHT);
             last_focus = focused;
             const double aspect = double(std::max(1u, window.width)) / std::max(1u, window.height);
             window.camera.first_person = first_person;
@@ -1081,13 +1082,14 @@ int main(int argc, char** argv) {
             preferences.present(window.ui, audio.get(), player->terrain().map_root().filename().string());
             graphics.present(window.ui);
             window.ui.frame(RideUi::desktop(window.camera.pose(), aspect, window.ui.visible));
-            POINT cursor{};
-            GetCursorPos(&cursor);
-            ScreenToClient(window.handle, &cursor);
+            float cursor_x = 0, cursor_y = 0;
+            SDL_GetMouseState(&cursor_x, &cursor_y);
+            int logical_width = 1, logical_height = 1;
+            SDL_GetWindowSize(window.handle, &logical_width, &logical_height);
             auto ray = window.camera.ray(
-                window.mouse_captured ? 0 : double(cursor.x) * 2 / std::max(1u, window.width) - 1,
-                window.mouse_captured ? 0 : 1 - double(cursor.y) * 2 / std::max(1u, window.height), aspect);
-            bool pointer_down = key(VK_LBUTTON);
+                window.mouse_captured ? 0 : double(cursor_x) * 2 / std::max(1, logical_width) - 1,
+                window.mouse_captured ? 0 : 1 - double(cursor_y) * 2 / std::max(1, logical_height), aspect);
+            bool pointer_down = mouse(SDL_BUTTON_LEFT);
             if (library_smoke && !window.ui.loading) {
                 if (!player->terrain().map_root().empty() && !library_requested_play)
                     throw std::runtime_error("Extraction started a map without an explicit Play click");
@@ -1380,10 +1382,10 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("UI map load did not replace and stage the selected map");
                 window.quit = true;
             }
-            const bool right = key(VK_RBUTTON);
+            const bool right = mouse(SDL_BUTTON_RIGHT);
             if (right && !last_right)
                 mouse_carry = player->carrying_board() || (!window.ui.visible && player->aim_board(ray, true));
-            const bool left = key(VK_LBUTTON);
+            const bool left = mouse(SDL_BUTTON_LEFT);
             const bool look_held = left || (right && !mouse_carry);
             if (!look_held)
                 look_blocked = false;
@@ -1398,68 +1400,68 @@ int main(int argc, char** argv) {
                 window.camera.zoom(window.wheel);
             window.wheel = 0;
             if (focused && !paused) {
-                RideInput input{double(key('A') || key(VK_LEFT)) - double(key('D') || key(VK_RIGHT)),
-                                key(VK_SHIFT),
-                                key('R'),
-                                key(VK_SPACE),
-                                double(key('W') || key(VK_UP)) - double(key('S') || key(VK_DOWN)),
-                                key('Q'),
-                                key('G'),
+                RideInput input{double(key(SDL_SCANCODE_A) || key(SDL_SCANCODE_LEFT)) -
+                                    double(key(SDL_SCANCODE_D) || key(SDL_SCANCODE_RIGHT)),
+                                (key(SDL_SCANCODE_LSHIFT) || key(SDL_SCANCODE_RSHIFT)),
+                                key(SDL_SCANCODE_R),
+                                key(SDL_SCANCODE_SPACE),
+                                double(key(SDL_SCANCODE_W) || key(SDL_SCANCODE_UP)) -
+                                    double(key(SDL_SCANCODE_S) || key(SDL_SCANCODE_DOWN)),
+                                key(SDL_SCANCODE_Q),
+                                key(SDL_SCANCODE_G),
                                 player->on_foot() ? window.camera.facing() : window.camera.walk_forward(),
                                 {},
-                                key('T')};
+                                key(SDL_SCANCODE_T)};
                 input.equipment = desktop_equipment(*player, ray, right && mouse_carry);
-                input.crouch = key(VK_CONTROL);
+                input.crouch = (key(SDL_SCANCODE_LCTRL) || key(SDL_SCANCODE_RCTRL));
                 input.flight_direction = window.camera.pose().forward;
-                input.toggle_board = key('E');
+                input.toggle_board = key(SDL_SCANCODE_E);
                 input.face_walk_forward = true;
                 player->advance(dt, input);
             }
             last_right = right;
             window.camera.first_person = first_person;
-            window.camera.step(*player, dt, key(VK_SHIFT), looking);
+            window.camera.step(*player, dt, (key(SDL_SCANCODE_LSHIFT) || key(SDL_SCANCODE_RSHIFT)), looking);
             window.fps = dt > 0 ? 1 / dt : 0;
             const auto& rider = player->rider();
             const auto version = application_version();
-            std::wostringstream title;
-            title << L"OpenSlope Native " << std::wstring(version.begin(), version.end()) << L" | "
-                  << int(length(rider.velocity) * 3.6) << L" km/h | ";
+            std::ostringstream title;
+            title << "OpenSlope Native " << version << " | " << int(length(rider.velocity) * 3.6) << " km/h | ";
             if (player->course_run().status().mode != RunMode::Freeride) {
                 const auto readout = score_readout(player->scoring());
-                title << std::wstring(readout.begin(), readout.end()) << L" | BOOST "
-                      << player->scoring().meter_segments() << L"/15 | ";
+                title << readout << " | BOOST " << player->scoring().meter_segments() << "/15 | ";
             }
             const auto& run = player->course_run().status();
             if (run.mode != RunMode::Freeride) {
                 const auto clock = run_clock(run.clock), phase = std::string(run_name(run.phase));
-                title << std::wstring(clock.begin(), clock.end()) << L" | " << std::wstring(phase.begin(), phase.end())
-                      << L" | CP " << run.checkpoints << L" | Lap " << run.lap << L"/" << run.passes << L" | ";
+                title << clock << " | " << phase << " | CP " << run.checkpoints << " | Lap " << run.lap << "/"
+                      << run.passes << " | ";
                 if (run.phase == RunPhase::Countdown)
-                    title << int(std::ceil(run.countdown)) << L" | ";
+                    title << int(std::ceil(run.countdown)) << " | ";
             }
             if (paused)
-                title << L"PAUSED";
+                title << "PAUSED";
             else if (rider.control == Control::ResetWarp)
-                title << L"Returning to course";
+                title << "Returning to course";
             else if (rider.control == Control::RecoverWait)
-                title << L"Getting up " << int(rider.recovery_standing * 100) << L"%";
+                title << "Getting up " << int(rider.recovery_standing * 100) << "%";
             else if (rider.motion == Motion::Wipeout)
-                title << L"Wipeout - recovering";
+                title << "Wipeout - recovering";
             else if (rider.control == Control::Charge)
-                title << L"Charge " << int(rider.charge * 100) << L"%";
+                title << "Charge " << int(rider.charge * 100) << "%";
             else if (rider.motion == Motion::Rail)
-                title << L"Grinding | Spin " << int(rider.rail_spin) << L" deg";
+                title << "Grinding | Spin " << int(rider.rail_spin) << " deg";
             else if (player->on_foot())
-                title << L"Walking";
+                title << "Walking";
             else
-                title << (rider.grounded ? (rider.lead < 0 ? L"Switch" : L"Riding") : L"Air");
-            SetWindowTextW(window.handle, title.str().c_str());
-            window.draw(*player, first_person, key('C') || look_down_option, dt);
+                title << (rider.grounded ? (rider.lead < 0 ? "Switch" : "Riding") : "Air");
+            SDL_SetWindowTitle(window.handle, title.str().c_str());
+            window.draw(*player, first_person, key(SDL_SCANCODE_C) || look_down_option, dt);
             if (library_done)
                 window.quit = true;
             if (window.ui.loading)
                 ++loading_frames;
-            if (IsIconic(window.handle))
+            if (SDL_GetWindowFlags(window.handle) & SDL_WINDOW_MINIMIZED)
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
         if (library_smoke && !library_done)

@@ -316,18 +316,21 @@ struct Probe {
 
 std::vector<Range> pointer_tables(const Executable& image, const ImportCancel& cancelled, unsigned minimum = 24) {
     std::vector<Range> tables;
-    std::optional<std::size_t> begin;
+    std::size_t begin = 0;
+    bool active = false;
     const auto finish = [&](std::size_t end) {
-        if (begin && end - *begin >= minimum * 4 && end - *begin <= 1024 * 4)
-            tables.push_back({*begin, end});
-        begin.reset();
+        if (active && end - begin >= minimum * 4 && end - begin <= 1024 * 4)
+            tables.push_back({begin, end});
+        active = false;
     };
     for (std::size_t p = 0; p + 4 <= image.bytes.data.size(); p += 4) {
         if ((p & 65535) == 0)
             import_detail::check_cancel(cancelled);
         if (code_offset(image, image.bytes.le(p))) {
-            if (!begin)
+            if (!active) {
                 begin = p;
+                active = true;
+            }
         } else
             finish(p);
     }

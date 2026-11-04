@@ -128,6 +128,10 @@ std::filesystem::path AudioPreferences::default_path() {
         return std::filesystem::path(path) / "OpenSlope" / "audio-preferences.json";
     }
 #else
+#ifdef __APPLE__
+    if (const auto path = std::getenv("HOME"); path && *path)
+        return std::filesystem::path(path) / "Library/Application Support/OpenSlope/audio-preferences.json";
+#endif
     if (const auto path = std::getenv("XDG_CONFIG_HOME"); path && *path)
         return std::filesystem::path(path) / "OpenSlope/audio-preferences.json";
     if (const auto path = std::getenv("HOME"); path && *path)

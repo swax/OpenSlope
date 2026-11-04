@@ -24,6 +24,8 @@ if (-not $Preview) {
 if ($LASTEXITCODE -ne 0) { throw 'Repository hygiene failed.' }
 & $taskPython (Join-Path $PSScriptRoot 'tests/package_release_test.py')
 if ($LASTEXITCODE -ne 0) { throw 'Release packaging checks failed.' }
+& $taskPython (Join-Path $PSScriptRoot 'tests/desktop_package_test.py')
+if ($LASTEXITCODE -ne 0) { throw 'Cross-platform packaging checks failed.' }
 # The portable Windows package carries its C++ runtime inside each executable.
 & $taskCmake -S $PSScriptRoot -B $taskBuild -A x64 '-DOPENSLOPE_BUILD_PLAYER=ON' '-DOPENSLOPE_BUILD_TESTS=ON' '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'
 if ($LASTEXITCODE -ne 0) { throw 'Release configure failed.' }

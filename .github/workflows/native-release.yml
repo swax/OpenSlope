@@ -16,13 +16,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  packages:
+  windows-quest:
     # Release credentials are used only by a manually selected main-branch build.
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
-      contents: write
+      contents: read
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: '4'
     steps:
@@ -57,24 +57,159 @@ jobs:
       - name: Save downloadable packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: native-windows-quest
+          path: temp/native-release-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+  desktop:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x64
+          - os: macos-15
+            platform: macos-arm64
+          - os: macos-15-intel
+            platform: macos-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install Linux desktop build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libdbus-1-dev libwayland-dev wayland-protocols libegl1-mesa-dev libxkbcommon-dev libasound2-dev libpulse-dev libvulkan1 mesa-vulkan-drivers xvfb xauth
+      - name: Configure and build desktop player
+        shell: bash
+        run: |
+          set -euo pipefail
+          options=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            options+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DOPENSLOPE_BUILD_OPENXR=OFF)
+          fi
+          python Native/tests/desktop_package_test.py
+          cmake -S Native -B temp/native-desktop -DCMAKE_BUILD_TYPE=Release -DOPENSLOPE_BUILD_PLAYER=ON "${options[@]}"
+          cmake --build temp/native-desktop --config Release --parallel 4
+          ctest --test-dir temp/native-desktop -C Release --output-on-failure
+      - name: Exercise desktop launch, rendering, library and audio
+        id: graphics
+        run: bash Native/tools/smoke_desktop.sh temp/native-desktop
+      - name: Package desktop build
+        shell: bash
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          OPENSLOPE_GRAPHICS_SMOKE: ${{ steps.graphics.outputs.graphics_smoke }}
+          CERTIFICATE: ${{ secrets.NATIVE_MACOS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.NATIVE_MACOS_CERTIFICATE_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.NATIVE_MACOS_SIGN_IDENTITY }}
+          NOTARY_APPLE_ID: ${{ secrets.NATIVE_MACOS_NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NATIVE_MACOS_NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NATIVE_MACOS_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/openslope-signing.keychain-db"
+          certificate_file="$RUNNER_TEMP/openslope-signing.p12"
+          cleanup() {
+            if [[ "$RUNNER_OS" == macOS && -n "$CERTIFICATE" ]]; then
+              security delete-keychain "$keychain" || true
+              rm -f -- "$certificate_file"
+            fi
+          }
+          trap cleanup EXIT
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            if [[ -n "$CERTIFICATE$CERTIFICATE_PASSWORD$SIGN_IDENTITY" ]]; then
+              test -n "$CERTIFICATE" && test -n "$CERTIFICATE_PASSWORD" && test -n "$SIGN_IDENTITY"
+            fi
+            if [[ -n "$NOTARY_APPLE_ID$NOTARY_TEAM_ID$NOTARY_PASSWORD" ]]; then
+              test -n "$CERTIFICATE" && test -n "$NOTARY_APPLE_ID" && test -n "$NOTARY_TEAM_ID" && test -n "$NOTARY_PASSWORD"
+            fi
+          fi
+          if [[ "$RUNNER_OS" == macOS && -n "$CERTIFICATE" ]]; then
+            test -n "$CERTIFICATE_PASSWORD" && test -n "$SIGN_IDENTITY"
+            python -c 'import base64, os, pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "openslope-signing.p12").write_bytes(base64.b64decode(os.environ["CERTIFICATE"], validate=True))'
+            keychain_password="$(openssl rand -hex 32)"
+            echo "::add-mask::$keychain_password"
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$certificate_file" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+            security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+            export OPENSLOPE_MACOS_SIGN_IDENTITY="$SIGN_IDENTITY"
+            if [[ -n "$NOTARY_APPLE_ID" ]]; then
+              test -n "$NOTARY_TEAM_ID" && test -n "$NOTARY_PASSWORD"
+              xcrun notarytool store-credentials openslope --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD" --keychain "$keychain"
+              security default-keychain -d user -s "$keychain"
+              export OPENSLOPE_MACOS_NOTARY_PROFILE=openslope
+            fi
+          elif [[ "$RUNNER_OS" == macOS && ( -n "$SIGN_IDENTITY" || -n "$NOTARY_APPLE_ID" ) ]]; then
+            echo 'Signing configuration is incomplete; supply the certificate and password too.' >&2
+            exit 1
+          fi
+          python Native/tools/package_desktop.py --build temp/native-desktop --output temp/native-release-artifacts --platform "$TARGET_PLATFORM"
+      - name: Save desktop package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.platform }}
+          path: temp/native-release-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  assemble:
+    if: github.ref == 'refs/heads/main'
+    needs: [windows-quest, desktop]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: native-*
+          path: temp/native-inputs
+      - name: Assemble and verify every platform
+        run: |
+          python Native/tests/desktop_package_test.py
+          version="$(tr -d '\r\n' < Native/VERSION.txt)"
+          python Native/tools/assemble_release.py --input "temp/native-inputs/native-windows-quest/OpenSlope-Native-$version" --input "temp/native-inputs/native-linux-x64/OpenSlope-Native-$version-Linux-x64" --input "temp/native-inputs/native-macos-arm64/OpenSlope-Native-$version-macOS-arm64" --input "temp/native-inputs/native-macos-x64/OpenSlope-Native-$version-macOS-x64" --output temp/native-release-artifacts
+      - name: Save complete release
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
           name: native-release-packages
-          path: temp/native-release-artifacts/OpenSlope-Native-*/*
+          path: temp/native-release-artifacts/
           if-no-files-found: error
           retention-days: 14
       - name: Create draft prerelease
         if: inputs.create_draft
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $taskVersion = (Get-Content Native/VERSION.txt -Raw).Trim()
-          $taskDirectory = "temp/native-release-artifacts/OpenSlope-Native-$taskVersion"
-          $taskTag = "native-v$taskVersion"
-          git ls-remote --exit-code --tags origin "refs/tags/$taskTag"
-          if ($LASTEXITCODE -eq 0) { throw 'The version tag already exists; increment the version before releasing.' }
-          if ($LASTEXITCODE -ne 2) { throw 'Could not check the remote version tag.' }
-          $taskAssets = @(Get-ChildItem -LiteralPath $taskDirectory -File | ForEach-Object { $_.FullName })
-          gh release create $taskTag @taskAssets --target $env:GITHUB_SHA --draft --prerelease --title "OpenSlope Native $taskVersion (preview)" --notes-file "$taskDirectory/RELEASE-NOTES.md"
-          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed; existing releases are never overwritten.' }
+          set -euo pipefail
+          version="$(cat Native/VERSION.txt | tr -d '\r\n')"
+          directory="temp/native-release-artifacts/OpenSlope-Native-$version"
+          tag="native-v$version"
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" || status=$?
+          if [[ "$status" == 0 ]]; then
+            echo 'The version tag already exists; increment the version before releasing.' >&2
+            exit 1
+          fi
+          if [[ "$status" != 2 ]]; then exit "$status"; fi
+          gh release create "$tag" "$directory"/* --target "$GITHUB_SHA" --draft --prerelease --title "OpenSlope Native $version (preview)" --notes-file "$directory/RELEASE-NOTES.md"

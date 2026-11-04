@@ -1,6 +1,6 @@
 # OpenSlope Native
 
-For packaged Windows/Quest builds and GitHub prereleases, see
+For packaged Windows, Linux, macOS and Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
 Installed libraries use **Game → Map** on PC and Quest, with an explicit **Play** action. Game groups read
@@ -123,7 +123,9 @@ The ARM64 Android APK builds, and the user reports successful Quest play after i
 inside the app. Build 0.21.0 reaches 71.5–72 fps in a focused Quest 3 ALASKA sample with
 4x MSAA and live full-body tracking; the user confirms walking/boarding and improved performance.
 Longer rides, comfort and wider headset coverage still need testing.
-The Linux host still needs target build/device validation. Full gameplay parity remains
+Linux and macOS use the shared SDL3 desktop host. macOS bundles MoltenVK and supports
+desktop play; Linux also includes the optional OpenXR host. Hardware and driver coverage
+still needs testing. Full gameplay parity remains
 tracked in the matrix below.
 
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
@@ -313,6 +315,33 @@ python Native/tests/appearance_test.py temp/native/Release/openslope_appearance_
 
 These checks use synthetic PNGs and exercise the production Vulkan shaders with both UNORM and
 sRGB output targets. They require a Vulkan GPU and are separate from the portable CPU CI checks.
+
+## Build and try on Linux or macOS
+
+Install CMake 3.24+, a C++20 compiler and Python 3. Linux needs the X11/Wayland
+and audio development packages listed in `.github/workflows/native-release.yml`;
+use GCC 11+ or Clang. macOS needs Xcode command-line tools. Dependencies are
+downloaded from checksum-pinned archives; the macOS build includes MoltenVK.
+
+```sh
+cmake -S Native -B temp/native-desktop -DCMAKE_BUILD_TYPE=Release -DOPENSLOPE_BUILD_PLAYER=ON
+cmake --build temp/native-desktop --parallel 4
+ctest --test-dir temp/native-desktop --output-on-failure
+# Linux:
+./temp/native-desktop/openslope_player
+# macOS:
+open temp/native-desktop/openslope_player.app
+```
+
+The desktop controls, library, disc import and graphics settings use the same host
+on all three operating systems. On Linux, Maps/cache data lives under
+`$XDG_DATA_HOME/OpenSlope` (normally `~/.local/share/OpenSlope`); on macOS it lives
+under `~/Library/Application Support/OpenSlope`. Settings use the corresponding
+user configuration directory. Updating the application preserves this data.
+Use `--library-root <folder>` to choose another Maps/import-cache location.
+macOS builds default to desktop-only; `OPENSLOPE_BUILD_OPENXR` controls the optional
+OpenXR dependency on other platforms. See [release packaging](docs/releases.md)
+for portable archives and optional Apple signing/notarization.
 
 ## OpenXR
 

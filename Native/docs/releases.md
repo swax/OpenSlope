@@ -10,9 +10,12 @@ users provide their own custom maps or import their own local disc image.
 | File | Purpose |
 |---|---|
 | `OpenSlope-Native-<version>-Windows-x64.zip` | Portable player, import/inspection tools, launchers, empty Maps library, instructions and complete notices. |
+| `OpenSlope-Native-<version>-Linux-x64.tar.gz` | Linux desktop player, import/inspection tools, executable launcher and notices. Built on Ubuntu 22.04. |
+| `OpenSlope-Native-<version>-macOS-arm64.zip` | Apple Silicon application with MoltenVK, tools and notices bundled inside. |
+| `OpenSlope-Native-<version>-macOS-x64.zip` | Intel Mac application with the same bundled runtime and tools. |
 | `OpenSlope-Native-<version>-Quest-arm64.apk` | Installable standalone Quest app with the map/ISO picker and embedded notices. |
 | `RELEASE-NOTES.md` | Installation, controls, upgrade advice and known limits. |
-| `release-manifest.json` | Source commit, APK identity, package inventory and hashes. |
+| `release-manifest.json` | Source commit, per-platform inventories/dependencies, APK identity, Mac signing status and hashes. |
 | `SHA256SUMS.txt` | SHA-256 for every other release asset. |
 
 The Windows release uses a static C++ runtime; users need a current Vulkan
@@ -137,6 +140,7 @@ same draft without running CI again:
 $taskVersion = (Get-Content Native/VERSION.txt -Raw).Trim()
 $taskDirectory = "temp/native-release-artifacts/OpenSlope-Native-$taskVersion"
 $taskManifest = Get-Content "$taskDirectory/release-manifest.json" -Raw | ConvertFrom-Json
+if ($taskManifest.schema -ne 'openslope-native-release/v2') { throw 'Download the complete assembled native-release-packages artifact; local Windows/Quest packages are only one release input.' }
 $taskAssets = @(Get-ChildItem -LiteralPath $taskDirectory -File | ForEach-Object { $_.FullName })
 gh release create "native-v$taskVersion" @taskAssets --target $taskManifest.source_commit --draft --prerelease --title "OpenSlope Native $taskVersion (preview)" --notes-file "$taskDirectory/RELEASE-NOTES.md"
 ```
@@ -159,3 +163,66 @@ debug signing, hash verification and overwrite protection.
 
 Release preparation is independent of the local Trailmap workspace and all other
 ports' runtime implementations. No private media is required by the workflow.
+
+## Linux and macOS packages
+
+The **Native release packages** workflow builds Windows/Quest, Linux x64, macOS
+arm64 and macOS x64 in separate jobs. Linux uses Ubuntu 22.04 to keep its minimum
+glibc/libstdc++ requirements stable. Mac jobs use `macos-15` (Apple Silicon) and
+`macos-15-intel`; each builds and tests its native architecture. All jobs must pass
+before the assembly job creates the complete artifact or optional draft. The
+assembly script rejects missing platforms, mixed versions/commits, dirty/preview
+inputs, unexpected artifact names and modified download hashes. It writes a v2
+manifest and a fresh `SHA256SUMS.txt` covering all five application downloads.
+
+Native CI also builds the complete Linux/macOS player, runs conformance, exercises
+the window/swapchain and empty library, and tests the SDL audio callback with a
+dummy device. Standard hosted Mac VMs can lack a Metal device: that specific
+condition is explicitly reported, skips graphics smoke, and is recorded in the
+manifest/release notes; other graphics or launch failures still fail the job. The dummy device verifies audio delivery without requiring a CI
+speaker; physical audio, GPU/driver and desktop integration still need device tests.
+
+For local Unix packaging, first build and test as described in Native/README.md,
+then select the host platform:
+
+```sh
+python3 Native/tools/package_desktop.py --build temp/native-desktop --output temp/native-release-artifacts --platform linux-x64
+# On an Apple Silicon Mac, use --platform macos-arm64; on Intel, macos-x64.
+```
+
+Public packages require clean committed source. `--preview` permits local dirty
+source and labels the archive accordingly; the final release assembler rejects
+these rehearsal packages. Package inputs are explicitly selected executables,
+notices and templates. Linux verifies ELF architecture and dynamic dependencies;
+tar preserves executable permissions. Mac verifies Mach-O architecture and library
+paths, selects only the application executable, two tools, Info.plist and the
+checksum-pinned MoltenVK runtime, then signs the resulting bundle before archiving.
+The Mac archive uses Apple's `ditto` to retain permissions and ticket metadata;
+the extracted download is checked again with `codesign` and, when notarized, `stapler`.
+Build-tree maps and other local files are excluded. Unix Maps and cache data live
+in user data directories, outside downloaded archives/application bundles.
+
+## Optional Apple Developer ID signing and notarization
+
+By default Mac previews use an ad-hoc signature. They are executable on supported
+hardware but are **not Apple notarized** and can be blocked by Gatekeeper. This
+status appears in each platform manifest and the assembled release notes. For
+normal public installation, configure these Actions secrets:
+
+| Secret | Purpose |
+|---|---|
+| `NATIVE_MACOS_CERTIFICATE_BASE64` | Base64-encoded Developer ID Application certificate and private key exported as `.p12`. |
+| `NATIVE_MACOS_CERTIFICATE_PASSWORD` | Password protecting that export. |
+| `NATIVE_MACOS_SIGN_IDENTITY` | Developer ID Application identity accepted by `codesign`. |
+| `NATIVE_MACOS_NOTARY_APPLE_ID` | Apple account used for notarization. |
+| `NATIVE_MACOS_NOTARY_TEAM_ID` | Apple Developer team ID. |
+| `NATIVE_MACOS_NOTARY_PASSWORD` | App-specific password for that account. |
+
+Signing credentials are imported into an ephemeral runner keychain and removed
+after packaging. With the notarization credentials present, the packager submits
+the signed bundle, requires Apple's Accepted result, staples and validates the
+ticket, and verifies the complete signature. A configured signing/notarization
+failure fails the job; it does not fall back to an ad-hoc package. Local packaging
+uses `OPENSLOPE_MACOS_SIGN_IDENTITY` and optionally a preconfigured
+`OPENSLOPE_MACOS_NOTARY_PROFILE` keychain profile for the same process.
+See [Apple's notarization guide](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).

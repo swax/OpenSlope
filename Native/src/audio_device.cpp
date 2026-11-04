@@ -1,4 +1,5 @@
 #include "audio_device.hpp"
+#include <algorithm>
 #include <atomic>
 #include <stdexcept>
 #include <thread>
@@ -8,6 +9,8 @@
 #include <mmsystem.h>
 #elif defined(__ANDROID__)
 #include <aaudio/AAudio.h>
+#elif defined(OPENSLOPE_DESKTOP_SDL)
+#include <SDL3/SDL.h>
 #endif
 
 namespace openslope {
@@ -143,6 +146,45 @@ struct AudioDevice::Data {
             AAudioStream_requestStop(stream);
             AAudioStream_close(stream);
         }
+    }
+#elif defined(OPENSLOPE_DESKTOP_SDL)
+    SDL_AudioStream* stream{};
+    bool initialized = false;
+
+    static void render(void* context, SDL_AudioStream* stream, int additional, int) {
+        auto& data = *static_cast<Data*>(context);
+        std::array<float, 2048> samples{};
+        while (additional > 0 && data.running) {
+            const auto count = std::min(samples.size(), std::size_t(additional + 7) / 8 * 2);
+            data.mixer.render(std::span(samples.data(), count));
+            if (!SDL_PutAudioStreamData(stream, samples.data(), int(count * sizeof(float)))) {
+                data.running = false;
+                return;
+            }
+            data.frames += count / 2;
+            additional -= int(count * sizeof(float));
+        }
+    }
+
+    explicit Data(AudioMixer& source) : mixer(source) {
+        initialized = SDL_InitSubSystem(SDL_INIT_AUDIO);
+        if (!initialized)
+            return;
+        const SDL_AudioSpec format{SDL_AUDIO_F32, 2, int(mixer.rate())};
+        stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &format, render, this);
+        if (stream) {
+            running = true;
+            if (!SDL_ResumeAudioStreamDevice(stream))
+                running = false;
+        }
+    }
+
+    ~Data() {
+        running = false;
+        if (stream)
+            SDL_DestroyAudioStream(stream);
+        if (initialized)
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
     }
 #else
     explicit Data(AudioMixer& source) : mixer(source) {}

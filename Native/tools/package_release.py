@@ -34,7 +34,7 @@ def sha(data: bytes) -> str:
 
 
 def notice_files() -> dict[str, bytes]:
-    names = run("git", "ls-files", "Native/ThirdPartyNotices").splitlines()
+    names = sorted(set(run("git", "ls-files", "--cached", "--others", "--exclude-standard", "Native/ThirdPartyNotices").splitlines()))
     result = {p.removeprefix("Native/ThirdPartyNotices/"): (ROOT / p).read_bytes() for p in names}
     result.update({
         "LICENSE": (NATIVE / "LICENSE").read_bytes(),
@@ -141,14 +141,15 @@ def validate_android(apk: Path, tools: Path, version: str, code: int, preview: b
             "signer_sha256": digests[0].lower()}
 
 
-def write_zip(path: Path, files: dict[str, bytes], prefix: str) -> None:
+def write_zip(path: Path, files: dict[str, bytes], prefix: str, executable: set[str] | None = None) -> None:
     with zipfile.ZipFile(path, "x", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name, data in sorted(files.items()):
             if Path(name).is_absolute() or ".." in name.split("/") or "\\" in name:
                 raise ValueError(f"Invalid package path: {name}")
             entry = zipfile.ZipInfo(f"{prefix}/{name}", (2026, 1, 1, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
-            entry.external_attr = 0o644 << 16
+            entry.create_system = 3
+            entry.external_attr = (0o755 if executable and name in executable else 0o644) << 16
             archive.writestr(entry, data)
 
 
