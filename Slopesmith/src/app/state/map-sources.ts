@@ -1,4 +1,4 @@
-import { mapDisplayName, mapGame, mapGameLabel, type MapSourceChoice } from '../../core/reference/map-game';
+import { mapNameInGame, mapGame, mapGameLabel, type MapSourceChoice } from '../../core/reference/map-game';
 import { findMapChoice, splitMapSource } from '../../core/reference/map-source';
 import { isLocalWorkspace } from '../net/workspace';
 import { assetLocation, watchAssetLocations } from '../net/asset-versions';
@@ -47,7 +47,7 @@ export function mapSourceDetails(level: string): {
         ? 'Local'
         : 'Server',
     game: mapGameLabel(version?.game ?? mapGame(map)),
-    map: own ? (map.label ?? mountain?.label ?? 'Mountain') : mapDisplayName(map),
+    map: own ? (map.label ?? mountain?.label ?? 'Mountain') : mapNameInGame(map),
     ...(version ? { [version.kind ? 'asset hash' : 'bank hash']: version.hash.slice(0, 8) } : {}),
   };
 }

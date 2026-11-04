@@ -57,8 +57,8 @@ export interface PlacedLight {
 }
 
 /** Does this model get a sign light dropped with it? The shipped SignLights sit on `Mdl_Billboard_*`. */
-export function isSignProp(name: string): boolean {
-  return name.toLowerCase().includes('billboard');
+export function isSignProp(name: string | null | undefined): boolean {
+  return typeof name === 'string' && name.toLowerCase().includes('billboard');
 }
 
 /** Intensity-weight K the TERRAIN bake uses for authored sign lights (`bakeRigLighting`'s 4th arg). Much

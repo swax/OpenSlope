@@ -4,11 +4,12 @@ import { missingAssetUrl } from '../net/asset-cache';
 import { mapSourceId } from '../../core/reference/map-source';
 import { listLevelOrigins } from '../../shared/map-levels';
 import { readAssetVersion } from '../../shared/map-asset-version';
-import { readAssetManifest } from '../../shared/map-asset-manifest';
-import { buildLevelPropsUncached, readMaterialTables, readPhysicsBodySpheres } from '../../shared/map-props';
+import type { AssetSelection } from '../../shared/map-asset-manifest';
+import { readMaterialTables, readPhysicsBodySpheres } from '../../shared/map-props';
 import { readLevelGroups } from '../../shared/map-groups';
 import type { lazyLocalMapData as localMapData } from './lazy-local-map-data';
 import { readParticleTextureReference } from '../../shared/map-particle-texture';
+import { createLocalAssetBank } from './local-asset-bank';
 
 /** The public player resolves the same versioned dependencies, without starting editor/project writes. */
 export function installLocalAssetApi(
@@ -18,7 +19,7 @@ export function installLocalAssetApi(
 ): void {
   clearAssetCatalogue();
   const versions = new Map<string, ReturnType<typeof readAssetVersion>>();
-  const manifests = new Map<string, ReturnType<typeof readAssetManifest>>();
+  const bank = createLocalAssetBank(local);
   configureWorkspace(
     false,
     async (url, init) => {
@@ -69,18 +70,17 @@ export function installLocalAssetApi(
         if (!value) {
           value = readAssetVersion(local.source, level);
           versions.set(level, value);
+          void value.catch(() => { if (versions.get(level) === value) versions.delete(level); });
         }
         return Response.json(await value);
       }
       if (url.pathname === '/api/map-asset-manifest') {
-        let value = manifests.get(level);
-        if (!value) {
-          value = readAssetManifest(local.source, level);
-          manifests.set(level, value);
-        }
-        return Response.json(await value);
+        const selection = url.searchParams.get('select');
+        return Response.json(await bank.manifest(level, selection ? JSON.parse(selection) as AssetSelection : undefined));
       }
-      if (url.pathname === '/api/props') return Response.json(await buildLevelPropsUncached(local.source, level));
+      if (url.pathname === '/api/props') {
+        return Response.json(await bank.props(level, url.searchParams.get('asset') ?? undefined));
+      }
       if (url.pathname === '/api/physics-body')
         return Response.json({
           spheres: await readPhysicsBodySpheres(local.source, level, Number(url.searchParams.get('idx'))),

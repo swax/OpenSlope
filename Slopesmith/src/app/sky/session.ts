@@ -12,7 +12,7 @@ import { fetchJson } from '../net/fetch-json';
 import { customSkyUrl, referenceSkyUrl, registerReferenceSkyRevisions } from '../net/asset-paths';
 import { clientFetch } from '../net/client';
 import { findSkyLevel, type SkyCatalogue } from '../../core/sky/catalogue';
-import { mapDisplayName, mapGame, mapGameLabel } from '../../core/reference/map-game';
+import { mapDisplayName, mapLabelWithGame } from '../../core/reference/map-game';
 import { splitMapSource } from '../../core/reference/map-source';
 import { openSkyGenDialog } from './sky-gen';
 import {
@@ -374,7 +374,7 @@ export function createSkybox(deps: SkyDeps) {
               if (key === NONE || isCustomKey(key)) return [key, key];
               const map = { name: key },
                 source = splitMapSource(key).source;
-              return [`${mapGameLabel(mapGame(map))} · ${mapDisplayName(map)}${source ? ` (${source})` : ''}`, key];
+              return [`${mapLabelWithGame(map)}${source ? ` (${source})` : ''}`, key];
             }),
           ),
         )

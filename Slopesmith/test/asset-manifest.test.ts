@@ -12,6 +12,7 @@ import { previewAssetMigration, applyAssetMigration } from '../src/core/referenc
 import { createAssetReader } from '../src/app/net/asset-reader';
 import { buildLevelPropsUncached } from '../src/shared/map-props';
 import { safeDataName } from '../src/core/export/names';
+import { propAssetDefinition, propCompatibilityHash } from '../src/core/reference/asset-hash';
 
 const root = await mkdtemp(join(tmpdir(), 'slopesmith-asset-manifest-'));
 let catalogueAttempts = 0;
@@ -143,7 +144,71 @@ assert.equal(
   404,
   'an individual identity cannot expose unrelated bank resources',
 );
+for (const key of ['missing.png', 'other-missing.png']) {
+  const id = referenceAssetId(tile.game, tile.map, 'texture', key, 'f'.repeat(64));
+  assert.equal((await reader.fetch(`/api/texture?level=${id}&name=${key}`)).status, 404);
+}
+assert.equal(
+  requests.filter(path => path === '/api/map-asset-manifest').length,
+  2,
+  'different missing pins and corrupt bytes reuse valid metadata and the absent local-bank result',
+);
+reader.clear();
+corrupted = false;
+assert.equal((await reader.fetch(`/api/texture?level=${tile.id}&name=tile.png`)).status, 200);
+assert.equal(
+  requests.filter(path => path === '/api/map-asset-manifest').length,
+  4,
+  'a workspace refresh retries absent banks',
+);
+let resumeDescriptor!: () => void;
+let descriptorStarted!: () => void;
+const pausedDescriptor = new Promise<void>(resolve => {
+  resumeDescriptor = resolve;
+});
+const sawDescriptor = new Promise<void>(resolve => {
+  descriptorStarted = resolve;
+});
+const previousWorkspace = createAssetReader(async input => {
+  const url = new URL(String(input), 'http://localhost');
+  if (url.pathname === '/api/levels') return Response.json({ levels: maps.map(map => map.name), maps });
+  descriptorStarted();
+  await pausedDescriptor;
+  return Response.json({ ...current, assets: [] });
+});
+const oldRequest = previousWorkspace.fetch(`/api/texture?level=${tile.id}&name=tile.png`);
+await sawDescriptor;
+previousWorkspace.clear();
+resumeDescriptor();
+assert.equal((await oldRequest).status, 409, 'in-flight reads cannot certify a replaced workspace');
+assert.deepEqual(previousWorkspace.failures(), [], 'late failures do not enter the new map’s missing-asset list');
 const propPayload = await buildLevelPropsUncached(io, level);
+const reindexed = structuredClone(propPayload);
+const model = reindexed.models[0];
+const material = reindexed.materials[0];
+const previousMaterial = material.id;
+model.id = 17;
+material.id = 81;
+for (const sub of model.subs) if (sub.mat === previousMaterial) sub.mat = material.id;
+const compatibleHash = await propCompatibilityHash(propAssetDefinition(propPayload, prop.key), prop.files);
+assert.equal(prop.compatibilityHash, compatibleHash);
+assert.equal(prop.name, 'Tree');
+assert.equal(
+  await propCompatibilityHash({ ...(propAssetDefinition(propPayload, prop.key) as object), materials: [] }, prop.files),
+  undefined,
+  'incomplete legacy materials omit optional equivalence metadata without hiding the original asset',
+);
+assert.equal(
+  await propCompatibilityHash(propAssetDefinition(reindexed, '17'), prop.files),
+  compatibleHash,
+  'section-local model and material indices do not change imported definition equivalence',
+);
+model.subs[0].pos += 'changed geometry';
+assert.notEqual(
+  await propCompatibilityHash(propAssetDefinition(reindexed, '17'), prop.files),
+  compatibleHash,
+  'changed geometry cannot be certified as an equivalent imported definition',
+);
 const propReader = createAssetReader(async input => {
   const url = new URL(String(input), 'http://localhost');
   if (url.pathname === '/api/levels') return Response.json({ levels: maps.map(map => map.name), maps });

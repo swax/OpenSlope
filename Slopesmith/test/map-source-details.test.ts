@@ -15,6 +15,7 @@ assert.equal(
   'legacy IDs match the same local-first resolution as loading',
 );
 assert.deepEqual(mapSourceDetails('server:TRICKY_GARI'), { source: 'Server', game: 'SSX Tricky', map: 'Garibaldi' });
+assert.deepEqual(mapSourceDetails('server:SSX3_BRA2'), { source: 'Server', game: 'SSX 3', map: 'BRA2' });
 assert.deepEqual(mapSourceDetails('@models'), { source: 'Server', game: 'Custom', map: 'My Mountain' });
 configureWorkspace(true, async () => null);
 assert.deepEqual(mapSourceDetails('@import'), { source: 'Local', game: 'Custom', map: 'My Mountain' });

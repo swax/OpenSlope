@@ -883,7 +883,15 @@ function coversModel(vertexLighting: unknown, needed: number | undefined): verte
 
 /** The prop bake itself, on whichever thread calls it. The worker pool's entry point calls this directly;
  *  ordinary server code goes through `readLevelPropsWithCacheInfo`, which routes it off the main thread. */
-export async function buildLevelPropsUncached(io: MapDataSource, level: string): Promise<PropsPayload> {
+export interface PropSelection {
+  models: ReadonlySet<number>;
+  bodies: ReadonlySet<number>;
+}
+export async function buildLevelPropsUncached(
+  io: MapDataSource,
+  level: string,
+  selection?: PropSelection,
+): Promise<PropsPayload> {
   const lvl = safeDataName(level);
   const levelDir = join(io.root, lvl);
   // Instances.json and Effects.json are the two large reads here and are independent of one another.
@@ -918,7 +926,8 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
 
   // only models that are actually placed need geometry sent
   const used = new Set<number>();
-  for (const i of instJson.Instances) if (i.ModelID >= 0) used.add(i.ModelID);
+  for (const i of instJson.Instances)
+    if (i.ModelID >= 0 && (!selection || selection.models.has(i.ModelID))) used.add(i.ModelID);
   const [geoms, mats] = await Promise.all([
     readModelGeometries(io, lvl, used, readMeshThrowModelIds(effectsDocument, instJson.Instances)),
     readLevelMaterials(io, lvl),
@@ -987,6 +996,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   // receive the ModelObject rest hierarchy before the renderer applies placement/animation deltas.
   const collisionIds = new Set<string>();
   for (const instance of instJson.Instances) {
+    if (selection && !selection.models.has(instance.ModelID)) continue;
     if (instance.CollsionMode !== NATIVE_COLLISION_MODE.triangleProxy) continue;
     for (const path of instance.CollsionModelPaths ?? []) collisionIds.add(safeDataName(path.replace(/\.obj$/i, '')));
   }
@@ -1008,6 +1018,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   const collisionRest = new Map<number, THREE.Matrix4[]>();
   const identity = new THREE.Matrix4();
   for (const [sourceIndex, instance] of instJson.Instances.entries()) {
+    if (selection && !selection.models.has(instance.ModelID)) continue;
     if (instance.CollsionMode !== NATIVE_COLLISION_MODE.triangleProxy || !instance.CollsionModelPaths?.length) continue;
     const model = sourceModels?.Models[instance.ModelID];
     const objects = model?.ModelObjects ?? [];
@@ -1057,6 +1068,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
       physicsIds.add(instance.PhysicsIndex);
   const physicsBodies: NonNullable<PropsPayload['physicsBodies']> = [];
   for (const id of physicsIds) {
+    if (selection && !selection.bodies.has(id)) continue;
     const body = await readPhysicsBody(io, lvl, id, effectsDocument);
     if (!body?.decoded.spheres.length) continue;
     // The mass properties ride along with the shape: the shove solver needs the inverse inertia to divide an

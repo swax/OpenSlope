@@ -4,14 +4,11 @@ import { readJsonOr, writeJsonAtomic } from './fs-async';
 import { serialize } from './serialize';
 import { listProjects, openProject, requireProjectManager, type ProjectActor } from './projects';
 import { listLevelOrigins } from './routes/levels';
-import { classifyExportProvenance } from '../core/export/manifest';
+import { projectIsoCourses } from '../core/project/iso-requirements';
 import { referenceInRoom, type PublicCourse, type PublicCourseKind } from '../core/session/public-courses';
-import type { EditDoc } from '../core/doc/doc-edit';
-import { behaviourRecords } from '../core/props/defaults';
 import { isDiscCourse } from '../core/reference/disc-courses';
 import { mapDisplayName } from '../core/reference/map-game';
-import { parseAssetVersion } from '../core/reference/asset-version';
-import { findMapChoice, splitMapSource } from '../core/reference/map-source';
+import { findMapChoice } from '../core/reference/map-source';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
 import { withProjectAssets } from './project-assets';
 import { listImportedProps } from './routes/imported-props';
@@ -43,37 +40,7 @@ async function publications(): Promise<Publication[]> {
   return valid;
 }
 
-/** Asset levels are explicit refs; internal/generated and mountain-local banks never need a disc. */
-export function projectIsoCourses(doc: EditDoc, assetTextures: readonly string[] = []): string[] {
-  const levels = new Set<string>();
-  const level = (value: string | undefined) => {
-    if (value && !value.startsWith('@') && value.toLowerCase() !== 'custom')
-      levels.add((parseAssetVersion(value)?.map ?? splitMapSource(value).name).toUpperCase());
-  };
-  const texture = (value: string | undefined | null) => {
-    if (value) level(parseTexRef(value).level);
-  };
-  for (const ref of Object.values(doc.quadTex ?? {})) texture(ref);
-  for (const ref of assetTextures) texture(ref);
-  for (const model of doc.models ?? []) {
-    texture(model.texture);
-    for (const frame of model.frames ?? []) texture(frame);
-  }
-  for (const prop of doc.props ?? []) {
-    level(prop.level);
-    for (const record of behaviourRecords(prop)) level(record.nativeCollision?.physicsSource?.level);
-  }
-  for (const volume of doc.particleVolumes ?? []) texture(volume.texture);
-  if (doc.skybox?.source.kind === 'level') level(doc.skybox.source.level);
-  const textures = Object.fromEntries(Object.entries(doc.quadTex ?? {}).map(([id, ref]) => [id, parseTexRef(ref)]));
-  // Rails/gems and shared sound banks need one donor even without an explicit level ref. A custom sky's ring
-  // does not: the player draws the uploaded panorama on its own, and only an export cuts it against a disc's
-  // measured ring (docs/025), so `retail-sky-ring` stays an export reason without becoming a play requirement.
-  const { reasons } = classifyExportProvenance(doc, textures);
-  const needsDonor = reasons.some(reason => reason.startsWith('retail-') && reason !== 'retail-sky-ring');
-  if (needsDonor && !levels.size) levels.add('GARI');
-  return [...levels].sort();
-}
+export { projectIsoCourses };
 
 export async function publicCourses(): Promise<PublicCourse[]> {
   const [published, projects, maps] = await Promise.all([publications(), listProjects(), listLevelOrigins()]);

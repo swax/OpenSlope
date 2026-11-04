@@ -1,5 +1,28 @@
 import type { PublicCourse } from '../../core/session/public-courses';
 import { canonicalDiscCourse, discContainsCourse, discCourseName } from '../../core/reference/disc-courses';
+import { bundleAssetRequirements } from '../../core/project/iso-requirements';
+import type { ProjectBundle } from '../../core/project/transfer';
+
+export function localProjectCourse(project: { id: string; name: string }, bundle: ProjectBundle | undefined): PublicCourse {
+  const { isoCourses, referenceMaps } = bundle ? bundleAssetRequirements(bundle) : { isoCourses: [], referenceMaps: [] };
+  return {
+    id: project.id,
+    localProjectId: project.id,
+    kind: 'project',
+    name: project.name,
+    retailData: isoCourses.length > 0,
+    isoCourses,
+    ...(referenceMaps.length ? { referenceMaps } : {}),
+    ...(bundle?.isoAliases ? { isoAliases: bundle.isoAliases } : {}),
+  };
+}
+
+export function requiredSourceMapState(course: PublicCourse, cached: readonly string[]) {
+  return (course.referenceMaps ?? []).map(name => ({
+    name,
+    loaded: cached.some(slot => slot.toUpperCase() === name.toUpperCase()),
+  }));
+}
 
 export const publicCourseLabel = (course: PublicCourse): string =>
   course.kind === 'reference' && course.name !== course.id ? course.name : course.name.replace(/[_-]/g, ' ');

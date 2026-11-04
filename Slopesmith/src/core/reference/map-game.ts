@@ -79,6 +79,41 @@ export function mapDisplayName(source: MapSourceChoice): string {
   return splitMapSource(source.name).name;
 }
 
+const GAME_NAME_QUALIFIERS: Readonly<Record<string, readonly string[]>> = {
+  ssx: ['SSX'],
+  'ssx-tricky': ['SSX Tricky'],
+  'ssx-tricky-gba': ['SSX Tricky (GBA)', 'SSX Tricky'],
+  'ssx-3': ['SSX 3'],
+  'ssx-3-beta': ['SSX 3 Beta', 'SSX 3'],
+  'ssx-on-tour': ['SSX On Tour', 'On Tour'],
+  '1080-avalanche': ['1080° Avalanche', '1080 Avalanche'],
+  'jonny-moseley-mad-trix': ['Jonny Moseley Mad Trix', 'Mad Trix'],
+};
+
+/** Use only when the game is already shown. Preserve layout/variant qualifiers and authored map names. */
+export function mapNameInGame(source: MapSourceChoice, title = mapDisplayName(source)): string {
+  const qualifiers = GAME_NAME_QUALIFIERS[mapGame(source)] ?? [];
+  let result = title;
+  let previous: string;
+  do {
+    previous = result;
+    for (const game of qualifiers) {
+      const prefix = `${game} · `;
+      const suffix = ` (${game})`;
+      if (result.toLowerCase().startsWith(prefix.toLowerCase())) result = result.slice(prefix.length);
+      if (result.toLowerCase().endsWith(suffix.toLowerCase())) result = result.slice(0, -suffix.length);
+    }
+  } while (previous !== result);
+  return result || title;
+}
+
+/** A mixed-game list needs one explicit owner, independently of its imported or legacy title spelling. */
+export function mapLabelWithGame(source: MapSourceChoice, title?: string): string {
+  const game = mapGame(source);
+  const name = mapNameInGame(source, title);
+  return game === 'unknown' ? name : `${mapGameLabel(game)} · ${name}`;
+}
+
 export interface MapSourceChoice {
   name: string;
   source?: MapSource;

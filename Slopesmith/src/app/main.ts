@@ -71,6 +71,8 @@ import { LIB_GRID_ICON, PROP_LIB_ICON } from './ui/components/icons';
 import { DockTab } from './ui/components/dock-tab';
 import { createDialogs } from './ui/chrome/dialogs';
 import { fetchJson } from './net/fetch-json';
+import { matchImportedAssets } from './public/imported-assets';
+import { reportImportedAssetReplacements } from './net/asset-versions';
 import { createScenePanel } from './ui/chrome/scene-panel';
 import { createBrowserViews } from './ui/browser-views';
 import { REF_LOAD_OFFSET_X } from './viewport/constants';
@@ -1139,7 +1141,7 @@ const assetUpgrades = createAssetUpgrades({
     !projectSync.isPreviewing() &&
     !projectSync.conflict() &&
     (isLocalWorkspace() || session.mayWrite()),
-  sources: assetMigrationSources,
+  sources: () => assetMigrationSources(false),
   palette: {
     references: () => palette.textureReferences(),
     upgrade: replacements => {
@@ -3424,6 +3426,11 @@ async function loadMountain() {
         await Promise.all([library.reloadCatalogue(), propLib.reloadCatalogue(), loadCustomSounds(true), initSky()]);
       }
     }
+    loadStatus.update(token, { label: 'Matching imported assets', detail: 'Resolving locally available versions' });
+    await loadStatus.afterPaint();
+    const matched = await matchImportedAssets(store.mdoc);
+    reportImportedAssetReplacements(matched.replacements);
+    if (matched.replacements.length) log(`Using ${matched.replacements.length} compatible local assets.`);
     cancelPastePlacement(false);
     cancelBridge(false, false);
     store.selected = null;

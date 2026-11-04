@@ -4,7 +4,7 @@ import { referenceRoom } from '../../core/session/public-courses';
 import { discContainsCourse, discCourseName, isDiscCourse } from '../../core/reference/disc-courses';
 import { currentAccount } from '../net/account';
 import { localEditorUrl } from '../navigation';
-import { deleteLocalProject, listLocalProjects } from '../state/local-projects';
+import { deleteLocalProject, openLocalProjects } from '../state/local-projects';
 import type { ClientProject } from '../state/project-sync';
 import type { PresenceEntry, SessionMember } from '../net/session-channel';
 import { toast } from '../ui/components/toast';
@@ -14,10 +14,14 @@ import { linkLocalMountainFolder, refreshLocalMountainFolder } from '../mountain
 import { listMountainFolders } from '../state/folder-autosave';
 import type { PeerMarks } from '../viewport/scene/peers';
 import { cachedIsoCourses, needsCollisionSoundUpdate } from './iso-cache';
-import { publicCourseGroups, publicCourseLabel, requiredIsoState } from './course-list';
+import { localProjectCourse, publicCourseGroups, publicCourseLabel, requiredIsoState, requiredSourceMapState } from './course-list';
 import { element, publicJson } from './dom';
 import { publicHeader } from './header';
-import { isoRequirements, isoStatusBadges } from './iso-status';
+import { isoRequirements, isoStatusBadges, mapRequirementsDetails, type RequirementSnapshot } from './iso-status';
+import { projectAssetRequirements } from '../../core/project/iso-requirements';
+import type { EditDoc } from '../../core/doc/doc-edit';
+import type { PropsPayload } from '../../core/reference/props';
+import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { courseEditorUrl, isoManagementUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
 import type { PublicPlayer } from './player';
 import { mapHeading, publicGlyph } from './presentation';
@@ -30,6 +34,9 @@ import { createMapLibrary } from './map-library';
 import { createReferenceLibrary } from './reference-library';
 import { showNewMapDialog, showImportMountainDialog } from './new-map';
 import { createActionMenu } from './game-actions';
+import { createLoadStatus } from '../ui/components/load-status';
+import { assetReadFailures, importedAssetReplacements, watchAssetReadFailures } from '../net/asset-versions';
+import { mapLabelWithGame } from '../../core/reference/map-game';
 
 function exportMenu(course: PublicCourse, actions: HTMLButtonElement[] = []) {
   const button = element('button', '', 'Export…');
@@ -41,7 +48,8 @@ function exportMenu(course: PublicCourse, actions: HTMLButtonElement[] = []) {
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
-  document.getElementById('load-status')?.classList.remove('show');
+  const loadStatus = createLoadStatus();
+  loadStatus.cancel(0);
   const account = await currentAccount();
   const offline = account.accounts === 'open' && account.offline;
   const member: SessionMember | null =
@@ -57,6 +65,8 @@ export async function showPublicHome(): Promise<void> {
   if (friendRoom && !/^[a-zA-Z0-9_-]{1,64}$/.test(friendRoom)) friendRoom = null;
   const playUrl = (course: PublicCourse) => {
     const url = new URL(publicCourseUrl(course));
+    const compatibility = new URL(location.href).searchParams.get('compatible');
+    if (compatibility === '0' || compatibility === '1') url.searchParams.set('compatible', compatibility);
     if (friendRoom) url.searchParams.set('room', friendRoom);
     return url.href;
   };
@@ -88,15 +98,8 @@ export async function showPublicHome(): Promise<void> {
   let cached = await cachedIsoCourses().catch(() => [] as string[]);
   let savedProjects: ClientProject[] = [];
   let linkedFolders = new Map<string, string>();
-  const localCourses = (): PublicCourse[] =>
-    savedProjects.map(project => ({
-      id: project.id,
-      localProjectId: project.id,
-      kind: 'project',
-      name: project.name,
-      retailData: false,
-      isoCourses: [],
-    }));
+  let savedCourses: PublicCourse[] = [];
+  const localCourses = () => savedCourses;
   const privateCourse = (project: ClientProject): PublicCourse => ({
     id: project.id,
     kind: 'project',
@@ -105,6 +108,23 @@ export async function showPublicHome(): Promise<void> {
     retailData: false,
     isoCourses: [],
   });
+  async function privateRequirements(project: ClientProject): Promise<RequirementSnapshot> {
+    const [snapshot, levels] = await Promise.all([
+      publicJson<{ document: EditDoc }>(`/api/projects/${encodeURIComponent(project.id)}`),
+      publicJson<{ maps: { name: string; course?: string }[] }>('/api/levels'),
+    ]);
+    const imported = snapshot.document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)
+      ? await publicJson<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(project.id)}`) : null;
+    const textures = imported?.materials.flatMap(material => [material.tex, ...(material.frames ?? [])])
+      .filter((ref): ref is string => !!ref) ?? [];
+    const aliases = Object.fromEntries(levels.maps.filter(map => map.course).map(map => [map.name, map.course!]));
+    return {
+      course: { ...privateCourse(project), ...projectAssetRequirements(snapshot.document, textures, aliases) },
+      available: [...cached, ...levels.maps.flatMap(map => [map.name, ...(map.course ? [map.course] : [])])],
+      note: 'Checked against the server library and maps loaded on this device.',
+      manageUrl: isoManagementUrl(),
+    };
+  }
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
@@ -192,6 +212,13 @@ export async function showPublicHome(): Promise<void> {
   localSection.append(localTitle, localGrid, localEmpty);
   const requirements = element('details', 'public-requirements-host');
   requirements.hidden = true;
+  const requirementsSummary = element('summary', 'public-assets-summary');
+  const requirementsCount = element('span', 'public-assets-count');
+  const requirementsMissing = element('span', 'public-assets-count');
+  const requirementsCompatible = element('span', 'public-assets-count public-assets-compatible');
+  requirementsMissing.hidden = requirementsCompatible.hidden = true;
+  requirementsSummary.append(element('span', 'public-assets-label', 'Assets'), requirementsCount, requirementsMissing, requirementsCompatible);
+  requirements.append(requirementsSummary);
   const status = element('p', 'public-status', 'Loading public maps…');
   status.setAttribute('role', 'status');
   const stop = element('button', 'public-stop', '');
@@ -229,27 +256,77 @@ export async function showPublicHome(): Promise<void> {
 
   function showRequirements() {
     manage.href = isoManagementUrl(selected ?? undefined);
-    requirements.replaceChildren();
-    requirements.hidden = !selected?.isoCourses.length;
-    document.body.classList.toggle('public-map-assets', !!selected?.isoCourses.length);
+    const required = !!(selected?.isoCourses.length || selected?.referenceMaps?.length);
+    requirements.hidden = !required;
+    document.body.classList.toggle('public-map-assets', required);
     if (selected) {
-      const states = requiredIsoState(selected.isoCourses, cached);
+      const states = [...requiredIsoState(selected.isoCourses, cached), ...requiredSourceMapState(selected, cached)];
       const loaded = states.filter(state => state.loaded).length;
       const total = states.length;
-      const summary = element('summary', 'public-assets-summary');
-      summary.setAttribute('aria-label', `ISO assets: ${loaded} of ${total} maps loaded`);
-      summary.title = `${loaded} of ${total} ISO maps loaded`;
+      const summary = requirementsSummary;
+      summary.setAttribute('aria-label', `${selected.referenceMaps?.length ? 'Assets' : 'ISO assets'}: ${loaded} of ${total} maps loaded`);
+      summary.title = `${loaded} of ${total} maps loaded`;
       summary.dataset.complete = String(loaded === total);
-      summary.append(
-        element('span', 'public-assets-label', 'Assets'),
-        element('span', 'public-assets-count', `${loaded}/${total}`),
-      );
+      requirementsCount.textContent = `${loaded}/${total}`;
+      const failures = assetReadFailures();
+      requirementsMissing.hidden = !failures.length;
+      requirementsMissing.textContent = `${failures.length} missing`;
+      if (failures.length) {
+        summary.dataset.complete = 'false';
+        summary.setAttribute('aria-label', `${loaded} of ${total} source maps loaded; ${failures.length} asset version${failures.length === 1 ? '' : 's'} unavailable`);
+      }
       const assets = isoRequirements(selected, cached);
+      assets.append(element('p', '', 'The map count shows imported sources. Individual textures and props must also match the saved asset versions.'));
+      const replacements = importedAssetReplacements();
+      requirementsCompatible.hidden = !replacements.length;
+      requirementsCompatible.textContent = `${replacements.length} compatible`;
+      if (replacements.length) {
+        summary.setAttribute('aria-label', `${summary.getAttribute('aria-label')}; ${replacements.length} matching imported version${replacements.length === 1 ? '' : 's'} used`);
+        assets.append(element('p', '', `Using ${replacements.length} matching imported version${replacements.length === 1 ? '' : 's'} for this play session. Saved references are unchanged.`));
+        const exact = element('a', 'public-manage-iso', 'Use exact saved versions');
+        const url = new URL(location.href);
+        url.searchParams.set('compatible', '0');
+        exact.href = url.href;
+        assets.append(exact);
+      }
+      if (failures.length) {
+        assets.append(element('h2', '', `Unavailable asset versions (${failures.length})`));
+        const list = element('ul', 'public-iso-badges');
+        if (requirements.open) for (const failure of failures.slice(0, 50)) {
+          const { expected } = failure;
+          const item = element('li', 'public-iso-badge public-asset-failure missing');
+          const mismatch = failure.attempts.some(attempt => attempt.reason === 'Different asset version');
+          item.append(element('span', '', `${mapLabelWithGame({ name: expected.map, game: expected.game })} · ${expected.kind ?? 'bank'} ${expected.key ?? ''} · ${mismatch ? 'Imported version differs' : 'Matching source unavailable'}`),
+            element('code', '', failure.id));
+          list.append(item);
+        }
+        assets.append(list);
+        if (new URL(location.href).searchParams.get('compatible') === '0') {
+          const useImported = element('a', 'public-manage-iso', 'Use matching imported assets');
+          const url = new URL(location.href);
+          url.searchParams.delete('compatible');
+          useImported.href = url.href;
+          assets.append(useImported);
+        }
+        if (failures.length > 50) assets.append(element('p', '', `Showing the first 50 of ${failures.length} unavailable versions.`));
+      }
       if (loaded < total && selected.kind === 'project')
         assets.querySelector('p')!.textContent = 'Load the listed maps to restore missing textures and props. You can still ride the custom terrain.';
-      requirements.append(summary, assets);
+      const previous = requirements.querySelector(':scope > .public-iso-requirements');
+      if (previous) previous.replaceWith(assets);
+      else requirements.append(assets);
     }
   }
+  let requirementsFrame = 0;
+  const stopWatchingFailures = watchAssetReadFailures(() => {
+    if (!requirements.isConnected) { stopWatchingFailures(); return; }
+    if (!requirementsFrame) requirementsFrame = requestAnimationFrame(() => {
+      requirementsFrame = 0;
+      if (requirements.isConnected) showRequirements();
+      else stopWatchingFailures();
+    });
+  });
+  requirements.addEventListener('toggle', () => { if (requirements.open) showRequirements(); });
   document.addEventListener('pointerdown', event => {
     if (!requirements.contains(event.target as Node)) requirements.open = false;
   });
@@ -299,6 +376,8 @@ export async function showPublicHome(): Promise<void> {
       edit.prepend(publicGlyph('editor'));
       controls.append(play, edit, exportMenu(privateCourse(project)));
       card.append(courseHeading(displayName, 'mountain', project.id), metadata, controls);
+      const assets = mapRequirementsDetails(privateCourse(project), cached, () => privateRequirements(project));
+      if (assets) controls.before(assets);
       privateGrid.append(card);
     }
     const newMap = element('article', 'public-map-tile public-new-map');
@@ -318,6 +397,7 @@ export async function showPublicHome(): Promise<void> {
     newMap.append(createControls);
     savedGrid.replaceChildren(newMap);
     for (const project of savedProjects) {
+      const course = localCourses().find(course => course.id === project.id)!;
       const card = element('article', 'public-course public-map-tile');
       card.setAttribute('aria-label', project.name);
       card.dataset.kind = 'local';
@@ -356,6 +436,8 @@ export async function showPublicHome(): Promise<void> {
       });
       controls.append(open, edit, exportMenu(localCourses().find(course => course.id === project.id)!, [remove]));
       card.append(controls);
+      const assets = mapRequirementsDetails(course, cached);
+      if (assets) controls.before(assets);
       savedGrid.append(card);
     }
     serverEmpty.hidden = !!groups.server.length;
@@ -444,7 +526,14 @@ export async function showPublicHome(): Promise<void> {
   renderCourses();
   async function refreshLocalMaps() {
     try {
-      [savedProjects, linkedFolders] = await Promise.all([listLocalProjects(), listMountainFolders()]);
+      const projects = await openLocalProjects();
+      try {
+        savedProjects = projects.list();
+        savedCourses = savedProjects.map(project => localProjectCourse(project, projects.bundle(project.id)));
+      } finally {
+        projects.close();
+      }
+      linkedFolders = await listMountainFolders();
       savedNote.textContent = 'Saved on this device.';
       renderCourses();
     } catch {
@@ -585,7 +674,12 @@ export async function showPublicHome(): Promise<void> {
     }
     preparing = true;
     renderCourses();
+    const loading = loadStatus.begin({ title: `Loading ${publicCourseLabel(course)}`, label: 'Preparing the mountain…' });
+    // Preparation reports stages rather than a measured percentage.
+    document.getElementById('load-progress')!.removeAttribute('aria-valuenow');
+    status.textContent = '';
     try {
+      await loadStatus.afterPaint();
       showRequirements();
       if (course.kind === 'reference' && (await needsCollisionSoundUpdate(course.isoCourses))) {
         const message = 'Choose your ISO once more to restore collision sounds.';
@@ -614,7 +708,7 @@ export async function showPublicHome(): Promise<void> {
       const { preparePublicPlayer } = await import('./player');
       player = await preparePublicPlayer(course, document.getElementById('viewport')!, session, {
         progress: text => {
-          status.textContent = text;
+          loadStatus.update(loading, { label: text });
         },
         onPlaying: playing => {
           mapControls.setPlaying(playing);
@@ -638,16 +732,19 @@ export async function showPublicHome(): Promise<void> {
       inviteFriends.hidden = !session.usesPlayRelay();
       mapControls.setPlaying(false);
       status.textContent = '';
+      await loadStatus.finish(loading, { label: 'Ready to ride' });
       document.body.classList.add('public-ready');
       refreshPeers();
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error);
+      await loadStatus.fail(loading, status.textContent);
       if (main.classList.contains('public-in-world')) {
         main.append(status);
         document.body.classList.add('public-ready');
         status.textContent += ' Return to Maps to try again.';
       }
     } finally {
+      loadStatus.cancel(loading);
       preparing = false;
       renderCourses();
     }

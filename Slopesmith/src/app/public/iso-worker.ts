@@ -212,6 +212,7 @@ async function handle({ data }: MessageEvent<{ file: File; courses: string[]; op
         store.put({
           course,
           version: isoCourseCacheVersion(course),
+          revision: crypto.randomUUID(),
           files,
           displayName: metadata.DisplayName,
           layout: normalizeCourseLayout(metadata),

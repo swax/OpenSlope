@@ -92,7 +92,12 @@ try {
   await page.reload();
   await page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true }).check();
   const card = page.locator('.public-iso-map[data-course="SSX3_A"]');
-  await card.getByRole('heading', { name: 'A (SSX 3)', exact: true }).waitFor();
+  await card.getByRole('heading', { name: 'A', exact: true }).waitFor();
+  assert.match(
+    await card.locator('.library-map-origin').innerText(),
+    /SSX 3/,
+    'the owner remains visible beside the title',
+  );
   await gameActions.click();
   await page.getByRole('button', { name: 'Refresh image', exact: true }).click();
   await card.getByRole('heading', { name: 'Disc Village', exact: true }).waitFor({ timeout: 90000 });

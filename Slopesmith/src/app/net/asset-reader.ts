@@ -11,12 +11,32 @@ import { mapSourceId, splitMapSource } from '../../core/reference/map-source';
 import type { PropsPayload } from '../../core/reference/props';
 import { assetDefinitionHash, propAssetDefinition, sha256 } from '../../core/reference/asset-hash';
 import { safeDataName } from '../../core/export/names';
+import type { AssetSelection } from '../../shared/map-asset-manifest';
 
 export type AssetTransport = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export interface AssetReadFailure {
+  id: string;
+  expected: AssetVersion;
+  attempts: { location: string; reason: string }[];
+}
 
 /** A source is only a candidate. Its descriptor must match before it can supply an immutable identity. */
-export function createAssetReader(transport: AssetTransport, bind: (id: string, location: string) => void = () => {}) {
+export function createAssetReader(
+  transport: AssetTransport,
+  onBind: (id: string, location: string) => void = () => {},
+  changed: () => void = () => {},
+) {
   const metadata = new Map<string, Promise<AssetVersion | AssetManifest>>();
+  const absent = new Set<string>();
+  const failures = new Map<string, AssetReadFailure>();
+  let generation = 0;
+  function bind(id: string, location: string) {
+    if (failures.delete(id)) changed();
+    onBind(id, location);
+  }
+  const selected = new Map<string, ReferenceAsset>();
+  const selectedTextures = new Map<string, string>();
+  const selections = new Map<string, Promise<AssetManifest>>();
   const crowds = new Map<string, Promise<CrowdAssetManifest>>();
   let catalogue: Promise<MapSourceChoice[]> | undefined;
   async function maps() {
@@ -37,13 +57,18 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
   }
   async function descriptor(location: string, manifest: boolean): Promise<AssetVersion | AssetManifest> {
     const key = `${manifest}:${location}`;
+    if (absent.has(key)) throw new Error('The selected map assets are unavailable.');
     let pending = metadata.get(key);
     if (!pending) {
+      const started = generation;
       pending = (async () => {
         const response = await transport(
           `/api/map-asset-${manifest ? 'manifest' : 'version'}?level=${encodeURIComponent(location)}`,
         );
-        if (!response.ok) throw new Error('The selected map assets are unavailable.');
+        if (!response.ok) {
+          if (response.status === 404 && generation === started) absent.add(key);
+          throw new Error('The selected map assets are unavailable.');
+        }
         const value = (await response.json()) as AssetVersion | AssetManifest;
         if (
           manifest
@@ -92,12 +117,46 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
   }
   return {
     maps,
+    failures: () => [...failures.values()],
     manifest: (location: string) => descriptor(location, true) as Promise<AssetManifest>,
+    selectedManifest(location: string, selection: AssetSelection) {
+      const key = `${location}:${JSON.stringify(selection)}`;
+      let pending = selections.get(key);
+      if (!pending) {
+        const started = generation;
+        pending = (async () => {
+          const query = new URLSearchParams({ level: location, select: JSON.stringify(selection) });
+          const response = await transport(`/api/map-asset-manifest?${query}`);
+          if (!response.ok) throw new Error('The selected map assets are unavailable.');
+          const manifest = (await response.json()) as AssetManifest;
+          if (manifest.schema !== 'openslope-assets/v1' || !Array.isArray(manifest.assets))
+            throw new Error('The source returned an invalid asset descriptor.');
+          if (started !== generation) throw new Error('The asset workspace has changed.');
+          for (const asset of manifest.assets) {
+            selected.set(`${location}:${asset.id}`, asset);
+            if (asset.kind === 'texture') selectedTextures.set(`${location}:${asset.key.toLowerCase()}`, asset.id);
+          }
+          return manifest;
+        })();
+        selections.set(key, pending);
+        void pending.catch(() => {
+          if (selections.get(key) === pending) selections.delete(key);
+        });
+      }
+      return pending;
+    },
     version: (location: string) => descriptor(location, false) as Promise<AssetVersion>,
     clear() {
+      generation++;
       catalogue = undefined;
       metadata.clear();
+      selected.clear();
+      selectedTextures.clear();
+      selections.clear();
+      absent.clear();
       crowds.clear();
+      failures.clear();
+      changed();
     },
     /** Crowd animation belongs to the shared frame bank, not the model's ordinary material closure. */
     async crowdFrames(id: string, names: readonly string[]): Promise<string[]> {
@@ -110,6 +169,10 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
         return [...names];
       for (const location of await locations(expected)) {
         try {
+          if (selected.has(`${location}:${id}`)) {
+            const frames = names.map(name => selectedTextures.get(`${location}:${name.toLowerCase()}`));
+            if (frames.every((frame): frame is string => !!frame)) return frames;
+          }
           if (splitMapSource(location).source === 'server' && !metadata.has(`true:${location}`)) {
             try {
               const crowd = await crowdDescriptor(location);
@@ -203,6 +266,8 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
       const id = url.searchParams.get(parameter) ?? '',
         expected = parseAssetVersion(id);
       if (!expected) return transport(input, init);
+      const started = generation;
+      const replacedWorkspace = () => Response.json({ error: 'The asset workspace has changed.' }, { status: 409 });
       if (!assetRequestCovered(expected, url.pathname, url.searchParams))
         return Response.json({ error: 'This asset identity does not cover the requested resource.' }, { status: 404 });
       const attempts: { location: string; reason: string }[] = [];
@@ -210,14 +275,22 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
         try {
           let asset: ReferenceAsset | undefined;
           if (expected.kind)
-            asset = ((await descriptor(location, true)) as AssetManifest).assets.find(asset => asset.id === id);
+            asset =
+              selected.get(`${location}:${id}`) ??
+              ((await descriptor(location, true)) as AssetManifest).assets.find(asset => asset.id === id);
           else if (((await descriptor(location, false)) as AssetVersion).id !== id)
             throw new Error('Different asset version');
           if (expected.kind && !asset) throw new Error('Different asset version');
           const candidate = new URL(url),
             source = splitMapSource(location).source!;
+          const ready = (response: Response) => {
+            if (generation !== started) return replacedWorkspace();
+            bind(id, location);
+            return response;
+          };
           candidate.searchParams.set('mapSource', source);
           candidate.searchParams.set(parameter, source === 'server' ? id : splitMapSource(location).name);
+          if (source === 'local' && asset && url.pathname === '/api/props') candidate.searchParams.set('asset', id);
           const response = await transport(candidate, init);
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           if (url.pathname === '/api/props/materials') {
@@ -227,8 +300,7 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
               .map(key => entries.find(([name]) => name.toLowerCase() === key.toLowerCase()))
               .find(entry => !!entry);
             if (own) body.tables[safeDataName(id)] = own[1];
-            bind(id, location);
-            return Response.json(body);
+            return ready(Response.json(body));
           }
           if (asset && url.pathname === '/api/texture') {
             const path = `textures/${url.searchParams.get('name') ?? ''}`.toLowerCase();
@@ -244,17 +316,17 @@ export function createAssetReader(transport: AssetTransport, bind: (id: string, 
                 : payload.physicsBodies?.find(body => String(body.id) === asset.key);
             if (!definition || (await assetDefinitionHash(definition, {})) !== asset.payloadHash)
               throw new Error('Prop bytes differ from the manifest');
-            bind(id, location);
-            return Response.json({ ...propAssetPayload(payload, asset), level: id });
+            return ready(Response.json({ ...propAssetPayload(payload, asset), level: id }));
           }
-          bind(id, location);
-          return response;
+          return ready(response);
         } catch (error) {
           if (init?.signal?.aborted) throw error;
+          if (generation !== started) return replacedWorkspace();
           attempts.push({ location, reason: error instanceof Error ? error.message : String(error) });
-          metadata.delete(`${!!expected.kind}:${location}`);
         }
       }
+      failures.set(id, { id, expected, attempts });
+      changed();
       return Response.json(
         {
           error: `Matching ${expected.kind ?? 'bank'} asset version ${expected.hash.slice(0, 8)} for ${expected.map} is unavailable.`,

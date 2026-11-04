@@ -83,6 +83,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [requestLogEndpoint(), dependencyNoticesPlugin(process.cwd()), offlinePlugin()],
+    define: { 'import.meta.env.VITE_ASSET_BUILD': JSON.stringify(Date.now().toString(36)) },
     // Loopback only: the API this proxies to is unauthenticated, so reaching the editor from a phone on the
     // same Wi-Fi is a deliberate act — `npm run dev -- --host` binds the LAN address on both halves and then
     // http://<desktop-ip>:5179 works (the terminal prints the Network: URL on start).

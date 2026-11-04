@@ -1876,15 +1876,26 @@ try {
     'an invalid ISO creates no stale disc rows',
   );
 
-  // A named shared link summarizes requirements and shows each donor on hover.
+  // A named shared link lists each missing donor directly in its Assets panel.
   await guest.goto(`${origin}/play/BORROWED_RUN`);
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await guest.locator('.public-header .public-assets-summary').click();
   const deps = guest.getByRole('region', { name: 'Required ISO maps', exact: true });
-  assert.equal(await deps.locator('.public-iso-badge').count(), 1);
-  await deps.locator('.public-iso-summary').hover();
-  assert.match(await guest.locator('.sp-tip.show').innerText(), /Garibaldi.*Not loaded/);
-  assert.match(await guest.locator('.sp-tip.show').innerText(), /FIXTURE.*Not loaded/);
+  assert.equal(await deps.locator('.public-iso-badge').count(), 2);
+  assert.equal(
+    await deps
+      .locator('.public-iso-badge')
+      .filter({ hasText: /Garibaldi.*Not loaded/ })
+      .count(),
+    1,
+  );
+  assert.equal(
+    await deps
+      .locator('.public-iso-badge')
+      .filter({ hasText: /FIXTURE.*(?:Not loaded|Source map assets needed)/ })
+      .count(),
+    1,
+  );
   await deps.getByRole('link', { name: 'Load ISO maps', exact: true }).click();
   await closeCommunity(guest);
   assert.equal(new URL(guest.url()).pathname, '/');
@@ -1922,10 +1933,20 @@ try {
     'the ISO manager returns to the named player route',
   );
   await guest.locator('.public-header .public-assets-summary').click();
-  assert.equal(await deps.locator('.public-iso-summary.missing').innerText(), 'Requirements unfulfilled (1)');
-  await deps.locator('.public-iso-summary').hover();
-  assert.match(await guest.locator('.sp-tip.show').innerText(), /FIXTURE · Loaded/);
-  assert.match(await guest.locator('.sp-tip.show').innerText(), /Garibaldi.*Not loaded/);
+  assert.equal(
+    await deps
+      .locator('.public-iso-badge.loaded')
+      .filter({ hasText: /FIXTURE.*Loaded/ })
+      .count(),
+    1,
+  );
+  assert.equal(
+    await deps
+      .locator('.public-iso-badge.missing')
+      .filter({ hasText: /Garibaldi.*Not loaded/ })
+      .count(),
+    1,
+  );
   await guest.screenshot({ path: join(root, 'map-dependency-badges.png') });
 
   await guest.goto(origin);

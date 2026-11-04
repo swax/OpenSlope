@@ -48,3 +48,25 @@ export function propAssetDefinition(payload: PropsPayload, key: string): unknown
 export async function assetDefinitionHash(definition: unknown, files: Record<string, string>): Promise<string> {
   return sha256(new TextEncoder().encode(canonicalAssetJson(['openslope-asset/v1', definition, files])));
 }
+
+/** Source-local model/material numbers do not distinguish the same reusable imported definition. */
+export async function propCompatibilityHash(
+  definition: unknown,
+  files: Record<string, string>,
+): Promise<string | undefined> {
+  const value = definition as { model: PropsPayload['models'][number]; materials: PropsPayload['materials'] };
+  const ids = [...new Set(value.model.subs.map(sub => sub.mat))];
+  // Optional compatibility metadata must not hide an otherwise addressable legacy prop.
+  if (ids.some(id => !value.materials.some(material => material.id === id))) return;
+  return assetDefinitionHash(
+    {
+      ...value,
+      model: { ...value.model, id: 0, subs: value.model.subs.map(sub => ({ ...sub, mat: ids.indexOf(sub.mat) })) },
+      materials: ids.map((id, index) => {
+        const material = value.materials.find(material => material.id === id)!;
+        return { ...material, id: index };
+      }),
+    },
+    files,
+  );
+}

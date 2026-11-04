@@ -1,4 +1,4 @@
-import { mapDisplayName, mapGame, mapGameLabel, type MapSourceChoice } from '../../../core/reference/map-game';
+import { mapNameInGame, mapGame, mapGameLabel, type MapSourceChoice } from '../../../core/reference/map-game';
 import { findMapChoice, splitMapSource, type MapSource } from '../../../core/reference/map-source';
 import { registerMapSources } from '../../state/map-sources';
 import { assetLocation } from '../../net/asset-versions';
@@ -126,7 +126,7 @@ export class GameMapSelect {
     for (const map of this.maps.filter(
       map => sourceOf(map) === this.sourceSelect.value && mapGame(map) === this.gameSelect.value,
     ))
-      this.mapSelect.add(new Option(map.label ?? mapDisplayName(map), map.name));
+      this.mapSelect.add(new Option(map.label ?? mapNameInGame(map), map.name));
     if ([...this.mapSelect.options].some(option => option.value === selected)) this.mapSelect.value = selected;
     this.mapSelect.disabled =
       this.mapSelect.options.length === 0 || (this.none !== undefined && !this.gameSelect.value);

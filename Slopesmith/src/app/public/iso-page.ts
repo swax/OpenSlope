@@ -17,6 +17,8 @@ import {
 import { element, publicJson } from './dom';
 import { publicHeader } from './header';
 import { isoStatusBadges } from './iso-status';
+import { readLocalProject } from '../state/local-projects';
+import { localProjectCourse } from './course-list';
 import { createIsoLoadQueue } from './iso-load-queue';
 import { createActionMenu, createGameActionsMenu } from './game-actions';
 import { courseEditorUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
@@ -24,7 +26,7 @@ import { mapAvailability, mapHeading, publicGlyph } from './presentation';
 import { libraryGameCourses, libraryGameSources, type LibraryCounts } from './library-courses';
 import type { ServerReference } from '../../shared/reference-transfer';
 import type { LibraryFilter } from './map-library';
-import { mapGame, mapGameLabel } from '../../core/reference/map-game';
+import { mapGame, mapGameLabel, mapNameInGame } from '../../core/reference/map-game';
 import { confirmAction } from '../ui/components/prompts';
 import { EDITOR_PATH } from '../navigation';
 import type { Account } from '../net/account';
@@ -351,7 +353,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     const row = element('article', 'public-course public-iso-map public-map-tile');
     row.dataset.course = slot;
     row.dataset.kind = 'reference';
-    const heading = mapHeading(discCourseName(slot), 'mountain');
+    const heading = mapHeading(mapNameInGame({ name: slot }), 'mountain');
     const online = activityCounter('map');
     online.set(activity ? (activity.courses[referenceRoom(slot)] ?? 0) : null);
     heading.append(online.el);
@@ -556,7 +558,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       busy || !missing.some(slot => sourceFor(slot) && !['queued', 'loading'].includes(loads.state(slot)?.phase ?? ''));
     const nextDependencies = JSON.stringify(required.map(slot => [slot, discContainsCourse(cached, slot)]));
     if (target && required.length && dependencyState !== nextDependencies) {
-      dependencies.replaceChildren(element('h2', '', 'Required maps'), isoStatusBadges(required, cached));
+      dependencies.replaceChildren(element('h2', '', 'Required maps'), isoStatusBadges(required, cached, false));
       dependencies.hidden = false;
       dependencyState = nextDependencies;
     }
@@ -627,14 +629,16 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       }
       const { row, badge, button, message, open, inspect, reference, exportMap, menu, controls, progress, course, title } = card;
       const name = entry.name;
+      const titleName = mapNameInGame({ ...entry.reference, name: slot }, name);
       row.setAttribute('aria-label', name);
       row.dataset.disc = String(entry.disc || entry.loaded);
       row.dataset.server = String(entry.server);
       row
         .querySelector('.public-map-symbol')
         ?.replaceChildren(mapAvailability({ disc: entry.disc || entry.loaded, server: entry.server, public: !!entry.publication }));
-      if (title.textContent !== name) {
-        title.textContent = course.name = name;
+      if (title.textContent !== titleName) title.textContent = titleName;
+      if (course.name !== name) {
+        course.name = name;
         open.href = publicCourseUrl(course);
         inspect.href = courseEditorUrl(course);
         open.setAttribute('aria-label', `Play ${name}`);
@@ -920,12 +924,15 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
   try {
     const request = publicCourseRequest(new URL(location.href));
     if (request) {
-      const localTarget = resolvePublicCourse(request, [], cached);
+      const bundle = request.localProjectId ? await readLocalProject(request.localProjectId) : null;
+      const local = bundle && request.localProjectId
+        ? [localProjectCourse({ id: request.localProjectId, name: bundle.name }, bundle)] : [];
+      const localTarget = resolvePublicCourse(request, [], cached, local);
       const data =
-        request.source === 'iso' || !navigator.onLine
+        request.localProjectId || request.source === 'iso' || !navigator.onLine
           ? { courses: [] }
           : await publicJson<{ courses: PublicCourse[] }>('/api/public/courses').catch(() => ({ courses: [] }));
-      target = resolvePublicCourse(request, data.courses, cached) ?? localTarget;
+      target = resolvePublicCourse(request, data.courses, cached, local) ?? localTarget;
       if (target?.isoCourses.length)
         selectGame(isoGameForCourse(target.isoCourses.find(slot => !discContainsCourse(cached, slot)) ?? target.isoCourses[0]));
       if (!target) status.textContent = 'This public map is unavailable. You can still manage your local ISO maps.';

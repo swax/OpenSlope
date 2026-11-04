@@ -22,6 +22,7 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-map-online { margin-left: auto; font-size: 11px; padding-left: 4px; }
 .public-map-heading > h3 { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .public-online > .public-online-label { display: none; } }
+@media (max-width: 640px) { .public-assets-compatible { display: none; } }
 .public-online.unavailable > .public-online-label { display: inline; }
 .public-icon { display: inline-flex; flex: 0 0 auto; width: 15px; height: 15px; align-items: center; justify-content: center; }
 .public-icon svg { display: block; width: 100%; height: 100%; stroke-width: 1.6; }
@@ -77,6 +78,8 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-iso-requirements { margin: 16px 0; padding: 14px 16px; background: #16263399;
   border: 1px solid #2e4352; border-radius: 10px; }
 .public-iso-requirements h2 { margin: 0 0 8px; font-size: 14px; }
+.public-asset-failure { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; overflow-wrap: anywhere; }
+.public-asset-failure code { font-size: 10px; white-space: normal; }
 .public-iso-requirements p { margin: 0 0 10px; color: #b2c9d5; font-size: 12px; line-height: 1.5; }
 .public-iso-badges { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
 .public-iso-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 7px; border: 1px solid;
@@ -191,6 +194,14 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-map-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; color: #91a9b9; font: 11px/1.5 system-ui; }
 .public-private-badge { padding: 2px 7px; border: 1px solid #826c4d66; border-radius: 5px; color: #d5bd98; background: #59452b33; }
 .public-requirements { color: #94adbf; font-size: 11px; font-weight: 400; line-height: 1.5; }
+.public-map-requirements { position: relative; z-index: 1; min-width: 0; color: #b6cad7; font: 12px/1.5 system-ui; }
+.public-map-requirements > summary { cursor: pointer; padding: 3px 0; }
+.public-map-requirements > summary[data-complete=false] { color: #e8a6a6; }
+.public-map-requirements > summary[data-complete=true] { color: #8bd1af; }
+.public-map-requirements > div { max-height: min(320px, 55vh); overflow-y: auto; }
+.public-map-requirements .public-iso-requirements { margin: 6px 0 0; padding: 10px; }
+.public-map-requirements .public-iso-badges { flex-direction: column; align-items: flex-start; }
+.public-map-requirements .public-iso-badge { max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
 .public-card-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 12px;
   border-top: 1px solid #91b1c314; }
 .public-card-actions a { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; box-sizing: border-box;
@@ -203,6 +214,13 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-status { color: #b9ceda; line-height: 1.5; font-size: 13px; margin: 24px 0 15px; }
 .public-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .public-header > .public-status { min-width: 0; flex: 1; margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.public-play #load-status.show:not(.error) #load-progress:not([aria-valuenow]) #load-progress-fill {
+  width: 30% !important; animation: public-map-loading 1s ease-in-out infinite alternate;
+}
+@keyframes public-map-loading { from { transform: translateX(0); } to { transform: translateX(230%); } }
+@media (prefers-reduced-motion: reduce) {
+  .public-play #load-status.show:not(.error) #load-progress:not([aria-valuenow]) #load-progress-fill { animation: none; transform: translateX(100%); }
+}
 .public-header > .public-actions { flex-wrap: nowrap; flex-shrink: 0; gap: 6px; }
 .public-header .public-actions button, .public-header .public-stop { flex-shrink: 0; min-height: 28px; padding: 4px 9px; font-size: 11px; border-radius: 5px; }
 .public-preparing .public-header { gap: 16px; }
@@ -218,6 +236,7 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-assets-summary:focus-visible { outline: 2px solid #f4b65e; outline-offset: 2px; }
 .public-header .public-requirements-host > .public-iso-requirements { position: absolute; top: calc(100% + 8px); right: 0;
   width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; margin: 0; background: #101e2af5;
+  max-height: calc(100dvh - var(--public-header, 40px) - 24px); overflow-y: auto;
   box-shadow: 0 12px 32px #0006; backdrop-filter: blur(10px); }
 .public-home .public-primary, .public-actions .public-primary, .public-map-choices .public-primary { color: #242321; background: #eebc7b; border-color: #efc68d; box-shadow: inset 0 1px #fff4; }
 .public-home .public-primary:hover:not(:disabled), .public-actions .public-primary:hover:not(:disabled), .public-map-choices .public-primary:hover:not(:disabled) { color: #242321; background: #f6ca92; border-color: #f8d5a7; }

@@ -3,11 +3,21 @@ import assert from 'node:assert/strict';
 import { readLevelLightRig } from '../src/shared/map-levels';
 import type { MapDataSource } from '../src/shared/map-data';
 import { authoredReferenceLight, decodeLightRig } from '../src/core/reference/lights';
-import { freeLightToPlaced } from '../src/core/lighting/sign-lights';
+import { authoredSignLights, freeLightToPlaced, isSignProp } from '../src/core/lighting/sign-lights';
 import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
 import { serializeMountain } from '../src/core/doc/serialize';
 
 const position = [100, 200, 300];
+assert.equal(isSignProp('Mdl_Billboard_Main'), true);
+assert.equal(isSignProp(undefined), false);
+assert.equal(isSignProp(null), false);
+assert.deepEqual(
+  authoredSignLights([JSON.parse('{"level":"FIXTURE","model":0,"pos":[0,0,0],"yaw":0,"scale":1}')], () => {
+    throw new Error('An unnamed placement is not a billboard light.');
+  }),
+  [],
+  'legacy unnamed props do not abort authored lighting or private playback',
+);
 const rows = [{ Type: 1, Colour: [1, 0.5, 0.25], Position: position, UnknownFloat2: undefined as number | undefined }];
 const bytes = new Uint8Array(144 + 92),
   pbd = new DataView(bytes.buffer);

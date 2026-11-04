@@ -1,6 +1,13 @@
 /** The editor can use a browser workspace in place of the authenticated API. */
 import { mapSourceRequest } from './map-source';
-import { clearAssetCatalogue, configureAssetTransport, fetchVersionedAsset } from './asset-versions';
+import {
+  clearAssetCatalogue,
+  configureAssetTransport,
+  fetchVersionedAsset,
+  reportImportedAssetReplacements,
+  resolvePropCrowdFrames,
+} from './asset-versions';
+import { fetchRuntimeAssetReplacement } from './asset-replacements';
 import { createAssetResolver } from '../../shared/asset-resolver';
 import {
   browserAssetCache,
@@ -36,6 +43,7 @@ let assets = createWorkspaceAssets();
 export const isLocalWorkspace = (): boolean => local;
 
 export function configureWorkspace(localOnly: boolean, request: NonNullable<typeof handler>, scope?: string): void {
+  reportImportedAssetReplacements([]);
   clearAssetCatalogue();
   assets.clear();
   generation++;
@@ -45,6 +53,18 @@ export function configureWorkspace(localOnly: boolean, request: NonNullable<type
 }
 
 export async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const replacement = await fetchRuntimeAssetReplacement(
+    input,
+    init,
+    (request, options) => assets.fetch(request, options),
+    resolvePropCrowdFrames,
+  );
+  if (replacement) return replacement;
+  return exactWorkspaceFetch(input, init);
+}
+
+/** Identity checks/migrations must observe saved bytes, even while the renderer uses a compatible view. */
+export async function exactWorkspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   if (referenceAssetRequest(input)) return assets.fetch(input, init);
   if (mapSourceRequest(input).version) return fetchVersionedAsset(input, init);
   return rawWorkspaceFetch(input, init);

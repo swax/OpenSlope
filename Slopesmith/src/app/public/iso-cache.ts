@@ -34,9 +34,32 @@ interface CachedFile {
 interface CachedCourse {
   course: string;
   version: number;
+  revision?: string;
   files: number;
   displayName?: string;
   layout?: CourseLayout;
+}
+
+/** One identity per completed import, including older caches created before revisions existed. */
+export function cachedCourseIdentity(db: IDBDatabase, course: string): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('courses', 'readwrite');
+    const store = transaction.objectStore('courses');
+    const request = store.get(course);
+    let identity: string | undefined;
+    request.onsuccess = () => {
+      const row = request.result as CachedCourse | undefined;
+      if (!row) return;
+      if (!row.revision) {
+        row.revision = crypto.randomUUID();
+        store.put(row);
+      }
+      identity = `${row.version}:${row.revision}`;
+    };
+    transaction.oncomplete = () => resolve(identity);
+    transaction.onabort = () => reject(transaction.error);
+    transaction.onerror = () => reject(transaction.error);
+  });
 }
 export interface DiscCollisionSounds {
   SourceExecutable: string;
@@ -222,8 +245,8 @@ export async function readCachedCourse(course: string): Promise<Map<string, Blob
 }
 
 /** Individual reads keep catalogue/startup work independent of the size of an extracted course. */
-export async function readCachedCourseFile(course: string, path: string): Promise<Blob | null> {
-  const db = await openIsoCache();
+export async function readCachedCourseFile(course: string, path: string, cache?: IDBDatabase): Promise<Blob | null> {
+  const db = cache ?? await openIsoCache();
   try {
     return await new Promise((resolve, reject) => {
       const request = db.transaction('files').objectStore('files').get(`${course}/${path.toLowerCase()}`);
@@ -231,13 +254,13 @@ export async function readCachedCourseFile(course: string, path: string): Promis
       request.onerror = () => reject(request.error);
     });
   } finally {
-    db.close();
+    if (!cache) db.close();
   }
 }
 
 /** Read names without structured-cloning every Blob (including music and source sidecars). */
-export async function cachedCoursePaths(course: string, folder = ''): Promise<string[]> {
-  const db = await openIsoCache();
+export async function cachedCoursePaths(course: string, folder = '', cache?: IDBDatabase): Promise<string[]> {
+  const db = cache ?? await openIsoCache();
   try {
     return await new Promise((resolve, reject) => {
       const prefix = `${course}/${folder.toLowerCase()}`;
@@ -249,7 +272,7 @@ export async function cachedCoursePaths(course: string, folder = ''): Promise<st
       request.onerror = () => reject(request.error);
     });
   } finally {
-    db.close();
+    if (!cache) db.close();
   }
 }
 

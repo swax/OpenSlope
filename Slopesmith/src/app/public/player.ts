@@ -3,7 +3,7 @@ import { beforeAppUpdate } from '../offline';
 import { defaultMountain } from '../../core/doc/mountain';
 import { authoredModelLevelProps } from '../../core/doc/models';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
-import { resolvePropCrowdFrames } from '../net/asset-versions';
+import { reportImportedAssetReplacements, resolvePropCrowdFrames } from '../net/asset-versions';
 import { decodeReferenceEffects } from '../../core/reference/effects';
 import { buildReferenceMeshProgressive } from '../../core/reference/terrain';
 import { Viewport } from '../viewport/viewport';
@@ -38,6 +38,8 @@ import { fetchJson } from '../net/fetch-json';
 import { findMapChoice, mapSourceId, splitMapSource } from '../../core/reference/map-source';
 import { discContainsCourse } from '../../core/reference/disc-courses';
 import { beginPropLoad } from '../state/asset-loads';
+import { mapLimit } from '../../shared/map-data';
+import { matchImportedAssets } from './imported-assets';
 
 const yieldFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 async function json<T>(url: string): Promise<T> {
@@ -235,7 +237,17 @@ export async function preparePublicPlayer(
       bundle ??
       privateSnapshot ??
       (await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`));
-    const document = publicMountainDocument(snapshot.document, availableLevels, true);
+    let document = publicMountainDocument(snapshot.document, availableLevels, true);
+    let importedProps = document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)
+      ? bundle ? bundleProps(bundle) : await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`)
+      : null;
+    if (new URL(location.href).searchParams.get('compatible') !== '0') {
+      progress('Matching imported assets…');
+      const matched = await matchImportedAssets({ document, importedProps });
+      document = matched.document.document;
+      importedProps = matched.document.importedProps;
+      reportImportedAssetReplacements(matched.replacements);
+    }
     // Decode owned cues while the terrain loads, before the first riding event can fire.
     const courseSounds = Promise.all(
       Object.values(document.boardSound?.clips ?? {})
@@ -273,7 +285,7 @@ export async function preparePublicPlayer(
         missing.add(prop.level);
       }
     }
-    for (const level of donors) {
+    await mapLimit([...donors], 4, async level => {
       const failed = beginPropLoad(level);
       try {
         await installDonor(level);
@@ -281,16 +293,11 @@ export async function preparePublicPlayer(
         failed();
         missing.add(level);
       }
-    }
+    });
     if (missing.size) {
-      toast('Some prop versions are unavailable. Load the matching game assets to see those props.', 'warn', 8000);
+      toast('Some referenced assets are unavailable. Open Assets to see the missing sources or versions.', 'warn', 8000);
     }
-    if (document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)) {
-      const props = bundle
-        ? bundleProps(bundle)
-        : await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`);
-      viewport.syncLiveModels(decodeProps(publicPropPayload(props, availableLevels, true)));
-    }
+    if (importedProps) viewport.syncLiveModels(decodeProps(publicPropPayload(importedProps, availableLevels, true)));
     if (availableCourses.length && (document.rails?.length || document.gems?.length)) {
       const art = await nativeArtSource(local.source);
       for (const donor of new Set([art.gemLevel].filter(Boolean))) {

@@ -23,7 +23,7 @@ assert(isDiscCourse('SSX3B_ARA1'));
 assert(!isDiscCourse('SSX3B_UNKNOWN'));
 assert(!isDiscCourse('SSX3B_ALL'));
 assert.equal(discCourseName('SSX3B_PEAK1'), 'Peak 1 (SSX 3 Beta)');
-assert.equal(isoCourseCacheVersion('SSX3B_ARA1'), 13);
+assert.equal(isoCourseCacheVersion('SSX3B_ARA1'), 15);
 assert(!supportsCollisionSoundUpdate('SSX3B_ARA1'));
 assert.deepEqual(courseLayout('SSX3B_ARA1'), {
   MapType: 'run',

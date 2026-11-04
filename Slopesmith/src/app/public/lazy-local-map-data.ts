@@ -7,7 +7,7 @@ import { compareBoardAudioSources } from '../../core/audio/board-sources';
 import { normalizeMapGame } from '../../core/reference/map-game';
 import { referenceParticleTexturePaths } from '../../core/effects/particle-textures';
 import { mapSourceRequest } from '../net/map-source';
-import { cachedCourseHasFiles, cachedCoursePaths, readCachedCourseFile } from './iso-cache';
+import { cachedCourseHasFiles, cachedCourseIdentity, cachedCoursePaths, openIsoCache, readCachedCourseFile } from './iso-cache';
 import { localMapData } from './local-map-data';
 
 const AUDIO_ROUTES = new Set([
@@ -45,6 +45,20 @@ export async function lazyLocalMapData(
   };
   const hasLevel = (name: string) => !!courseFor(name);
   let disposed = false;
+  let database: Promise<IDBDatabase> | undefined;
+  function cacheDatabase() {
+    if (disposed) return Promise.reject(new Error('This local asset workspace is closed.'));
+    if (!database) {
+      const pending = openIsoCache().then(db => {
+        if (disposed) { db.close(); throw new Error('This local asset workspace is closed.'); }
+        db.onversionchange = () => { db.close(); database = undefined; };
+        return db;
+      });
+      database = pending;
+      void pending.catch(() => { if (database === pending) database = undefined; });
+    }
+    return database;
+  }
   const scope = crypto.randomUUID();
   const blobs = new Map<string, Promise<Blob | null>>();
   const readyBlobs = new Map<string, Blob>();
@@ -63,7 +77,7 @@ export async function lazyLocalMapData(
     const key = fileKey(selected.course, selected.path);
     let value = blobs.get(key);
     if (!value) {
-      value = readCachedCourseFile(selected.course, selected.path).then(blob => {
+      value = cacheDatabase().then(db => readCachedCourseFile(selected.course!, selected.path, db)).then(blob => {
         if (disposed) throw new Error('This local asset workspace is closed.');
         if (blob) readyBlobs.set(key, blob);
         return blob;
@@ -78,7 +92,7 @@ export async function lazyLocalMapData(
   function coursePaths(course: string): Promise<Set<string>> {
     let pending = paths.get(course);
     if (!pending) {
-      pending = cachedCoursePaths(course).then(names => new Set(names));
+      pending = cacheDatabase().then(db => cachedCoursePaths(course, '', db)).then(names => new Set(names));
       paths.set(course, pending);
       void pending.catch(() => {
         if (paths.get(course) === pending) paths.delete(course);
@@ -296,12 +310,17 @@ export async function lazyLocalMapData(
   }
   return {
     source,
+    async cacheIdentity(level: string) {
+      const course = courseFor(level);
+      return course ? cachedCourseIdentity(await cacheDatabase(), course) : undefined;
+    },
     fileUrl,
     resolveAsset,
     resolveRequest,
     hasLevel,
     dispose() {
       disposed = true;
+      void database?.then(db => db.close(), () => {});
       for (const url of urls.values()) URL.revokeObjectURL(url);
       for (const data of readyAudio.values()) data.dispose();
       urls.clear();

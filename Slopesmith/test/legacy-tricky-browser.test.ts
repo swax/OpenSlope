@@ -27,15 +27,17 @@ try {
     const mountainUrl = '/src/core/doc/mountain.ts';
     const propsUrl = '/src/shared/map-props.ts';
     const publicUrl = '/src/app/public/course-assets.ts';
+    const compatibilityUrl = '/src/app/public/imported-assets.ts';
     const { openIsoCache, cacheTransaction, isoCourseCacheVersion } = await import(cacheUrl);
     const { lazyLocalMapData: localMapData } = await import(localUrl);
     const { installLocalAssetApi } = await import(apiUrl);
     const { workspaceFetch } = await import(workspaceUrl);
-    const { pinDocumentAssets } = await import(pinsUrl);
+    const { pinDocumentAssets, pinReferenceAssets } = await import(pinsUrl);
     const { openLocalProjects, readLocalProject } = await import(projectsUrl);
     const { defaultMountain } = await import(mountainUrl);
     const { readMaterialTables } = await import(propsUrl);
     const { publicMountainDocument } = await import(publicUrl);
+    const { matchImportedAssets } = await import(compatibilityUrl);
     const fogUrl = '/api/particle-texture?name=fog0.png';
     const empty = await localMapData([]);
     const emptyParticleUrl = empty.resolveAsset(fogUrl);
@@ -58,12 +60,17 @@ try {
       'Models.json': json({
         Models: [
           { ModelName: 'Tree', ModelObjects: [{ ParentID: -1, MeshData: [{ MeshPath: 'tree.obj', MaterialID: 0 }] }] },
+          {
+            ModelName: 'Other tree',
+            ModelObjects: [{ ParentID: -1, MeshData: [{ MeshPath: 'tree.obj', MaterialID: 0 }] }],
+          },
         ],
       }),
       'Materials.json': json({ Materials: [{ TexturePath: 'tile.png' }] }),
       'Instances.json': json({
         Instances: [
           { ModelID: 0, InstanceName: 'Tree', Location: [0, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] },
+          { ModelID: 1, InstanceName: 'Other tree', Location: [100, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] },
         ],
       }),
       'Physics.json': json({ Bodies: [], Note: 'collision alias' }),
@@ -73,6 +80,12 @@ try {
       'Textures/Particles/fog0.png': new Blob([new Uint8Array(pixels)], { type: 'image/png' }),
     };
     await seed('TRICKY_GARI', files);
+    let cacheOpens = 0;
+    const openDatabase = indexedDB.open.bind(indexedDB);
+    indexedDB.open = (name: string, version?: number) => {
+      if (name === 'slopesmith-local-disc') cacheOpens++;
+      return openDatabase(name, version);
+    };
     const local = await localMapData(['TRICKY_GARI']);
     installLocalAssetApi(local, ['TRICKY_GARI'], false);
     const fogBytes = Array.from(
@@ -103,6 +116,34 @@ try {
     await pinDocumentAssets(pinned);
     const version = pinned.props[0].level;
     const snapshot = await readLocalProject(saved.project.id);
+    let meshReads = 0;
+    const readText = local.source.readTextOrNull;
+    local.source.readTextOrNull = async (path: string) => {
+      if (path.endsWith('/Meshes/tree.obj')) meshReads++;
+      return readText(path);
+    };
+    installLocalAssetApi(local, ['TRICKY_GARI'], false);
+    const propPins = await pinReferenceAssets('local:TRICKY_GARI', 'prop', ['0', '1']);
+    const manifestMeshReads = meshReads;
+    const scopedModels = await Promise.all(
+      [...propPins.values()].map(async id => {
+        const response = await workspaceFetch(`/api/props?level=${encodeURIComponent(id)}`);
+        if (!response.ok) throw new Error(`Pinned prop failed: ${await response.text()}`);
+        const payload = await response.json();
+        return {
+          level: payload.level,
+          models: payload.models.map((model: { id: number }) => model.id),
+          instances: payload.instances.length,
+        };
+      }),
+    );
+    const pinMeshReads = meshReads;
+    const staleBank = version.slice(0, version.lastIndexOf(':') + 1) + 'f'.repeat(64);
+    const compatible = await matchImportedAssets({
+      props: [{ level: staleBank, model: 0, name: 'Tree' }],
+      quadTex: { 0: `${staleBank}/tile.png` },
+    });
+    const exactBank = await matchImportedAssets({ props: [{ level: version, model: 0, name: 'Tree' }] });
     const initial = {
       emptyParticleUrl,
       emptyParticleRequest,
@@ -121,8 +162,22 @@ try {
       pinnedVersion: version,
       pinnedTexture: pinned.quadTex[0],
       storedLevel: snapshot.document.props[0].level,
+      manifestMeshReads,
+      pinMeshReads,
+      scopedModels,
+      cacheOpens,
+      compatibleProp: compatible.document.props[0].level,
+      compatibleTexture: compatible.document.quadTex[0],
+      exactBank: exactBank.document.props[0].level,
     };
     local.dispose();
+    let disposedReadRejected = false;
+    try {
+      await local.source.readBytesOrNull('TRICKY_GARI/Textures/tile.png');
+    } catch {
+      disposedReadRejected = true;
+    }
+    indexedDB.open = openDatabase;
     await seed('TRICKY_GARI', { ...files, 'Physics.json': json({ Bodies: [], Note: 'changed bank' }) });
     const changed = await localMapData(['TRICKY_GARI']);
     installLocalAssetApi(changed, ['TRICKY_GARI'], false);
@@ -136,7 +191,14 @@ try {
     const emptyExactTable = tables.get('gari')?.length;
     both.dispose();
     db.close();
-    return { ...initial, mismatch: mismatch.status, own: Array.from(own), missing, emptyExactTable };
+    return {
+      ...initial,
+      mismatch: mismatch.status,
+      own: Array.from(own),
+      missing,
+      emptyExactTable,
+      disposedReadRejected,
+    };
   }, png);
   assert.equal(
     result.emptyParticleUrl,
@@ -159,6 +221,23 @@ try {
   assert(result.pinnedVersion.startsWith('asset1:ssx-tricky:TRICKY_GARI:'));
   assert.equal(result.pinnedTexture, `${result.pinnedVersion}/tile.png`);
   assert.equal(result.storedLevel, 'GARI', 'browser-local saved documents do not need rewriting');
+  assert.equal(result.manifestMeshReads, 1, 'manifest creation parses shared model geometry once');
+  assert.equal(
+    result.pinMeshReads,
+    result.manifestMeshReads,
+    'individual pinned props reuse the manifest’s decoded bank',
+  );
+  assert.deepEqual(
+    result.scopedModels.map(value => value.models),
+    [[0], [1]],
+    'each pinned response contains only its requested model',
+  );
+  assert(result.scopedModels.every(value => value.level.startsWith('asset2:') && value.instances === 0));
+  assert.equal(result.cacheOpens, 1, 'metadata, geometry and texture reads share one IndexedDB connection');
+  assert.equal(result.disposedReadRejected, true, 'a disposed workspace cannot open another database connection');
+  assert(result.compatibleProp.startsWith('asset2:'), 'old bank-bound props use real per-asset imported identities');
+  assert(result.compatibleTexture.startsWith('asset2:') && result.compatibleTexture.endsWith('/tile.png'));
+  assert.equal(result.exactBank, result.pinnedVersion, 'an available exact bank remains preferred');
   assert.equal(result.mismatch, 404, 'a renamed bank with different content cannot satisfy a fingerprint');
   assert.deepEqual(result.own, [42]);
   assert.equal(result.missing, null, 'missing files in an existing bank never mix with its prefixed copy');

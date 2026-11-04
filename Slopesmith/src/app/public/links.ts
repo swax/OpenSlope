@@ -55,6 +55,7 @@ export function isoManagementUrl(course?: PublicCourse, origin = location.origin
       course.kind === 'project' ? course.name : course.id,
     );
   if (course?.source === 'iso') url.searchParams.set('source', 'iso');
+  if (course?.localProjectId) url.searchParams.set('local', course.localProjectId);
   return url.href;
 }
 

@@ -17,6 +17,7 @@ import { createProject } from '../src/server/projects';
 import { setPublished } from '../src/server/public-courses';
 import { encodePng } from '../src/server/routes/png';
 import type { PublicCourse } from '../src/core/session/public-courses';
+import type { ProjectBundle } from '../src/core/project/transfer';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-public-environment-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
@@ -93,6 +94,10 @@ mkdirSync(join(publicMap.project.folder, 'assets', 'textures'), { recursive: tru
 writeFileSync(join(publicMap.project.folder, 'assets', 'textures', 'mist.png'), sprite);
 writeFileSync(join(publicMap.project.folder, 'assets', 'textures', 'white.png'), sprite);
 await setPublished('project', publicMap.project.id, true, { id: 'owner', role: 'admin' });
+const missingServerDocument = structuredClone(document);
+missingServerDocument.name = 'MISSING_SERVER_ASSETS';
+missingServerDocument.quadTex = { 0: 'TRICKY_SNOW/tile.png' };
+const missingServerMap = await createProject(missingServerDocument, undefined, false);
 const api = await startApiService({ host: '127.0.0.1', port: 0 });
 process.env.PORT = String(api.port);
 const vite = await createServer({
@@ -163,8 +168,246 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
+  const loadingPage = await browser.newPage();
+  let releaseSnapshot!: () => void;
+  const snapshotGate = new Promise<void>(resolve => {
+    releaseSnapshot = resolve;
+  });
+  const sawSnapshot = loadingPage.waitForRequest('**/api/public/project?*');
+  await loadingPage.route('**/api/public/project?*', async route => {
+    await snapshotGate;
+    await route.continue();
+  });
+  try {
+    const loadingUrl = new URL('/play/CUSTOM_FOG', vite.resolvedUrls!.local[0]).href;
+    await loadingPage.goto(loadingUrl, { waitUntil: 'commit' });
+    await sawSnapshot;
+    const overlay = loadingPage.locator('#load-status');
+    await overlay.waitFor({ state: 'visible' });
+    assert.equal(await overlay.getAttribute('aria-busy'), 'true');
+    assert.equal(await loadingPage.locator('#load-title').innerText(), 'Loading CUSTOM FOG');
+    assert.equal(await loadingPage.locator('#load-label').innerText(), 'Preparing the mountain…');
+    assert.equal(
+      await loadingPage.locator('#load-progress').getAttribute('aria-valuenow'),
+      null,
+      'unknown work has no invented percentage',
+    );
+    const card = await overlay.locator('.sp-load-card').boundingBox();
+    const viewport = loadingPage.viewportSize()!;
+    assert(
+      card &&
+        Math.abs(card.x + card.width / 2 - viewport.width / 2) < 2 &&
+        Math.abs(card.y + card.height / 2 - viewport.height / 2) < 2,
+      'preparation status is centered on the screen',
+    );
+    await loadingPage.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(
+      await loadingPage.locator('#load-progress-fill').evaluate(el => getComputedStyle(el).animationName),
+      'none',
+    );
+    releaseSnapshot();
+    await loadingPage.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+    await overlay.waitFor({ state: 'hidden' });
+    assert.equal(await overlay.getAttribute('aria-busy'), 'false');
+    await loadingPage.unroute('**/api/public/project?*');
+    await loadingPage.route('**/api/public/project?*', route =>
+      route.fulfill({ status: 503, body: 'Loading fixture unavailable' }),
+    );
+    await loadingPage.goto(loadingUrl, { waitUntil: 'commit' });
+    await loadingPage.locator('#load-status.error').waitFor({ state: 'visible' });
+    assert.equal(await loadingPage.locator('#load-label').innerText(), 'Could not finish loading');
+    await overlay.waitFor({ state: 'hidden' });
+    assert.equal(await overlay.getAttribute('aria-busy'), 'false');
+    await loadingPage
+      .locator('.public-status')
+      .getByText(/Return to Maps to try again/)
+      .waitFor();
+  } finally {
+    releaseSnapshot();
+    await loadingPage.close();
+  }
+  const localPage = await browser.newPage();
+  await localPage.goto(vite.resolvedUrls!.local[0] + 'environment.html');
+  const localDocument = structuredClone(document);
+  localDocument.name = 'DOWNLOADED_REQUIREMENTS';
+  const oldTexture = `asset2:ssx-tricky:TRICKY_GARI:texture:tile.png:${'b'.repeat(64)}`;
+  localDocument.quadTex = { 0: `${oldTexture}/tile.png` };
+  localDocument.skybox = { on: true, source: { kind: 'level', level: 'old-snow' }, topColor: '#ffffff' };
+  localDocument.particleVolumes = [];
+  localDocument.props!.push({
+    id: 'prop:missing-source',
+    name: 'Custom source prop',
+    level: `asset2:slopesmith:LOCAL_SOURCE:prop:3:${'d'.repeat(64)}`,
+    model: 3,
+    pos: [1000, 0, 0],
+    yaw: 0,
+    scale: 1,
+  });
+  const bundle: ProjectBundle = {
+    kind: 'slopesmith-project',
+    schema: 1,
+    name: localDocument.name,
+    revision: 28703,
+    takenAt: '2026-11-04T19:47:11Z',
+    document: localDocument,
+    assets: [],
+    isoAliases: { 'old-snow': 'TRICKY_SNOW' },
+  };
+  const localMap = await localPage.evaluate(async text => {
+    const bundle = JSON.parse(text);
+    const path = '/src/app/state/local-projects.ts';
+    const projects = await (await import(/* @vite-ignore */ path)).openLocalProjects();
+    try {
+      const snapshot = await projects.copyPublic(bundle, 'https://example.test/map-download');
+      return { id: String(snapshot.project.id), name: String(snapshot.project.name) };
+    } finally {
+      projects.close();
+    }
+  }, JSON.stringify(bundle));
+  const localUrl = new URL(`/play/${localMap.name}`, vite.resolvedUrls!.local[0]);
+  localUrl.searchParams.set('local', localMap.id);
+  localUrl.searchParams.set('compatible', '0');
+  await localPage.goto(localUrl.href);
+  await localPage.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  const assets = localPage.locator('.public-assets-summary');
+  assert.match(
+    (await assets.getAttribute('aria-label')) ?? '',
+    /0 of 3 source maps loaded; 2 asset versions unavailable/,
+  );
+  await assets.click();
+  const requirements = localPage.getByRole('region', { name: 'Required ISO maps' });
+  await requirements.getByText('SSX Tricky · Garibaldi · Not loaded', { exact: true }).waitFor();
+  await requirements.getByText('SSX Tricky · Snowdream · Not loaded', { exact: true }).waitFor();
+  await requirements.getByText('LOCAL_SOURCE · Source map assets needed', { exact: true }).waitFor();
+  await requirements.getByText('Unavailable asset versions (2)', { exact: true }).waitFor();
+  await requirements.locator('code').getByText(localDocument.props!.at(-1)!.level, { exact: true }).waitFor();
+  await localPage.evaluate(async png => {
+    const path = '/src/app/public/iso-cache.ts';
+    const cache = await import(/* @vite-ignore */ path);
+    const db = await cache.openIsoCache();
+    try {
+      const files = [
+        { path: 'Patches.json', blob: new Blob([JSON.stringify({ Patches: [] })], { type: 'application/json' }) },
+        {
+          path: 'Textures/tile.png',
+          blob: new Blob([Uint8Array.from(atob(png), c => c.charCodeAt(0))], { type: 'image/png' }),
+        },
+      ];
+      await cache.cacheTransaction(db, 'files', 'readwrite', (store: IDBObjectStore) => {
+        for (const file of files)
+          store.put({ ...file, key: `TRICKY_GARI/${file.path.toLowerCase()}`, course: 'TRICKY_GARI' });
+      });
+      await cache.cacheTransaction(db, 'courses', 'readwrite', (store: IDBObjectStore) => {
+        store.put({ course: 'TRICKY_GARI', version: cache.isoCourseCacheVersion('TRICKY_GARI'), files: files.length });
+      });
+    } finally {
+      db.close();
+    }
+  }, Buffer.from(sprite).toString('base64'));
+  await localPage.reload();
+  await localPage.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  await localPage.locator('.public-assets-summary').click();
+  assert.match(
+    (await localPage.locator('.public-assets-summary').getAttribute('aria-label')) ?? '',
+    /1 of 3 source maps loaded; 2 asset versions unavailable/,
+  );
+  await requirements.getByText('Imported version differs', { exact: false }).waitFor();
+  await requirements.getByRole('link', { name: 'Use matching imported assets' }).click();
+  await localPage.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  assert.equal(
+    new URL(localPage.url()).searchParams.get('compatible'),
+    null,
+    'matching imported versions are the default',
+  );
+  await localPage.locator('.public-assets-summary').click();
+  await requirements
+    .getByText('Using 1 matching imported version for this play session. Saved references are unchanged.', {
+      exact: true,
+    })
+    .waitFor();
+  await requirements.getByText('Unavailable asset versions (1)', { exact: true }).waitFor();
+  const persistedTexture = await localPage.evaluate(async id => {
+    const path = '/src/app/state/local-projects.ts';
+    const { readLocalProject } = await import(/* @vite-ignore */ path);
+    return (await readLocalProject(id)).document.quadTex[0];
+  }, localMap.id);
+  assert.equal(persistedTexture, `${oldTexture}/tile.png`, 'compatible playback preserves saved pinned references');
+  const stableSummary = await localPage.locator('.public-assets-summary').elementHandle();
+  await localPage.evaluate(async () => {
+    const path = '/src/app/net/asset-versions.ts';
+    const { reportImportedAssetReplacements, importedAssetReplacements } = await import(/* @vite-ignore */ path);
+    reportImportedAssetReplacements(importedAssetReplacements());
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  assert(await stableSummary!.evaluate(el => el.isConnected), 'live asset counts retain the active toggle node');
+  assert.notEqual(await localPage.locator('.public-requirements-host').getAttribute('open'), null);
+  await localPage.setViewportSize({ width: 320, height: 700 });
+  const popup = await requirements.boundingBox();
+  assert(popup && popup.x >= 0 && popup.x + popup.width <= 320, 'live missing-version details stay on a narrow screen');
+  await localPage.setViewportSize({ width: 1440, height: 1000 });
+  await requirements.press('Escape');
+  assert.equal(
+    await localPage.locator('.public-assets-summary').evaluate(el => window.document.activeElement === el),
+    true,
+    'closing live asset diagnostics returns focus to its summary',
+  );
+  await localPage.locator('.public-assets-summary').click();
+  await requirements.getByText('SSX Tricky · Garibaldi · Loaded', { exact: true }).waitFor();
+  await requirements.getByText('SSX Tricky · Snowdream · Not loaded', { exact: true }).waitFor();
+  const loadMaps = requirements.getByRole('link', { name: 'Load ISO maps' });
+  assert.equal(new URL((await loadMaps.getAttribute('href'))!).searchParams.get('local'), localMap.id);
+  await loadMaps.click();
+  const libraryRequirements = localPage.getByRole('heading', { name: 'Required maps', exact: true }).locator('..');
+  await libraryRequirements.waitFor();
+  await libraryRequirements.getByText('SSX Tricky · Garibaldi · Loaded', { exact: true }).waitFor();
+  await libraryRequirements.getByText('SSX Tricky · Snowdream · Not loaded', { exact: true }).waitFor();
+  assert.equal(new URL(localPage.url()).searchParams.get('local'), localMap.id);
+  await localPage.goto(vite.resolvedUrls!.local[0] + '?view=private');
+  const localCard = localPage.getByRole('article', { name: localMap.name, exact: true });
+  const localRequirements = localCard.locator('.public-map-requirements');
+  await localRequirements.getByText('Missing requirements (2)', { exact: true }).click();
+  await localRequirements.getByText('SSX Tricky · Snowdream · Not loaded', { exact: true }).waitFor();
+  await localRequirements.getByText('LOCAL_SOURCE · Source map assets needed', { exact: true }).waitFor();
+  assert.equal(
+    new URL(localPage.url()).searchParams.get('view'),
+    'private',
+    'expanding requirements stays in the library',
+  );
+  assert.equal(
+    new URL(
+      (await localRequirements.getByRole('link', { name: 'Load ISO maps' }).getAttribute('href'))!,
+    ).searchParams.get('local'),
+    localMap.id,
+  );
+  await localPage.setViewportSize({ width: 390, height: 844 });
+  assert(
+    await localPage.evaluate(() => window.document.body.scrollWidth <= innerWidth),
+    'expanded requirements fit a phone',
+  );
+  await localPage.close();
+  const serverPage = await browser.newPage();
+  const inspected: string[] = [];
+  serverPage.on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/projects/')) inspected.push(request.url());
+  });
+  await serverPage.goto(vite.resolvedUrls!.local[0] + '?view=private');
+  const serverCard = serverPage.getByRole('article', { name: privateMap.project.name, exact: true });
+  await serverCard.getByText('Check requirements', { exact: true }).waitFor();
+  assert.equal(inspected.length, 0, 'listing private maps does not fetch every full document');
+  await serverCard.getByText('Check requirements', { exact: true }).click();
+  await serverCard.getByText('Requirements met', { exact: true }).waitFor();
+  await serverCard.getByText('SSX Tricky · Garibaldi · Loaded', { exact: true }).waitFor();
+  assert.equal(new URL(serverPage.url()).searchParams.get('view'), 'private');
+  const missingCard = serverPage.getByRole('article', {
+    name: missingServerMap.project.name.replace(/_/g, ' '),
+    exact: true,
+  });
+  await missingCard.getByText('Check requirements', { exact: true }).click();
+  await missingCard.getByText('Missing requirements (1)', { exact: true }).waitFor();
+  await missingCard.getByText('SSX Tricky · Snowdream · Not loaded', { exact: true }).waitFor();
+  await serverPage.close();
   console.log(
-    'PASS: private legacy fog and public custom fog render with authored free/sign/group lighting in the player.',
+    'PASS: player lighting/fog, downloaded map requirements, partial ISO cache and custom source-map diagnostics.',
   );
 } finally {
   await browser.close();

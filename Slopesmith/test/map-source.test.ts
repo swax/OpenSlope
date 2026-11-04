@@ -6,7 +6,8 @@ import {
   serverMapName,
   splitMapSource,
 } from '../src/core/reference/map-source';
-import { mapDisplayName, mapGame } from '../src/core/reference/map-game';
+import { mapDisplayName, mapGame, mapNameInGame, mapLabelWithGame } from '../src/core/reference/map-game';
+import { discCourseName } from '../src/core/reference/disc-courses';
 import { safeMapName } from '../src/shared/map-data';
 import { buildMaterialCombiner } from '../src/core/export/materials';
 import { bindMapPayload, mapSourceRequest } from '../src/app/net/map-source';
@@ -51,6 +52,32 @@ assert.equal(mapSourceId('local', 'server:TRICKY_GARI'), 'local:TRICKY_GARI');
 assert.equal(mapGame({ name: 'local:TRICKY_GARI' }), 'ssx-tricky');
 assert.equal(mapDisplayName({ name: 'server:TRICKY_GARI' }), 'Garibaldi');
 assert.equal(mapDisplayName({ name: 'local:MYSTERY' }), 'MYSTERY');
+for (const [name, title, label] of [
+  ['SSX3_BRA2', 'BRA2', 'SSX 3 · BRA2'],
+  ['SSX3B_BRA2', 'BRA2', 'SSX 3 Beta · BRA2'],
+  ['SSX_SNOW', 'Snowdream', 'SSX · Snowdream'],
+  ['TRICKY_SNOW', 'Snowdream', 'SSX Tricky · Snowdream'],
+  ['SSXGBA_SNOWDREAM', 'Snowdream', 'SSX Tricky (GBA) · Snowdream'],
+  ['SSXOT_ER3_NIGHT', 'ER3 · Night', 'SSX On Tour · ER3 · Night'],
+  ['MADTRIX_TR_TRAINING', 'Training', 'Jonny Moseley Mad Trix · Training'],
+  ['AVALANCHE_CRS00_00', 'Half-Pipe', '1080° Avalanche · Half-Pipe'],
+] as const) {
+  assert.equal(mapNameInGame({ name }), title);
+  assert.equal(mapLabelWithGame({ name }), label);
+}
+assert.equal(discCourseName('SSX3_BRA2'), 'BRA2 (SSX 3)', 'standalone labels retain their game');
+assert.equal(
+  mapLabelWithGame({ name: 'SSX3_BRA2', displayName: 'SSX 3 · Snow Jam (Night) (SSX 3)' }),
+  'SSX 3 · Snow Jam (Night)',
+  'remove only the repeated game, keeping a meaningful variant',
+);
+assert.equal(
+  mapLabelWithGame({ name: 'SSX3B_BRA2', displayName: 'Snow Jam (SSX 3)' }),
+  'SSX 3 Beta · Snow Jam',
+  'the owner retains the beta distinction',
+);
+assert.equal(mapNameInGame({ name: 'My Hill (SSX)', origin: 'slopesmith' }), 'My Hill (SSX)');
+assert.equal(mapNameInGame({ name: 'Unknown (SSX 3)' }), 'Unknown (SSX 3)');
 assert.equal(safeMapName('server:TRICKY_GARI'), 'TRICKY_GARI');
 assert.throws(() => serverMapName('local:TRICKY_GARI'), /on this device/);
 

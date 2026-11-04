@@ -1,6 +1,8 @@
 // tier: fast
 import assert from 'node:assert/strict';
-import { publicCourseGroups, requiredIsoState } from '../src/app/public/course-list';
+import { localProjectCourse, publicCourseGroups, requiredIsoState } from '../src/app/public/course-list';
+import { bundleIsoCourses, bundleAssetRequirements } from '../src/core/project/iso-requirements';
+import type { ProjectBundle } from '../src/core/project/transfer';
 import {
   publicProjectUrl,
   publicCourseUrl,
@@ -343,4 +345,79 @@ assert.deepEqual(
 const levelSky = defaultMountain();
 levelSky.skybox = { on: true, source: { kind: 'level', level: 'SNOW' }, topColor: '#ffffff' };
 assert.deepEqual(projectIsoCourses(levelSky), ['SNOW'], 'a level sky lists the course it borrows');
-console.log('PUBLIC COURSE LIST PASS: named links, separate map groups, donor status and partial ISO assets.');
+const localDocument = defaultMountain();
+localDocument.quadTex = {
+  0: 'renamed-gari/snow.png',
+  1: `asset2:ssx-tricky:TRICKY_GARI:texture:snow.png:${'a'.repeat(64)}`,
+};
+localDocument.skybox = { on: true, source: { kind: 'level', level: 'renamed-sky' }, topColor: '#ffffff' };
+localDocument.props = [
+  {
+    level: `asset2:ssx-3-beta:SSX3B_ESS3:prop:42:${'b'.repeat(64)}`,
+    model: 42,
+    name: 'Tree',
+    pos: [0, 0, 0],
+    yaw: 0,
+    scale: 1,
+  },
+];
+const localBundle: ProjectBundle = {
+  kind: 'slopesmith-project',
+  schema: 1,
+  name: 'Downloaded map',
+  revision: 28703,
+  takenAt: '2026-11-04T19:47:11Z',
+  document: localDocument,
+  isoAliases: { 'Renamed-Gari': 'TRICKY_GARI', 'renamed-sky': 'TRICKY_MERQUER' },
+  assets: [{ kind: 'prop', name: 'custom-prop.json', hash: 'prop-materials', size: 1 }],
+  blobs: {
+    'prop-materials': btoa(
+      JSON.stringify({ materials: [{ tex: 'SSX_SNOW/tile.png', frames: ['Custom/owned.png', 'GARI/animated.png'] }] }),
+    ),
+  },
+};
+const beforeLocalBundle = JSON.stringify(localBundle);
+const localCourse = localProjectCourse({ id: 'local-saved-copy', name: localBundle.name }, localBundle);
+assert.deepEqual(
+  localCourse.isoCourses,
+  ['SSX3B_ESS3', 'SSX_SNOW', 'TRICKY_GARI', 'TRICKY_MERQUER'],
+  'old local bundles recover pinned props, textures, sky aliases and embedded material dependencies',
+);
+assert(localCourse.retailData);
+assert.equal(localCourse.localProjectId, 'local-saved-copy');
+assert.deepEqual(
+  requiredIsoState(localCourse.isoCourses, ['GARI']).map(row => [row.slot, row.loaded]),
+  [
+    ['SSX3B_ESS3', false],
+    ['SSX_SNOW', false],
+    ['TRICKY_GARI', true],
+    ['TRICKY_MERQUER', false],
+  ],
+);
+assert.deepEqual(
+  resolvePublicCourse(publicCourseRequest(new URL(isoManagementUrl(localCourse, origin))), [], [], [localCourse]),
+  localCourse,
+  'Load ISO maps retains the saved copy, even when no public map has that name',
+);
+assert.equal(JSON.stringify(localBundle), beforeLocalBundle, 'reporting requirements preserves the saved bundle');
+assert.deepEqual(
+  bundleIsoCourses({ ...localBundle, blobs: { 'prop-materials': 'invalid base64' } }),
+  ['SSX3B_ESS3', 'TRICKY_GARI', 'TRICKY_MERQUER'],
+  'one corrupt custom prop cannot hide other dependencies',
+);
+assert.deepEqual(
+  bundleIsoCourses({ ...localBundle, document: defaultMountain(), assets: [], isoAliases: {} }),
+  [],
+  'an original mountain without disc assets has no ISO requirements',
+);
+const withSourceMap = structuredClone(localBundle);
+withSourceMap.document.quadTex![2] = `asset2:slopesmith:TEST_MTN_7:texture:oob.png:${'c'.repeat(64)}`;
+assert.deepEqual(
+  bundleAssetRequirements(withSourceMap),
+  {
+    isoCourses: localCourse.isoCourses,
+    referenceMaps: ['TEST_MTN_7'],
+  },
+  'custom reference-map versions are reported separately and never invented as Tricky ISO slots',
+);
+console.log('PUBLIC COURSE LIST PASS: named links, local bundle dependencies, source maps and partial ISO assets.');

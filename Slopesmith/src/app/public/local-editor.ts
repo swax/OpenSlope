@@ -15,7 +15,6 @@ import { cachedIsoCourses } from './iso-cache';
 import { lazyLocalMapData as localMapData } from './lazy-local-map-data';
 import * as levels from '../../shared/map-levels';
 import {
-  buildLevelPropsUncached,
   nativeArtSource,
   readMaterialTables,
   readPhysicsBodySpheres,
@@ -31,7 +30,8 @@ import { safeDataName } from '../../core/export/names';
 import { readLevelGroups } from '../../shared/map-groups';
 import type { GroupsPayload } from '../../core/reference/groups';
 import { readAssetVersion } from '../../shared/map-asset-version';
-import { readAssetManifest } from '../../shared/map-asset-manifest';
+import type { AssetSelection } from '../../shared/map-asset-manifest';
+import { createLocalAssetBank } from './local-asset-bank';
 import { readParticleTextureReference } from '../../shared/map-particle-texture';
 
 const serverSettingsPaths = new Set(['/api/config', '/api/version', '/api/update', '/api/restart', '/api/voice']);
@@ -164,6 +164,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     const source = await localMapData(cached, next);
     local.dispose();
     local = source;
+    localBank = createLocalAssetBank(local);
     aliases = next;
     aliasKey = JSON.stringify(next);
   }
@@ -171,7 +172,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
   const serverLevels = new Set<string>();
   const localGroups = new Map<string, Promise<GroupsPayload>>();
   const localVersions = new Map<string, ReturnType<typeof readAssetVersion>>();
-  const localManifests = new Map<string, ReturnType<typeof readAssetManifest>>();
+  let localBank = createLocalAssetBank(local);
   window.addEventListener('pagehide', event => {
     if (!event.persisted) custom.dispose();
   });
@@ -234,12 +235,8 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
         return json(await value);
       }
       if (path === '/api/map-asset-manifest' && knownLevel(level)) {
-        let value = localManifests.get(level);
-        if (!value) {
-          value = readAssetManifest(local.source, level);
-          localManifests.set(level, value);
-        }
-        return json(await value);
+        const selection = q.get('select');
+        return json(await localBank.manifest(level, selection ? JSON.parse(selection) as AssetSelection : undefined));
       }
       // Server administration uses the same account regardless of where the open mountain is saved.
       // The server still checks the role for every read and action.
@@ -336,7 +333,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
         ]);
         return json({ ...patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards });
       }
-      if (path === '/api/props' && knownLevel(level)) return json(await buildLevelPropsUncached(local.source, level));
+      if (path === '/api/props' && knownLevel(level)) return json(await localBank.props(level, q.get('asset') ?? undefined));
       if (path === '/api/physics-body' && knownLevel(level))
         return json({ spheres: await readPhysicsBodySpheres(local.source, level, Number(q.get('idx'))) });
       if (path === '/api/effects' && knownLevel(level)) return json(await readReferenceEffects(local.source, level));

@@ -345,7 +345,7 @@
 }
 .map-library[data-layout='list']
   .public-map-tile:not(.public-new-map)
-  > :is(.public-iso-summary, .public-iso-badges, .public-requirements, .public-map-meta, .public-card-status) {
+  > :is(.public-iso-summary, .public-iso-badges, .public-requirements, .public-map-meta, .public-card-status, .public-map-requirements) {
   grid-column: 1;
   margin: 0 0 0 40px;
 }
@@ -519,7 +519,7 @@
 .sp-page-background .public-home:has(.map-library) {
   background: linear-gradient(180deg, #101922ed, #0e1923e8);
 }
-body.public-play:has(.map-library) #load-status {
+body.public-play:has(.map-library) #load-status:not(.show) {
   display: none;
 }
 .library-game-count {

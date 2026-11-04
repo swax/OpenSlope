@@ -5,6 +5,10 @@ export type ReferenceAssetKind = NonNullable<AssetVersion['kind']>;
 export interface ReferenceAsset extends AssetVersion {
   kind: ReferenceAssetKind;
   key: string;
+  /** Source model label, for reviewing compatible imports independently of model numbering. */
+  name?: string;
+  /** Imported definition equivalence without source-local model/material numbering. Not an immutable id. */
+  compatibilityHash?: string;
   /** Exact dependency bytes, relative to the source map. */
   files: Record<string, string>;
   payloadHash?: string;

@@ -5,10 +5,18 @@ import type { ReferenceAssetKind } from '../../core/reference/asset-manifest';
 import type { PropsPayload } from '../../core/reference/props';
 import { findMapChoice, mapSourceId, splitMapSource, type MapSource } from '../../core/reference/map-source';
 import { makeTexRef, parseTexRef } from '../../core/paint/textures';
+import type { AssetReplacement } from '../../core/reference/asset-compatibility';
+import type { AssetSelection } from '../../shared/map-asset-manifest';
+import { setRuntimeAssetReplacements } from './asset-replacements';
 
 type Transport = (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 let transport: Transport = (url, init) => fetch(url, init);
-let reader = createAssetReader(transport, bind);
+const failureListeners = new Set<() => void>();
+const failuresChanged = () => {
+  for (const changed of failureListeners) changed();
+};
+let reader = createAssetReader(transport, bind, failuresChanged);
+let compatibleReplacements: AssetReplacement[] = [];
 const locations = new Map<string, string>();
 const preferences = new Map<string, MapSource>();
 const pending = new Map<string, Promise<AssetVersion>>();
@@ -25,7 +33,18 @@ const projectAssetLevel = (level: string): boolean => {
 
 export function configureAssetTransport(next: Transport): void {
   transport = next;
-  reader = createAssetReader(next, bind);
+  reader = createAssetReader(next, bind, failuresChanged);
+}
+export const assetReadFailures = () => reader.failures();
+export const importedAssetReplacements = () => compatibleReplacements;
+export function reportImportedAssetReplacements(replacements: AssetReplacement[]) {
+  compatibleReplacements = replacements;
+  setRuntimeAssetReplacements(replacements);
+  failuresChanged();
+}
+export function watchAssetReadFailures(changed: () => void): () => void {
+  failureListeners.add(changed);
+  return () => failureListeners.delete(changed);
 }
 export function clearAssetCatalogue(): void {
   reader.clear();
@@ -192,4 +211,6 @@ export async function resolvePropCrowdFrames(payload: PropsPayload): Promise<Pro
 
 export const availableAssetMaps = () => reader.maps();
 export const readAssetManifestAt = (location: string) => reader.manifest(location);
+export const readSelectedAssetManifestAt = (location: string, selection: AssetSelection) =>
+  reader.selectedManifest(location, selection);
 export const readAssetBankAt = (location: string) => reader.version(location);
