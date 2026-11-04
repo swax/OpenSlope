@@ -343,6 +343,11 @@ macOS builds default to desktop-only; `OPENSLOPE_BUILD_OPENXR` controls the opti
 OpenXR dependency on other platforms. See [release packaging](docs/releases.md)
 for portable archives and optional Apple signing/notarization.
 
+Intel macOS builds default to MoltenVK's direct resource allocations because some
+virtual Metal devices report invalid placement-heap requirements. An explicit
+`MVK_CONFIG_USE_MTLHEAP` setting overrides this default; see
+[MoltenVK's heap configuration](https://github.com/KhronosGroup/MoltenVK/blob/v1.3.0/Docs/MoltenVK_Configuration_Parameters.md#mvk_config_use_mtlheap).
+
 ## OpenXR
 
 ```powershell

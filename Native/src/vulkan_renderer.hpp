@@ -23,6 +23,7 @@
 
 namespace openslope {
 void vk_check(VkResult result, const char* operation);
+void configure_desktop_vulkan();
 using UploadProgress = std::function<void(double, std::string_view)>;
 
 // CPU-only preparation can run on a worker while the previous scene stays live.

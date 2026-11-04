@@ -33,12 +33,6 @@ struct UploadPool {
 } // namespace
 
 VulkanScene::Buffer VulkanScene::buffer(VkDeviceSize size, VkBufferUsageFlags usage, const void* data) {
-    // Empty scenes still need a valid storage-buffer binding on every GPU.
-    const std::uint32_t empty = 0;
-    if (size == 0) {
-        size = sizeof(empty);
-        data = &empty;
-    }
     Buffer result;
     try {
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
