@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
 import { chromiumExecutable } from './browser-test-support';
+import { slotEffectTemplate } from '../src/core/props/effect-defaults';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const work = mkdtempSync(join(tmpdir(), 'slopesmith-ssx3-'));
@@ -24,6 +25,15 @@ try {
   const worker = join(work, 'worker.js');
   const adapter = join(work, 'local-data.js');
   const effectsReader = join(work, 'map-effects.js');
+  const propsReader = join(work, 'map-props.js');
+  await build({
+    entryPoints: [join(root, 'Slopesmith/src/shared/map-props.ts')],
+    outfile: propsReader,
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    logLevel: 'silent',
+  });
   await build({
     entryPoints: [join(root, 'Slopesmith/src/shared/map-effects.ts')],
     outfile: effectsReader,
@@ -50,9 +60,19 @@ try {
   });
   server.on('request', (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
-    if (path === '/worker.js' || path === '/local-data.js' || path === '/map-effects.js') {
+    if (path === '/worker.js' || path === '/local-data.js' || path === '/map-effects.js' || path === '/map-props.js') {
       response.setHeader('content-type', 'text/javascript');
-      response.end(readFileSync(path === '/worker.js' ? worker : path === '/map-effects.js' ? effectsReader : adapter));
+      response.end(
+        readFileSync(
+          path === '/worker.js'
+            ? worker
+            : path === '/map-effects.js'
+              ? effectsReader
+              : path === '/map-props.js'
+                ? propsReader
+                : adapter,
+        ),
+      );
     } else if (/^\/iso-importer\/openslope_browser_import\.(js|wasm)$/.test(path)) {
       response.setHeader('content-type', path.endsWith('.js') ? 'text/javascript' : 'application/wasm');
       response.end(readFileSync(join(root, 'Slopesmith/public', path)));
@@ -254,6 +274,98 @@ try {
   assert.equal(result.cone, 0.75);
   assert(result.haloBrightness > 0 && result.haloHasNoReach);
   assert(result.files > 15);
+  for (const [game, course, collision] of [
+    ['retail', 'SSX3_A', false],
+    ['beta', 'SSX3B_ARA1', false],
+    ['tour', 'SSXOT_ER1_DAY', false],
+    ['retail', 'SSX3_A', true],
+    ['beta', 'SSX3B_ARA1', true],
+  ] as const) {
+    const motionFixture = join(work, `${game}-${collision ? 'collision' : 'motion'}.iso`);
+    const generatedMotion = spawnSync(
+      process.platform === 'win32' ? 'python' : 'python3',
+      [
+        join(root, 'Native/tests/streamed_effects_import_test.py'),
+        collision ? '--collision-fixture' : '--fixture',
+        game,
+        motionFixture,
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    assert.equal(generatedMotion.status, 0, generatedMotion.stderr);
+    const imported = await page.evaluate(
+      async ({ encoded, course }) => {
+        const file = new File([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))], 'motion.iso');
+        await new Promise<void>((resolve, reject) => {
+          const worker = new Worker('/worker.js', { type: 'module' });
+          worker.onerror = event => {
+            worker.terminate();
+            reject(new Error(event.message));
+          };
+          worker.onmessage = event => {
+            if (event.data.type === 'error' || event.data.type === 'done') {
+              worker.terminate();
+              if (event.data.type === 'error') reject(new Error(event.data.message));
+              else resolve();
+            }
+          };
+          worker.postMessage({ operation: 'extract', file, courses: [course] });
+        });
+        const adapterUrl = '/local-data.js';
+        const readerUrl = '/map-effects.js';
+        const { localMapData } = await import(adapterUrl);
+        const { readReferenceEffects } = await import(readerUrl);
+        const propsUrl = '/map-props.js';
+        const { buildLevelPropsUncached } = await import(propsUrl);
+        const local = await localMapData([course]);
+        try {
+          const effects = await readReferenceEffects(local.source, course);
+          const models = await local.source.readJsonOr(`${course}/Models.json`, null);
+          const instances = await local.source.readJsonOr(`${course}/Instances.json`, null);
+          const payload = await buildLevelPropsUncached(local.source, course);
+          return {
+            document: effects.document,
+            models: models.Models,
+            instances: instances.Instances,
+            commonModels: payload.models,
+            commonInstances: payload.instances,
+            collisionMeshes: payload.collisionMeshes,
+          };
+        } finally {
+          local.dispose();
+        }
+      },
+      { encoded: readFileSync(motionFixture).toString('base64'), course },
+    );
+    assert.equal(imported.models[0].AnimTime, 37.5, `${game}: fractional-frame source timing reaches the browser`);
+    assert.equal(imported.models[0].ModelObjects[1].ParentID, 0, `${game}: multipart hierarchy survives`);
+    assert.equal(imported.models[0].ModelObjects[1].Animation.U1, 25, `${game}: child clip base survives`);
+    assert.equal(imported.commonModels[0].animation.clipFrames, 37.5, `${game}: browser playback keeps source timing`);
+    assert.equal(imported.commonModels[0].animation.objects.length, 2, `${game}: browser playback keeps both parts`);
+    if (collision) {
+      const first = imported.commonInstances[0].cp;
+      const second = imported.commonInstances[1].cp;
+      assert.equal(first.length, 2, `${game}: inactive proxy slots survive browser import`);
+      assert.notEqual(first[1], second[1], `${game}: each placement retains its source part state`);
+      const empty = imported.collisionMeshes.find((mesh: { id: string }) => mesh.id === first[1]);
+      const active = imported.collisionMeshes.find((mesh: { id: string }) => mesh.id === second[1]);
+      assert(
+        empty?.pos.length > 0 && empty.idx.length === 0,
+        `${game}: inactive canopy retains vertices without faces`,
+      );
+      assert(active?.idx.length > 0, `${game}: shared enabled geometry remains collidable`);
+      continue;
+    }
+    const slot = imported.document.slots[imported.instances[0].EffectSlotIndex];
+    const template = slotEffectTemplate(course, imported.document, slot);
+    assert(template, `${game}: recovered motion and silent collection can be copied as a common prop effect`);
+    assert.equal(template.circumstances.persistent?.[0].semanticType, 'property.anim-object');
+    assert.equal(template.circumstances.collision?.[0].semanticType, 'property.node-tombstone');
+    assert(
+      imported.document.graphs.some((graph: { name?: string }) => graph.name?.endsWith(' motion')),
+      `${game}: named motion graphs reach the effects editor's common reader`,
+    );
+  }
   console.log('SSX3 browser Wasm worker: scan, extraction and IndexedDB map publication PASS');
 } finally {
   await browser?.close();

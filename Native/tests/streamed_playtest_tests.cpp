@@ -285,6 +285,127 @@ void boundaries(const std::filesystem::path& root) {
     check(!triggers[2]["PlayerCollision"] && triggers[2]["CollsionMode"] == 0,
           "A helper without an existing collision shape stays dormant");
 }
+
+void inactive_proxy_parts(const std::filesystem::path& root) {
+    for (const bool preview : {false, true}) {
+        std::vector<std::uint8_t> bytes(140);
+        const auto put = [&](unsigned offset, std::uint32_t value) {
+            for (unsigned j = 0; j < 4; ++j)
+                bytes[offset + j] = std::uint8_t(value >> (j * 8));
+        };
+        put(0, 4096);
+        put(4, preview ? 13824 : 14336);
+        put(64, 92);
+        put(68, 2);
+        put(72, 132);
+        put(76, 1);
+        put(80, 136);
+        put(92, 1);
+        put(100, 0xffffffff);
+        put(104, 1234);
+        put(116, 0xffff0003);
+        put(128, 0xffff0000);
+        auto state = import_detail::ssx3_collision_parts({bytes}, 0, 2, preview);
+        check(state["Resource"] == 1234 && state["Enabled"] == Json{true, false},
+              "Retail and preview definitions retain trunk admission and disable the canopy part");
+        put(128, 0xffff0002);
+        check(import_detail::ssx3_collision_parts({bytes}, 1, 2, preview)["Enabled"] == Json{true, true},
+              "Nonzero known source states keep their existing collision behavior");
+        put(128, 0xffff0004);
+        check(import_detail::ssx3_collision_parts({bytes}, 0, 2, preview).is_null(),
+              "Unknown collision states stay deferred");
+        check(import_detail::ssx3_collision_parts({bytes}, 0, 1, preview).is_null(),
+              "Ambiguous definition/object layouts cannot mask another part");
+    }
+    std::filesystem::create_directories(root / "Meshes");
+    std::filesystem::create_directories(root / "Collision");
+    const std::string trunk = "v 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n";
+    const std::string leaves = "v 400 0 300\nv 500 0 300\nv 400 100 300\n";
+    std::ofstream(root / "Meshes/trunk.obj") << trunk;
+    std::ofstream(root / "Meshes/leaves.obj") << leaves << "f 1 2 3\n";
+    std::ofstream(root / "Collision/trunk.obj") << trunk;
+    std::ofstream(root / "Collision/leaves.obj") << leaves << "f 1 2 3\n";
+    std::ofstream(root / "Collision/leaves-disabled.obj") << leaves;
+    write(root, "Models.json",
+          {{"Models",
+            Json::array(
+                {{{"ModelName", "compound fixture"},
+                  {"ModelObjects",
+                   Json::array({{{"ParentID", -1}, {"MeshData", Json::array({{{"MeshPath", "trunk.obj"}}})}},
+                                {{"ParentID", 0}, {"MeshData", Json::array({{{"MeshPath", "leaves.obj"}}})}}})}}})}});
+    Json row = {{"ModelID", 0},       {"Location", {0, 0, 0}},   {"Rotation", {0, 0, 0, 1}},
+                {"Scale", {1, 1, 1}}, {"PlayerCollision", true}, {"PlayerBounce", true},
+                {"U0", 1e30},         {"CollsionMode", 1},       {"CollsionModelPaths", {"trunk.obj", "leaves.obj"}}};
+    write(root, "Instances.json", {{"Instances", Json::array({row})}});
+    const std::array<ProbeSphere, 1> canopy_start{ProbeSphere{{4.2, 4, -.2}, .05}},
+        canopy_end{ProbeSphere{{4.2, 2, -.2}, .05}}, trunk_start{ProbeSphere{{.2, 1, -.2}, .05}},
+        trunk_end{ProbeSphere{{.2, -1, -.2}, .05}};
+    check(!CollisionWorld::load(root).sweep(canopy_start, canopy_end).empty(),
+          "The original full canopy proxy reproduces the foliage collision");
+    row["CollsionModelPaths"][1] = "leaves-disabled.obj";
+    write(root, "Instances.json", {{"Instances", Json::array({row})}});
+    const auto world = CollisionWorld::load(root);
+    check(world.triangles() == 1 && world.sweep(canopy_start, canopy_end).empty(),
+          "A vertex-only disabled proxy retains its slot and produces no canopy contact");
+    check(!world.sweep(trunk_start, trunk_end).empty(), "The enabled trunk still collides with the rider");
+}
+
+void portable_effects() {
+    Json effects = {
+        {"graphs",
+         Json::array(
+             {{{"id", "uv"},
+               {"name", "Source UV"},
+               {"nodes",
+                Json::array({{{"id", "uv:0"}, {"mainType", 0}, {"payload", {{"type0", {{"SubType", 10}}}}}}})}}})},
+        {"slots", Json::array({{{"id", "source"},
+                                {"originalIndex", 0},
+                                {"circumstances",
+                                 {{"persistent", "uv"},
+                                  {"collision", nullptr},
+                                  {"slot3", nullptr},
+                                  {"slot4", nullptr},
+                                  {"trigger", "uv"},
+                                  {"slot6", nullptr},
+                                  {"slot7", nullptr}}}}})}};
+    Json object = {{"IncludeAnimation", true},
+                   {"ParentID", -1},
+                   {"Animation", {{"AnimationAction", 4}, {"U1", 25}, {"AnimationEntries", Json::array()}}}};
+    Json models = Json::array();
+    Json instances = Json::array();
+    for (const auto* name : {"mdl_npp_casha_1007", "mdl_np2_boasta_1001", "mdl_vb4_boosta_1002", "mdl_er4_boost_1",
+                             "mdl_er4_casha_sign", "mdl_abc_cashb_1000"}) {
+        const auto index = models.size();
+        models.push_back({{"ModelName", name}, {"AnimTime", 30}, {"ModelObjects", Json::array({object, object})}});
+        instances.push_back({{"ModelID", index}, {"Visable", true}, {"EffectSlotIndex", 0}});
+    }
+    import_detail::streamed_model_effects(models, effects, {});
+    check(effects["graphs"].size() == 7 && effects["slots"].size() == 1,
+          "All decoded clips are inspectable without autoplay bindings");
+    const auto original_slot = effects["slots"][0], original_objects = models[0]["ModelObjects"];
+    const auto report = import_detail::streamed_pickups(models, instances, effects, {}, true);
+    check(report["Collectibles"] == 2 && report["AnimatedBoosts"] == 1 && report["DeferredBoostRewards"] == 1,
+          "On Tour collections are silent and boost refill semantics remain deferred");
+    check(models[0]["ModelObjects"] == original_objects && models[0]["AnimTime"] == 30,
+          "Recovered multipart clips and timing survive pickup adaptation exactly");
+    check(effects["slots"][0] == original_slot, "Composition cannot mutate a shared source slot");
+    const auto slot = effects["slots"][instances[0]["EffectSlotIndex"].get<unsigned>()];
+    check(slot["circumstances"]["trigger"] == "uv", "Other source circumstances survive adapter composition");
+    const auto graph_id = slot["circumstances"]["persistent"];
+    const auto graph = std::find_if(effects["graphs"].begin(), effects["graphs"].end(),
+                                    [&](const Json& g) { return g["id"] == graph_id; });
+    check(graph != effects["graphs"].end() && (*graph)["nodes"].size() == 2 &&
+              (*graph)["nodes"][0]["payload"] == effects["graphs"][0]["nodes"][0]["payload"] &&
+              (*graph)["nodes"][1]["semanticType"] == "property.anim-object",
+          "Material and motion operations share a common graph without losing source nodes");
+    check(!models[2].contains("Pickup") && instances[3]["EffectSlotIndex"] == 0 &&
+              instances[4]["EffectSlotIndex"] == 0 && instances[5]["EffectSlotIndex"] == 0,
+          "Boost refills and near-match art cannot silently become common collectible rewards");
+    const auto saved = effects;
+    import_detail::streamed_model_effects(models, effects, {});
+    import_detail::streamed_pickups(models, instances, effects, {}, true);
+    check(effects == saved, "Recovered graph libraries and adapter bindings are idempotent");
+}
 } // namespace
 
 int main() {
@@ -302,6 +423,18 @@ int main() {
             const auto [visible, solid] = import_detail::streamed_prop_admission(label, false);
             check(visible && solid, "Ordinary near-match art keeps its original admission");
         }
+        for (const auto* label : {"mdl_ABC1_bigchal_white_int_07", "mdl_ABC1_bigchal_green_ext_07",
+                                  "mdl_EHP3_bigchal_blue_int_01", "MDL_ERA5_BIGCHAL_RED_EXT_0_001"}) {
+            const auto [visible, solid] = import_detail::streamed_prop_admission(label, false);
+            check(!visible && !solid, "Untranslated challenge beacon variants stay hidden and nonsolid");
+        }
+        for (const auto* label : {"mdl_ABC1_bigchal_green_ext_sign", "mdl_ABC1_bigchal_green_external_01",
+                                  "mdl_ABC1_bigchalk_green_ext_01", "mdl_er3_bigchal_green_ext_01"}) {
+            const auto [visible, solid] = import_detail::streamed_prop_admission(label, false);
+            check(visible && solid, "Unrelated near-match art retains its existing admission");
+        }
+        inactive_proxy_parts(root / "inactive-proxies");
+        portable_effects();
         production(root / "production");
         cancellation(root / "cancel");
         boundaries(root / "boundaries");

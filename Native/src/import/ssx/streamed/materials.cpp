@@ -31,14 +31,14 @@ struct SetupBundle {
         available = true;
     }
 
-    std::uint32_t property(unsigned instance) const {
+    Bytes definition(unsigned instance) const {
         if (!available)
-            return absent;
+            return {};
         if (instance >= bytes.le(68))
             throw std::runtime_error("Invalid streamed setup instance");
         const auto definition = bytes.le(bytes.le(72) + instance * 2, 2);
         if (definition == 65535)
-            return absent;
+            return {};
         const auto count = bytes.le(76), table = bytes.le(80), start = bytes.le(64), end = bytes.le(72);
         if (definition >= count)
             throw std::runtime_error("Invalid streamed setup definition");
@@ -46,7 +46,12 @@ struct SetupBundle {
         const auto next = definition + 1 < count ? bytes.le(table + (definition + 1) * 4) : end - start;
         if (offset > next || next > end - start || next - offset < 28)
             throw std::runtime_error("Invalid streamed setup definition extent");
-        return bytes.le(start + offset + 8);
+        return {bytes.data.subspan(start + offset, next - offset)};
+    }
+
+    std::uint32_t property(unsigned instance) const {
+        const auto row = definition(instance);
+        return row.data.empty() ? absent : row.le(8);
     }
 
     std::uint32_t persistent(unsigned property) const {
@@ -81,6 +86,25 @@ std::uint32_t ssx3_setup_persistent(Bytes bundle, unsigned property, bool previe
 
 Bytes ssx3_setup_program(Bytes bundle, unsigned program, bool preview) {
     return SetupBundle(bundle, preview).program(program);
+}
+
+// [Trailmap: 552-part-admission] Only the measured triangle-proxy layout is
+// admitted. Nonzero known states keep their existing response; unknown states
+// and layouts remain deferred rather than acquiring inferred bit semantics.
+nlohmann::json ssx3_collision_parts(Bytes bundle, unsigned instance, unsigned objects, bool preview) {
+    using Json = nlohmann::json;
+    const auto row = SetupBundle(bundle, preview).definition(instance);
+    if (!objects || objects > 256 || row.data.size() != 16 + std::size_t(objects) * 12 || row.le(0) != 1 ||
+        row.le(12) == absent)
+        return nullptr;
+    Json enabled = Json::array();
+    for (unsigned i = 0; i < objects; ++i) {
+        const auto state = row.le(24 + i * 12, 2);
+        if (state > 3)
+            return nullptr;
+        enabled.push_back(state != 0);
+    }
+    return {{"Resource", row.le(12)}, {"Enabled", std::move(enabled)}};
 }
 
 // [Trailmap: 516-literal-setup] Translate a complete, unconditional material

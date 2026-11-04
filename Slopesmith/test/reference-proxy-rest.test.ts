@@ -55,9 +55,10 @@ const models = {
     { ModelName: 'identity-panel', ModelObjects: [object('a.obj')] },
     { ModelName: 'another-rest-pose', ModelObjects: [object('a.obj', [-1000, 0, 0])] },
     { ModelName: 'ambiguous-legacy-proxies', ModelObjects: doors },
+    { ModelName: 'inactive-proxy-part', ModelObjects: [object('a.obj'), object('b.obj')] },
   ],
 };
-const rows = [0, 0, 1, 2, 3].map((ModelID, index) => ({
+const rows = [0, 0, 1, 2, 3, 4].map((ModelID, index) => ({
   ModelID,
   InstanceName: `fixture-${index}`,
   Location: [index * 2000, 0, 0],
@@ -70,7 +71,13 @@ const rows = [0, 0, 1, 2, 3].map((ModelID, index) => ({
   CollsionMode: 1,
   EffectSlotIndex: -1,
   CollsionModelPaths:
-    ModelID === 0 ? ['a.obj', 'b.obj'] : ModelID === 3 ? ['a.obj', 'b.obj', 'a.obj', 'b.obj'] : ['a.obj'],
+    ModelID === 0
+      ? ['a.obj', 'b.obj']
+      : ModelID === 3
+        ? ['a.obj', 'b.obj', 'a.obj', 'b.obj']
+        : ModelID === 4
+          ? ['a.obj', 'inactive.obj']
+          : ['a.obj'],
 }));
 const docs: Record<string, unknown> = {
   'Models.json': models,
@@ -84,6 +91,11 @@ const io: MapDataSource = {
     return (docs[path.split('/').at(-1)!] as T) ?? fallback;
   },
   async readTextOrNull(path) {
+    if (path.endsWith('/inactive.obj'))
+      return box(-300, 0)
+        .split('\n')
+        .filter(line => !line.startsWith('f '))
+        .join('\n');
     return path.endsWith('/a.obj') ? box(0, 300) : path.endsWith('/b.obj') ? box(-300, 0) : null;
   },
   async readBytesOrNull() {
@@ -152,6 +164,18 @@ function hits(start: number[], end: number[], sources = colliders): boolean {
 }
 assert(!hits([-100, 100, 100], [100, 100, 100]), 'The open doorway no longer contains the closed-pose wall');
 assert(hits([-350, 300, 100], [50, 300, 100]), 'An open door panel still collides at its visible position');
+const inactive = props.instances.find(row => row.sourceIndex === 5)!;
+assert.equal(inactive.collisionModels!.length, 2, 'An inactive collision part keeps its object slot for copy/export');
+assert.equal(
+  props.collisionMeshes!.get(inactive.collisionModels![1])!.indices.length,
+  0,
+  'The vertex-only proxy remains available without physical triangles',
+);
+const compound = decor
+  .rideColliders()
+  .filter(source => source.object?.kind === 'reference' && source.object.index === 5);
+assert(!hits([9900, -100, 100], [10100, -100, 100], compound), 'The rider passes through the inactive part');
+assert(hits([9900, 100, 100], [10100, 100, 100], compound), 'The remaining trunk proxy still blocks the rider');
 const closed = new THREE.BufferGeometry();
 const raw = props.collisionMeshes!.get('a')!;
 closed.setAttribute('position', new THREE.BufferAttribute(raw.positions, 3));

@@ -169,6 +169,11 @@ HELPER_CASES = [
     ('noCollide_rockwall', True, True), ('wood_fence', True, True),
 ]
 
+SSX3_HELPER_CASES = HELPER_CASES + [
+    ('mdl_ABC1_bigchal_white_int_07', False, False), ('mdl_ABC1_bigchal_green_ext_07', False, False),
+    ('mdl_ABC1_bigchal_green_ext_sign', True, True),
+]
+
 
 def material_program(tour=False, conditional=False, preview=False):
     # Original literal bytecode: reset, U=.01, V=-.02, install, return.
@@ -377,10 +382,11 @@ def main():
         assert (out / 'Meshes/1_0_0.obj').read_text().count('\nf ') == 2
         assert '\nv -100 0 -100\n' in (out / 'Meshes/1_0_0.obj').read_text()
         assert '\nvn 0.999969482 0 0\n' in (out / 'Meshes/1_0_0.obj').read_text()
-        for label, visible, solid in HELPER_CASES:
+        for label, visible, solid in SSX3_HELPER_CASES:
             helper_files = members()
+            instance_name = label if label.startswith('mdl_') else 'mdl_A_' + label
             helper_files['data/worlds/bam.phm'], helper_files['data/worlds/bam.psm'] = names(
-                [(1, 'mdl_A_' + label), (257, 'Rock copy')], [(1, 'mdl_A_' + label + '_CollideModel_ProgMesh')])
+                [(1, instance_name), (257, 'Rock copy')], [(1, instance_name + '_CollideModel_ProgMesh')])
             helper_iso = root / (label + '.iso'); helper_iso.write_bytes(disc(helper_files))
             destination = root / label
             run(executable, 'extract', helper_iso, 'SSX3_A', destination)

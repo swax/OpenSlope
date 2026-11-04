@@ -58,6 +58,36 @@ bool sequence_helper(std::string_view name) {
     return true;
 }
 
+// [Trailmap: 551-challenge-beacons] The common ride has no source challenge
+// state/controller. Keep untranslated beacon variants as inspectable effects.
+bool challenge_beacon(std::string_view name) {
+    if (name.size() < 9 || !name.starts_with("mdl_") || name[8] != '_')
+        return false;
+    for (unsigned i = 4; i < 7; ++i)
+        if (name[i] < 'a' || name[i] > 'z')
+            return false;
+    if (name[7] < '0' || name[7] > '9')
+        return false;
+    name.remove_prefix(9);
+    for (const auto family : {"bigchal_white_int", "bigchal_white_ext", "bigchal_green_int", "bigchal_green_ext",
+                              "bigchal_blue_int", "bigchal_blue_ext", "bigchal_red_int", "bigchal_red_ext"}) {
+        if (!name.starts_with(family))
+            continue;
+        name.remove_prefix(std::string_view(family).size());
+        while (!name.empty()) {
+            if (name.front() != '_')
+                return false;
+            name.remove_prefix(1);
+            if (name.empty() || name.front() < '0' || name.front() > '9')
+                return false;
+            while (!name.empty() && name.front() >= '0' && name.front() <= '9')
+                name.remove_prefix(1);
+        }
+        return true;
+    }
+    return false;
+}
+
 // [Trailmap: 519-light] Optional colour data must not make a map unplayable.
 std::optional<std::array<double, 3>> average_light(const Json& value) {
     if (!value.is_string())
@@ -103,62 +133,79 @@ std::optional<std::array<double, 3>> average_light(const Json& value) {
 
 } // namespace
 
-// [Trailmap: 526-common-pickups] These are authored common-format approximations,
-// not a translation of the source world-script VM or its career progression.
-Json streamed_pickups(Json& models, Json& instances, Json& effects, const ImportCancel& cancel) {
-    Json report = {{"Fidelity", "Approximate"}, {"Multipliers", 0}, {"Collectibles", 0}};
-    std::map<unsigned, int> slots;
+// [Trailmap: 526-common-pickups, 551-port] Source clips are decoded; looping
+// and cross-game rewards are explicit application adapters, not source VM calls.
+Json streamed_pickups(Json& models, Json& instances, Json& effects, const ImportCancel& cancel, bool tour) {
+    Json report = {{"Fidelity", "Adapted"},    {"Multipliers", 0},           {"Collectibles", 0},
+                   {"AnimatedBoosts", 0},      {"RecoveredMotionModels", 0}, {"FallbackMotionModels", 0},
+                   {"DeferredBoostRewards", 0}};
+    std::map<unsigned, Json> attachments;
     for (std::size_t index = 0; index < models.size(); ++index) {
         check_cancel(cancel);
         auto& model = models[index];
         const auto name = lower(model.value("ModelName", ""));
-        if (!name.starts_with("mdl_") || name.size() < 15 || name[8] != '_' ||
-            !std::all_of(name.begin() + 4, name.begin() + 7, [](char c) { return c >= 'a' && c <= 'z'; }) ||
-            name[7] < '0' || name[7] > '9')
+        const auto alpha = [](char c) { return c >= 'a' && c <= 'z'; };
+        const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+        const std::size_t start = tour ? 8 : 9;
+        if (!name.starts_with("mdl_") || name.size() <= start || name[start - 1] != '_')
             continue;
-        const auto end = name.find('_', 9);
-        const auto family = name.substr(9, end == name.npos ? name.npos : end - 9);
+        if (tour ? !(alpha(name[4]) && alpha(name[5]) && (digit(name[6]) || name.substr(4, 3) == "npp"))
+                 : !(alpha(name[4]) && alpha(name[5]) && alpha(name[6]) && digit(name[7])))
+            continue;
+        const auto end = name.find('_', start);
+        const auto family = name.substr(start, end == name.npos ? name.npos : end - start);
         if (end != name.npos &&
-            (end + 1 == name.size() || !std::all_of(name.begin() + std::ptrdiff_t(end + 1), name.end(),
-                                                    [](char c) { return c >= '0' && c <= '9'; })))
+            (end + 1 == name.size() || !std::all_of(name.begin() + std::ptrdiff_t(end + 1), name.end(), digit)))
             continue;
-        const unsigned tier = family == "multia"   ? 2
+        const unsigned tier = tour                 ? 0
+                              : family == "multia" ? 2
                               : family == "multib" ? 3
                               : family == "multic" ? 5
                               : family == "multid" ? 10
                                                    : 0;
-        if (!tier && family != "collecta")
+        const bool boost = tour && (family == "boosta" || family == "boostb");
+        if (tour ? !(boost || family == "casha" || family == "cashb" || family == "boasta")
+                 : (!tier && family != "collecta"))
             continue;
-        const auto existing = model.find("Pickup");
-        if (existing != model.end())
+        if (model.contains("Pickup") || model.contains("SourceItem"))
             continue;
-        // All supported source pickups have a single object. Never replace a
-        // recovered clip or infer a hierarchy for a similarly named model.
         auto& objects = model.at("ModelObjects");
-        if (objects.size() != 1 || objects[0].value("IncludeAnimation", false) || objects[0].contains("Animation"))
+        const bool recovered = std::any_of(objects.begin(), objects.end(), [](const Json& object) {
+            return object.value("IncludeAnimation", false) && object.contains("Animation") &&
+                   object.at("Animation").value("AnimationAction", 0u);
+        });
+        if (recovered && model.value("AnimTime", 0.) <= 0)
             continue;
+        if (!recovered) {
+            // The SSX 3 fallback never replaces a recovered clip or invents a
+            // multipart hierarchy. On Tour motion requires decoded source data.
+            if (tour || objects.size() != 1 || objects[0].value("IncludeAnimation", false) ||
+                objects[0].contains("Animation"))
+                continue;
+            model["AnimTime"] = 60;
+            objects[0]["IncludeAnimation"] = true;
+            objects[0]["Animation"] = {
+                {"AnimationAction", 32},
+                {"AnimationEntries", Json::array({{{"AnimationMaths", Json::array({{{"Value1", 0},
+                                                                                    {"Value2", 0},
+                                                                                    {"Value3", 180},
+                                                                                    {"Value4", 0},
+                                                                                    {"Value5", 0},
+                                                                                    {"Value6", 2}}})}}})}};
+        }
+        auto& motion_count = report[recovered ? "RecoveredMotionModels" : "FallbackMotionModels"];
+        motion_count = motion_count.get<unsigned>() + 1;
         const auto id = "openslope-pickup:" + std::to_string(index);
+        const auto motion = streamed_motion_graph(effects, unsigned(index), model, recovered);
+        attachments[unsigned(index)] = {{"persistent", motion}};
+        if (tour)
+            model["SourceItem"] = {{"Family", family}, {"Reward", boost ? "Deferred" : "CommonCollectible"}};
+        if (boost)
+            continue;
         model["Pickup"] = {{"Kind", tier ? "score-multiplier" : "collectible"},
                            {"Value", tier ? tier : 1},
-                           {"Fidelity", "Approximate"}};
-        model["AnimTime"] = 60;
-        objects[0]["IncludeAnimation"] = true;
-        objects[0]["Animation"] = {
-            {"AnimationAction", 32},
-            {"AnimationEntries", Json::array({{{"AnimationMaths", Json::array({{{"Value1", 0},
-                                                                                {"Value2", 0},
-                                                                                {"Value3", 180},
-                                                                                {"Value4", 0},
-                                                                                {"Value5", 0},
-                                                                                {"Value6", 2}}})}}})}};
-        Json spin = {{"id", id + ":spin:0"},
-                     {"mainType", 0},
-                     {"semanticType", "property.anim-object"},
-                     {"references", Json::object()}};
-        spin["payload"]["type0"] = {
-            {"SubType", 256},
-            {"type0Sub256",
-             {{"U0", 1}, {"U1", -1}, {"U2", -1}, {"U3", 30}, {"U4", 0}, {"U5", 1}, {"U6", 0}, {"U7", 3}}}};
+                           {"Fidelity", "Approximate"},
+                           {"Motion", recovered ? "Decoded" : "AuthoredFallback"}};
         Json collect = Json::array();
         if (tier)
             collect.push_back({{"id", id + ":collect:0"},
@@ -166,36 +213,35 @@ Json streamed_pickups(Json& models, Json& instances, Json& effects, const Import
                                {"semanticType", "score.multiplier"},
                                {"payload", {{"MultiplierScore", tier}}},
                                {"references", Json::object()}});
-        Json hide = {{"id", id + ":collect:1"},
-                     {"mainType", 0},
-                     {"semanticType", "property.node-tombstone"},
-                     {"payload", {{"type0", {{"SubType", 5}, {"DeadNodeMode", 2}}}}},
-                     {"references", Json::object()}};
-        collect.push_back(hide);
-        if (effects.at("slots").size() >= 4096)
-            throw std::runtime_error("Pickup effect slot exceeds limit");
-        slots[unsigned(index)] = int(effects.at("slots").size());
-        effects["graphs"].push_back({{"id", id + ":spin"}, {"name", "Pickup spin"}, {"nodes", Json::array({spin})}});
+        collect.push_back({{"id", id + ":collect:1"},
+                           {"mainType", 0},
+                           {"semanticType", "property.node-tombstone"},
+                           {"payload", {{"type0", {{"SubType", 5}, {"DeadNodeMode", 2}}}}},
+                           {"references", Json::object()}});
         effects["graphs"].push_back(
             {{"id", id + ":collect"}, {"name", tier ? "Score gem" : "Collectible"}, {"nodes", std::move(collect)}});
-        effects["slots"].push_back({{"id", id + ":slot"},
-                                    {"originalIndex", slots.at(unsigned(index))},
-                                    {"circumstances",
-                                     {{"persistent", id + ":spin"},
-                                      {"collision", id + ":collect"},
-                                      {"slot3", nullptr},
-                                      {"slot4", nullptr},
-                                      {"trigger", nullptr},
-                                      {"slot6", nullptr},
-                                      {"slot7", nullptr}}}});
+        attachments.at(unsigned(index))["collision"] = id + ":collect";
     }
+    std::map<std::pair<unsigned, int>, int> slots;
     for (auto& instance : instances) {
         check_cancel(cancel);
         const auto model = instance.value("ModelID", unsigned(-1));
-        if (!slots.contains(model) || instance.value("EffectSlotIndex", -1) >= 0 || !instance.value("Visable", true))
+        if (!attachments.contains(model) || !instance.value("Visable", true))
             continue;
+        const auto base = instance.value("EffectSlotIndex", -1);
+        const auto key = std::pair{model, base};
+        auto [slot, fresh] = slots.try_emplace(key, -1);
+        if (fresh)
+            slot->second = streamed_effect_binding(
+                effects, base, "openslope-pickup:" + std::to_string(model) + ":" + std::to_string(base),
+                attachments.at(model));
+        instance["EffectSlotIndex"] = slot->second;
+        if (!models.at(model).contains("Pickup")) {
+            report["AnimatedBoosts"] = report["AnimatedBoosts"].get<unsigned>() + 1;
+            report["DeferredBoostRewards"] = report["DeferredBoostRewards"].get<unsigned>() + 1;
+            continue;
+        }
         instance["Pickup"] = models.at(model).at("Pickup");
-        instance["EffectSlotIndex"] = slots.at(model);
         instance["CollsionMode"] = 2;
         instance["PlayerCollision"] = true;
         instance["PlayerBounce"] = false;
@@ -337,7 +383,7 @@ std::pair<bool, bool> streamed_prop_admission(const std::string& label, bool deb
         trigger = trigger || p + 4 == name.size() || name[p + 4] != 'h';
     const bool load = name.ends_with("_load") || name.ends_with("_unload") ||
                       contains(name, {"_load_", "_unload_", "loadbox", "unloadbox"});
-    const bool scripted = trigger || load || sequence_helper(name) ||
+    const bool scripted = trigger || load || sequence_helper(name) || challenge_beacon(name) ||
                           contains(name, {"reset", "volume", "teleport", "ridestate", "emit", "nis_"});
     const bool fence = collision && !contains(name, {"nis"});
     const bool hidden = debug || fence || scripted || contains(name, {"occluder", "portal", "invis"});

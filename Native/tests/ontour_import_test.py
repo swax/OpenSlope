@@ -73,14 +73,14 @@ def race_path(distances=(1000,)):
     return b'Biii' + le(len(rows)) + b''.join(rows)
 
 
-def names(instance_names=None):
+def names(instance_names=None, model_name='mdl_er1_model'):
     ids = bytearray(le(0) + le(0) + le(8))
     strings = bytearray(ids)
     for array, rows in enumerate([
         [(2, 'patch_wr1_unused'), (3, 'patch_er1_synthetic')],
         [(3, instance_names[0] if instance_names else 'mdl_er1_rock'),
          (4, instance_names[1] if instance_names else 'mdl_er1_prop_without_terrain'), (600, 'mdl_er1_unstreamed_mission')],
-        [(0, 'mdl_er1_model')], [(0, 'common_patches_snow er1')],
+        [(0, model_name)], [(0, 'common_patches_snow er1')],
         [], [], [], [],
     ]):
         data = b''.join(le(0) + le(0) + le(rid) + le(0) for rid, _ in rows)

@@ -9,11 +9,11 @@ import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
 // Game-wide soundtracks now import only each map's stable share of the catalogue.
-// SSX 3/beta: 13 resolves UV setup bindings; On Tour: 11 adds its shared fog sprite; Avalanche: 4; Mad Trix: 9.
+// SSX 3/beta: 15 respects per-part collision state; On Tour: 12 recovers model clips; Avalanche: 4; Mad Trix: 9.
 // GBA generation 9 rematches terrain into larger quads without subdividing isolated faces.
 export const isoCourseCacheVersion = (course: string): number =>
   /^SSX3B?_/i.test(course)
-    ? 13
+    ? 15
     : /^SSXGBA_/i.test(course)
       ? 9
       : /^AVALANCHE_/i.test(course)
@@ -21,10 +21,10 @@ export const isoCourseCacheVersion = (course: string): number =>
         : /^MADTRIX_/i.test(course)
           ? 9
           : /^SSXOT_/i.test(course)
-            ? 11
+            ? 12
             : /^SSX_/i.test(course)
-                ? 3
-                : ISO_CACHE_VERSION;
+              ? 3
+              : ISO_CACHE_VERSION;
 interface CachedFile {
   key: string;
   course: string;

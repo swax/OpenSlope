@@ -487,7 +487,7 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
         require(material_count <= 4096, "invalid model material count");
         b.range(material_table + 4, std::size_t(material_count) * 4);
         b.range(table, std::size_t(count) * 16);
-        bool debug = true, drawn = false;
+        bool debug = true, drawn = false, animated = false;
         std::size_t vertices = 0;
         Json objects = Json::array();
         for (unsigned j = 0; j < count; ++j) {
@@ -499,6 +499,12 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
                            {"MeshData", Json::array()},
                            {"IncludeMatrix", false},
                            {"IncludeAnimation", false}};
+            const auto animation = static_cast<std::int32_t>(b.le(o + 8));
+            if (animation > 0) {
+                object["Animation"] = import_streamed_animation(b, std::size_t(animation));
+                object["IncludeAnimation"] = true;
+                animated = true;
+            }
             const auto matrix = static_cast<std::int32_t>(b.le(o + 12));
             if (matrix >= 0) {
                 const auto pose = import_pose(b, std::size_t(matrix));
@@ -538,8 +544,10 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
             out.debug_models.insert(key.second);
         out.model_ids[key.second] = unsigned(out.models.size());
         out.vertices[key.second] = vertices;
-        out.models.push_back(
-            {{"ModelName", name(2, key.second)}, {"AnimTime", b.number(20)}, {"ModelObjects", objects}});
+        require(!animated || b.number(20) >= 0, "invalid animated model duration");
+        out.models.push_back({{"ModelName", name(2, key.second)},
+                              {"AnimTime", b.number(20) * (animated ? 30 : 1)},
+                              {"ModelObjects", objects}});
     }
     for (const auto& [key, bytes] : records) {
         if (key.first != 3 || !sections.contains(sector(key.second, tour)))
@@ -578,7 +586,8 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
 }
 
 void collision(const Records& records, const std::map<Key, std::string>& names, PropsExport& props,
-               const std::filesystem::path& output, Json& warnings, const ImportCancel& cancel, bool tour = false) {
+               const std::filesystem::path& output, Json& warnings, const ImportCancel& cancel, bool tour = false,
+               bool preview = false) {
     // [Trailmap: 513-proxy-layout, 513-binding, 513-helper-proxies]
     std::map<std::pair<unsigned, std::string>, std::size_t> placements;
     for (std::size_t i = 0; i < props.instances.size(); ++i)
@@ -586,6 +595,8 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
                                      props.instances[i].at("InstanceName").get<std::string>()},
                            i);
     std::map<Key, Json> bindings;
+    std::map<Key, unsigned> binding_resources;
+    std::set<std::string> disabled_proxies;
     std::filesystem::create_directory(output / "Collision");
     for (const auto& [key, bytes] : records) {
         if (key.first != 12 || bytes.empty())
@@ -636,8 +647,10 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
         if (bindings.contains(binding))
             warnings.push_back("Multiple collision variants for model " + std::to_string(binding.second) +
                                " in section " + std::to_string(binding.first) + "; first triangle proxy selected.");
-        else
+        else {
             bindings[binding] = files;
+            binding_resources[binding] = key.second;
+        }
     }
     for (auto& row : props.instances) {
         const Bytes original{get(records, 3, row.at("SourceResource").get<unsigned>())};
@@ -651,6 +664,42 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
         row["CollsionModelPaths"] = bindings.at(binding);
         row["CollsionMode"] = 1;
         row["PlayerCollision"] = props.solid_instances.contains(resource);
+        if (!tour) {
+            const auto bundle = records.find({16, resource & 255});
+            const auto objects = props.models.at(row.at("ModelID").get<unsigned>()).at("ModelObjects").size();
+            const auto state = ssx3_collision_parts(bundle == records.end() ? Bytes{} : Bytes{bundle->second},
+                                                    resource >> 8, unsigned(objects), preview);
+            if (state.is_null() || state.at("Resource") != binding_resources.at(binding) ||
+                state.at("Enabled").size() != row.at("CollsionModelPaths").size())
+                continue;
+            // Preserve object/proxy alignment and shared source geometry. A
+            // disabled part has vertices but no collision faces in the common
+            // format; all consumers can retain its slot without making a wall.
+            // [Trailmap: 552-part-admission]
+            Json disabled = Json::array();
+            auto& paths = row["CollsionModelPaths"];
+            for (std::size_t i = 0; i < paths.size(); ++i) {
+                if (state.at("Enabled")[i].get<bool>())
+                    continue;
+                const auto source = paths[i].get<std::string>();
+                const auto name = std::filesystem::path(source).stem().string() + "_disabled.obj";
+                if (disabled_proxies.insert(name).second) {
+                    std::ifstream input(output / "Collision" / source);
+                    std::ofstream filtered(output / "Collision" / name, std::ios::binary);
+                    filtered << "# Collision disabled by source object state\n";
+                    std::string line;
+                    while (std::getline(input, line))
+                        if (!line.starts_with("f "))
+                            filtered << line << '\n';
+                    require(input.eof() && bool(filtered), "cannot normalize disabled collision part");
+                }
+                paths[i] = name;
+                disabled.push_back(i);
+            }
+            if (!disabled.empty())
+                row["SourceCollision"] = {{"ProxyResource", state.at("Resource")},
+                                          {"DisabledObjects", std::move(disabled)}};
+        }
     }
 }
 
@@ -697,6 +746,7 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
         return found == records.end() ? Bytes{} : Bytes{found->second};
     };
     std::map<unsigned, int> translated;
+    Json deferred_programs = Json::array();
     unsigned instances = 0, deferred = 0;
     for (auto& instance : props.instances) {
         check_cancel(cancel);
@@ -713,20 +763,17 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
                 const auto id = "streamed-material:" + std::to_string(source);
                 for (std::size_t i = 0; i < nodes.size(); ++i)
                     nodes[i]["id"] = id + ":" + std::to_string(i);
-                entry->second = int(effects["slots"].size());
-                effects["graphs"].push_back({{"id", id}, {"nodes", nodes}});
-                effects["slots"].push_back({{"id", id + ":slot"},
-                                            {"originalIndex", entry->second},
-                                            {"circumstances",
-                                             {{"persistent", id},
-                                              {"collision", nullptr},
-                                              {"slot3", nullptr},
-                                              {"slot4", nullptr},
-                                              {"trigger", nullptr},
-                                              {"slot6", nullptr},
-                                              {"slot7", nullptr}}}});
+                effects["graphs"].push_back(
+                    {{"id", id},
+                     {"name", "Imported material effect " + std::to_string(source)},
+                     {"nodes", nodes},
+                     {"extensions",
+                      {{"sourceEffect",
+                        {{"adapter", "uv-scroll"}, {"fidelity", "decoded"}, {"sourceProgram", source}}}}}});
+                entry->second = streamed_effect_binding(effects, -1, id, {{"persistent", id}});
             } else {
                 ++deferred;
+                deferred_programs.push_back(source);
             }
         }
         if (entry->second >= 0) {
@@ -737,6 +784,7 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
     effects["extensions"]["streamedMaterialSetups"] = {{"TranslatedPrograms", effects["graphs"].size()},
                                                        {"TranslatedInstances", instances},
                                                        {"DeferredPrograms", deferred},
+                                                       {"DeferredSourcePrograms", deferred_programs},
                                                        {"BindingState", "Supported"}};
     return effects;
 }
@@ -1338,11 +1386,11 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     notify("Converting mountain props and baked vertex lighting");
     auto world_props = props(records, labels, selected, output, warnings, cancel, tour);
     notify("Converting mountain collision proxies");
-    collision(records, labels, world_props, output, warnings, cancel, tour);
+    collision(records, labels, world_props, output, warnings, cancel, tour, beta);
     auto effects = material_effects(records, world_props, course, cancel, tour);
+    streamed_model_effects(world_props.models, effects, cancel);
     auto playtest = streamed_playtest_props(world_props.instances, effects, cancel);
-    if (!tour)
-        playtest["Pickups"] = streamed_pickups(world_props.models, world_props.instances, effects, cancel);
+    playtest["Pickups"] = streamed_pickups(world_props.models, world_props.instances, effects, cancel, tour);
     playtest["CourseHelpersPrepared"] = tour ? prepare_ontour_helpers(world_props.instances, world_props.models) : 0;
     save(output / "PlaytestImport.json", playtest);
     const auto sounds = sound_bindings(records, world_props, output, cancel, tour, course);

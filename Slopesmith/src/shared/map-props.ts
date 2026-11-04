@@ -999,7 +999,9 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     const text = collisionTexts[index];
     if (text === null) continue;
     const raw = parseObj(text);
-    if (raw.v.length && raw.corners.length) rawCollisionMeshes.set(id, raw);
+    // An intentionally inactive proxy part retains vertices and its object
+    // slot, with no collision faces. Keep it through copy/export as well.
+    if (raw.v.length) rawCollisionMeshes.set(id, raw);
   }
   const collisionPaths = new Map<number, string[]>();
   const packedCollisionIds = new Set<string>();

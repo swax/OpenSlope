@@ -20,7 +20,7 @@ const level = game === 'ssx-3' ? 'SSX3_ESS3' : game === 'ssx-3-beta' ? 'SSX3B_ES
 const names =
   game === 'ssx-on-tour'
     ? ['mdl_er4_trg_fw_archlights_4_1001', 'mdl_er4_impassableleft_17', 'ordinary-fence']
-    : ['mdl_ESS3_seqpop_1105', 'mdl_ESS3_seqpopTimer_1000', 'ordinary-fence'];
+    : ['mdl_ESS3_seqpop_1105', 'mdl_ABC1_bigchal_green_ext_01', 'ordinary-fence'];
 const document = createEmptyEffectsDocument(level);
 document.target.game = game;
 const rows = names.map((InstanceName, i) => ({

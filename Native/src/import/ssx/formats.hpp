@@ -13,14 +13,20 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
                            const std::string& course, const std::filesystem::path& output,
                            const ImportProgress& progress, const ImportCancel& cancel);
 nlohmann::json import_pose(Bytes data, std::size_t offset, double scale = 1);
+nlohmann::json import_streamed_animation(Bytes data, std::size_t offset);
+std::string streamed_motion_graph(nlohmann::json& effects, unsigned model, const nlohmann::json& data, bool recovered);
+void streamed_model_effects(const nlohmann::json& models, nlohmann::json& effects, const ImportCancel& cancel);
+int streamed_effect_binding(nlohmann::json& effects, int base, const std::string& id,
+                            const nlohmann::json& attachments);
 std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
                             const ImportCancel& cancel);
 nlohmann::json streamed_material_setup(Bytes program, bool tour, bool preview = false);
 std::uint32_t ssx3_setup_property(Bytes bundle, unsigned instance, bool preview);
 std::uint32_t ssx3_setup_persistent(Bytes bundle, unsigned property, bool preview);
 Bytes ssx3_setup_program(Bytes bundle, unsigned program, bool preview);
+nlohmann::json ssx3_collision_parts(Bytes bundle, unsigned instance, unsigned objects, bool preview);
 nlohmann::json streamed_pickups(nlohmann::json& models, nlohmann::json& instances, nlohmann::json& effects,
-                                const ImportCancel& cancel);
+                                const ImportCancel& cancel, bool tour = false);
 std::pair<bool, bool> streamed_prop_admission(const std::string& name, bool debug);
 bool ontour_boundary_helper(const std::string& name);
 bool ontour_course_helper(const std::string& name);

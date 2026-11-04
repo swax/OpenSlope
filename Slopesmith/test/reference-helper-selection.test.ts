@@ -29,7 +29,7 @@ try {
     const names =
       game === 'ssx-on-tour'
         ? ['mdl_er4_trg_fw_archlights_4_1001', 'mdl_er4_impassableleft_17']
-        : ['mdl_ESS3_seqpop_1105', 'mdl_ESS3_seqpopTimer_1000'];
+        : ['mdl_ESS3_seqpop_1105', 'mdl_ABC1_bigchal_green_ext_01'];
     const page = await browser.newPage();
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));

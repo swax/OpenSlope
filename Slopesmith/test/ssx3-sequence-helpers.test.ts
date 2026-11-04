@@ -1,7 +1,7 @@
 // tier: fast
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { isSsx3SequenceHelper } from '../src/core/props/course-helpers';
+import { isSsx3ChallengeBeacon, isSsx3SequenceHelper } from '../src/core/props/course-helpers';
 import { buildLevelPropsUncached } from '../src/shared/map-props';
 import { readReferenceEffects } from '../src/shared/map-effects';
 import { decodeProps } from '../src/core/reference/props';
@@ -21,7 +21,12 @@ const names = [
   'ordinary-crate',
   'mdl_ESS3_seqpopcorn_1000',
   'mdl_ESS3_seqpop_sign',
+  'mdl_ABC1_bigchal_white_int_07',
+  'mdl_ABC1_bigchal_green_ext_07',
+  'mdl_EHP3_bigchal_blue_int_01',
+  'mdl_ERA5_bigchal_red_ext_01',
 ];
+const helperIndices = [0, 1, 2, 6, 7, 8, 9];
 for (const source of ['ssx-3', 'ssx-3-beta', 'SSX3_ESS3', 'SSX3B_ESS3']) {
   for (const name of [...names.slice(0, 3), 'mdl_CRA3_seqpopFlash_1004', 'MDL_ESS3_EZseqPop_1007'])
     assert(isSsx3SequenceHelper(source, name));
@@ -32,8 +37,20 @@ for (const source of ['ssx-3', 'ssx-3-beta', 'SSX3_ESS3', 'SSX3B_ESS3']) {
     'Shared cube model names cannot override placement roles',
   );
   assert(isSsx3SequenceHelper(source, undefined, names[0]), 'An unnamed placement can use its model label');
+  for (const name of names.slice(6)) assert(isSsx3ChallengeBeacon(source, name));
+  for (const name of [
+    'mdl_ABC1_bigchal_green_ext_sign',
+    'mdl_ABC1_bigchalk_green_ext_01',
+    'mdl_er3_bigchal_green_ext_01',
+    'mdl_ABC1_bigchal_green_external_01',
+  ])
+    assert(!isSsx3ChallengeBeacon(source, name));
+  assert(!isSsx3ChallengeBeacon(source, 'ordinary-crate', names[6]), 'Placement roles override shared beacon art');
 }
-for (const source of ['SSXOT_ER4_DAY', 'GARI', 'CUSTOM']) assert(!isSsx3SequenceHelper(source, names[0]));
+for (const source of ['SSXOT_ER4_DAY', 'GARI', 'CUSTOM']) {
+  assert(!isSsx3SequenceHelper(source, names[0]));
+  assert(!isSsx3ChallengeBeacon(source, names[6]));
+}
 
 for (const level of ['SSX3_ESS3', 'SSX3B_ESS3']) {
   const document = createEmptyEffectsDocument(level);
@@ -87,7 +104,7 @@ for (const level of ['SSX3_ESS3', 'SSX3B_ESS3']) {
   };
   const props = decodeProps(await buildLevelPropsUncached(io, level));
   const effects = decodeReferenceEffects(await readReferenceEffects(io, level));
-  for (const index of [0, 1, 2]) {
+  for (const index of helperIndices) {
     const prop = props.instances[index];
     assert(prop.editorHelper && !prop.visible && !prop.playerCollision && prop.contact === 'ghost');
     assert(effects.instances[index].editorHelper && !effects.instances[index].visible);
@@ -98,7 +115,7 @@ for (const level of ['SSX3_ESS3', 'SSX3B_ESS3']) {
     );
   }
   assert(props.instances[3].visible && !props.instances[3].editorHelper, 'Shared scenery stays visible');
-  assert.deepEqual(referenceEffectInstanceIndices(effects), [0, 1, 2]);
+  assert.deepEqual(referenceEffectInstanceIndices(effects), helperIndices);
   assert.equal(JSON.stringify(docs), original, 'Old cache files and source geometry stay intact');
   assert.equal(effects.document.graphs.length, 0, 'Do not invent sequence behavior');
   const root = new THREE.Group(),
@@ -124,7 +141,7 @@ for (const level of ['SSX3_ESS3', 'SSX3B_ESS3']) {
         );
       }
   }
-  assert(hiddenHelperSlots >= 3, 'Check the retained helper draw slots');
+  assert(hiddenHelperSlots >= helperIndices.length, 'Check the retained helper draw slots');
   assert(
     !decor.propPickGroups[0].children.some(child => child.userData.runtimeInstanceCopies),
     'Helpers do not spawn ride-visible copies',

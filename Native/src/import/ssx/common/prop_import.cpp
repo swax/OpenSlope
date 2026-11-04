@@ -187,7 +187,7 @@ std::size_t mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, con
     return points.size();
 }
 
-Json animation(Bytes b, std::size_t p) {
+Json animation(Bytes b, std::size_t p, bool model_relative = false) {
     b.range(p, 36);
     Json a;
     for (unsigned i = 0; i < 6; ++i)
@@ -197,14 +197,14 @@ Json animation(Bytes b, std::size_t p) {
         throw std::runtime_error("Invalid model animation channels");
     a["AnimationAction"] = mask;
     a["AnimationEntries"] = Json::array();
-    const auto table = p + b.le(p + 32);
+    const auto table = (model_relative ? 0 : p) + b.le(p + 32);
     b.range(table, count * 4);
-    // Channel pointer table is animation-relative; the segment-array offset
-    // in each count/offset record is relative to that channel record.
+    // Tricky uses animation/channel-relative pointers. The streamed games use
+    // model-relative pointers throughout. [Trailmap: 551-port]
     for (unsigned c = 0; c < count; ++c) {
-        const auto entry = p + b.le(table + c * 4);
+        const auto entry = (model_relative ? 0 : p) + b.le(table + c * 4);
         const auto n = b.le(entry);
-        const auto segments = entry + b.le(entry + 4);
+        const auto segments = (model_relative ? 0 : entry) + b.le(entry + 4);
         if (n > 100000)
             throw std::runtime_error("Invalid model animation segment count");
         b.range(segments, std::size_t(n) * 24);
@@ -280,6 +280,8 @@ Json import_pose(Bytes data, std::size_t offset, double scale) {
             m[c * 4 + r] *= scale;
     return pose(m);
 }
+
+Json import_streamed_animation(Bytes data, std::size_t offset) { return animation(data, offset, true); }
 
 std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
                             const ImportCancel& cancel) {
