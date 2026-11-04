@@ -374,5 +374,47 @@ for (const phase of ['models', 'placements'] as const) {
   check(last?.phase !== 'textures' && last?.completed === last?.total, `${phase} progress reaches its total`);
 }
 
+// Streamed imports retain an averaged ambient record for native consumers alongside
+// their full per-vertex bake. The browser must use the bake, including in merged
+// fallback draws, while a placement without that bake still uses its own record.
+const lightingFixture: LevelProps = {
+  ...fixture,
+  models: [{ id: 1, name: 'streamed-rock', subs: [{ ...triangle(-1), light: new Float32Array([0, 1, 2]) }] }],
+  instances: [
+    {
+      ...instance(10, 1, 0),
+      lighting: { ambient: [128, 128, 128], keys: [] },
+      vertexLight: new Uint16Array([0xa108, 0xc210, 0xffff]),
+    },
+    { ...instance(11, 1, 300), lighting: { ambient: [32, 48, 64], keys: [] } },
+  ],
+};
+for (const [label, layer] of [
+  ['multi-draw', decor],
+  ['merged fallback', fallback],
+] as const) {
+  layer.setShadeMode('textured');
+  layer.setProps(lightingFixture);
+  const draws = layer.propPickGroups[0].children.filter(
+    child => child instanceof THREE.BatchedMesh || child instanceof MergedStaticPropMesh,
+  ) as Array<THREE.BatchedMesh | MergedStaticPropMesh>;
+  const baked = draws.find(draw => assets.propTex.isVertexLit(draw.material));
+  const record = draws.find(
+    draw => assets.propTex.isNative(draw.material) && !assets.propTex.isVertexLit(draw.material),
+  );
+  check(
+    baked?.instanceCount === 1 && baked.geometry.hasAttribute('ps2LightIndex'),
+    `${label}: full baked vertex light wins over the imported ambient fallback`,
+  );
+  check(record?.instanceCount === 1, `${label}: a placement without a bake keeps its ambient record`);
+  check(
+    baked !== undefined &&
+      referencePropSlot(baked, 0)?.inst.sourceIndex === 10 &&
+      record !== undefined &&
+      referencePropSlot(record, 0)?.inst.sourceIndex === 11,
+    `${label}: different lighting sources retain their own placement lookup`,
+  );
+}
+
 if (failures) process.exitCode = 1;
 else console.log('REFERENCE PROP BATCHING TESTS PASSED');

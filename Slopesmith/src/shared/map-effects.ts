@@ -10,7 +10,7 @@ import { type ReferenceEffectInstance, type ReferenceEffectsPayload } from '../c
 import { particleVolumesFromNative } from '../core/particles/volumes';
 import { readParticleTextureReference } from './map-particle-texture';
 import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } from '../core/collision/native';
-import { isOnTourCourseHelper, prepareOnTourCourseHelpers } from '../core/props/course-helpers';
+import { isReferenceCourseHelper, prepareReferenceCourseHelpers } from '../core/props/course-helpers';
 
 interface RawInstance {
   InstanceName?: string;
@@ -104,8 +104,9 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
   if (rawDocument === null) throw new Error(`${safe} has no Effects.json; re-extract or re-export the level`);
   if (!rawInstancesFile) throw new Error(`no Instances.json for ${safe}; re-extract or re-export the level`);
   const rawModels = (await io.readJsonOr<{ Models?: RawModel[] }>(join(dir, 'Models.json'), {})).Models ?? [];
-  const helperSource = rawDocument.target?.game === 'ssx-on-tour' ? 'ssx-on-tour' : safe;
-  const rawInstances = prepareOnTourCourseHelpers(
+  const helperGame = rawDocument.target?.game;
+  const helperSource = helperGame && ['ssx-on-tour', 'ssx-3', 'ssx-3-beta'].includes(helperGame) ? helperGame : safe;
+  const rawInstances = prepareReferenceCourseHelpers(
     helperSource,
     rawInstancesFile.Instances ?? [],
     id => rawModels[id]?.ModelName,
@@ -126,7 +127,7 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
     effectSlotIndex: Number.isInteger(raw.EffectSlotIndex) ? Number(raw.EffectSlotIndex) : -1,
     ltgState: Number.isInteger(raw.LTGState) ? Number(raw.LTGState) : 0,
     visible: raw.Visable !== false,
-    ...(isOnTourCourseHelper(helperSource, raw.InstanceName, rawModels[Number(raw.ModelID ?? -1)]?.ModelName)
+    ...(isReferenceCourseHelper(helperSource, raw.InstanceName, rawModels[Number(raw.ModelID ?? -1)]?.ModelName)
       ? { editorHelper: true }
       : {}),
     // The ADL collision-sound EVENT id (not a bank slot - core/effects/collision-sound.ts resolves it).

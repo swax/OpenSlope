@@ -15,6 +15,13 @@ native renderers consume different subsets of the resulting portable map.
   permanent collision fences and proxies remain solid. Source collision meshes
   are retained even for inactive helpers. These are conservative admission rules,
   not an implementation of event visibility or scripts.
+- **SSX 3 and preview sequence cubes are editor-only helpers.** Placements named
+  `seqpop` or `seqgush`, including `EZ`, `Trig`, `Timer` and `Flash` variants, are
+  hidden and nonsolid during riding. Browser read-time adaptation covers existing
+  imports and exposes their retained geometry in the Effects overlay without
+  inventing playable graphs. Classification prefers the placement name because
+  unrelated roles share the same cube model. Original script/effect bindings
+  remain unresolved; arbitrary cubes and other name families keep their behavior.
 - **SSX 3 collision could leak between sections.** A model's triangle proxy is
   shared by its placements within a section. The lookup now includes that section;
   a proxy from another section cannot replace it. On Tour continues using the
@@ -92,6 +99,17 @@ colours through the existing ambient field, rather than a uniform half-bright
 fill. Browser per-vertex lighting keeps its full colour stream. Custom ambient
 or directional lighting is preserved. Native still lacks per-vertex gradients
 and equivalent local spotlight playback.
+
+Browser props prefer the full per-vertex bake over that averaged ambient fallback.
+This preserves the source shadows, gradients and tint on SSX 3 and beta scenery;
+placements without a bake retain their ambient record. Reloading the browser
+applies the correction to existing imported maps without reimporting the ISO.
+
+Source vertex colors can brighten a texture as well as darken it. A constant
+bright color alone does not identify a missing bake. The browser preserves
+these colors without automatic terrain attenuation; original material/shader
+equivalence and secondary-texture playback remain unresolved.
+[Trailmap: 513-vertex-light-scale, 512-material-record]
 
 The browser permits surface/fall/wedge and graph-driven recovery in free riding
 and after a scored run finishes. Mounted recovery waits through pause, countdown

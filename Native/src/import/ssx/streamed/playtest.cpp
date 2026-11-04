@@ -22,6 +22,42 @@ bool contains(const std::string& name, std::initializer_list<const char*> words)
     return std::any_of(words.begin(), words.end(), [&](const auto* word) { return name.find(word) != name.npos; });
 }
 
+// [Trailmap: 513] Editor policy for named sequence locators. Keep
+// shared cube geometry; this does not infer or execute their compiled scripts.
+bool sequence_helper(std::string_view name) {
+    if (name.size() < 9 || !name.starts_with("mdl_") || name[8] != '_')
+        return false;
+    for (unsigned i = 4; i < 7; ++i)
+        if (name[i] < 'a' || name[i] > 'z')
+            return false;
+    if (name[7] < '0' || name[7] > '9')
+        return false;
+    name.remove_prefix(9);
+    if (name.starts_with("ez"))
+        name.remove_prefix(2);
+    if (name.starts_with("seqpop"))
+        name.remove_prefix(6);
+    else if (name.starts_with("seqgush"))
+        name.remove_prefix(7);
+    else
+        return false;
+    for (const auto suffix : {"trig", "timer", "flash"})
+        if (name.starts_with(suffix)) {
+            name.remove_prefix(std::string_view(suffix).size());
+            break;
+        }
+    while (!name.empty()) {
+        if (name.front() != '_')
+            return false;
+        name.remove_prefix(1);
+        if (name.empty() || name.front() < '0' || name.front() > '9')
+            return false;
+        while (!name.empty() && name.front() >= '0' && name.front() <= '9')
+            name.remove_prefix(1);
+    }
+    return true;
+}
+
 // [Trailmap: 519-light] Optional colour data must not make a map unplayable.
 std::optional<std::array<double, 3>> average_light(const Json& value) {
     if (!value.is_string())
@@ -301,8 +337,8 @@ std::pair<bool, bool> streamed_prop_admission(const std::string& label, bool deb
         trigger = trigger || p + 4 == name.size() || name[p + 4] != 'h';
     const bool load = name.ends_with("_load") || name.ends_with("_unload") ||
                       contains(name, {"_load_", "_unload_", "loadbox", "unloadbox"});
-    const bool scripted =
-        trigger || load || contains(name, {"reset", "volume", "teleport", "ridestate", "emit", "nis_"});
+    const bool scripted = trigger || load || sequence_helper(name) ||
+                          contains(name, {"reset", "volume", "teleport", "ridestate", "emit", "nis_"});
     const bool fence = collision && !contains(name, {"nis"});
     const bool hidden = debug || fence || scripted || contains(name, {"occluder", "portal", "invis"});
     const bool solid = !hidden || ((fence || (debug && contains(name, {"fence", "impassable"}))) && !scripted &&

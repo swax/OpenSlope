@@ -4,7 +4,7 @@ import { legacyTrickyMapName } from '../core/reference/map-source';
 import { safeDataName as assetTableKey } from '../core/export/names';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../core/effects/document';
 import { readMapEffectsDocument as readEffectsDocument } from './map-effects';
-import { isOnTourCourseHelper, prepareOnTourCourseHelpers } from '../core/props/course-helpers';
+import { isReferenceCourseHelper, prepareReferenceCourseHelpers } from '../core/props/course-helpers';
 import { readCrowdFrames } from './map-crowd';
 import { rollerNodeMass } from '../core/effects/authoring';
 import { referenceEffectDefaults } from '../core/props/effect-defaults';
@@ -893,10 +893,11 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     io.readJsonOr<ModelsJson | null>(join(levelDir, 'Models.json'), null),
   ]);
   if (!storedInstances) throw new Error(`no Instances.json for level "${lvl}"`);
-  const helperSource = effectsDocument?.target?.game === 'ssx-on-tour' ? 'ssx-on-tour' : lvl;
+  const helperGame = effectsDocument?.target?.game;
+  const helperSource = helperGame && ['ssx-on-tour', 'ssx-3', 'ssx-3-beta'].includes(helperGame) ? helperGame : lvl;
   const instJson = {
     ...storedInstances,
-    Instances: prepareOnTourCourseHelpers(
+    Instances: prepareReferenceCourseHelpers(
       helperSource,
       storedInstances.Instances,
       id => sourceModels?.Models[id]?.ModelName,
@@ -1142,7 +1143,11 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
         s: instance.Scale,
         n: instance.InstanceName,
         v: instance.Visable !== false,
-        ...(isOnTourCourseHelper(helperSource, instance.InstanceName, sourceModels?.Models[instance.ModelID]?.ModelName)
+        ...(isReferenceCourseHelper(
+          helperSource,
+          instance.InstanceName,
+          sourceModels?.Models[instance.ModelID]?.ModelName,
+        )
           ? { eh: true as const }
           : {}),
         // State 0 is the overwhelmingly common case; omission keeps the payload compact while decodeProps

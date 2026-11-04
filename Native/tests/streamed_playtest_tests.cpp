@@ -292,6 +292,16 @@ int main() {
         std::filesystem::temp_directory_path() /
         ("openslope-playtest-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     try {
+        for (const auto* label : {"mdl_ESS3_seqpop_1105", "mdl_ESS3_seqpopTimer_1000", "mdl_ESS3_seqpopTrig_1000",
+                                  "mdl_CRA3_seqpopFlash_1004", "MDL_ESS3_EZseqPop_1007", "mdl_ESS3_seqgush_1301"}) {
+            const auto [visible, solid] = import_detail::streamed_prop_admission(label, false);
+            check(!visible && !solid, "Sequence marker art is hidden and nonsolid in streamed imports");
+        }
+        for (const auto* label : {"mdl_ESS3_seqpopcorn_1000", "mdl_ESS3_seqpop_sign", "mdl_er4_seqpop_1000",
+                                  "mdl_ESS3_seqpopTimer_sign", "mdl_ESS3_seqpop__1000"}) {
+            const auto [visible, solid] = import_detail::streamed_prop_admission(label, false);
+            check(visible && solid, "Ordinary near-match art keeps its original admission");
+        }
         production(root / "production");
         cancellation(root / "cancel");
         boundaries(root / "boundaries");

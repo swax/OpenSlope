@@ -14,10 +14,15 @@ import { buildLevelPropsUncached } from '../src/shared/map-props';
 import { readReferenceEffects } from '../src/shared/map-effects';
 import type { MapDataSource } from '../src/shared/map-data';
 
-const level = 'SSXOT_ER4_DAY';
-const names = ['mdl_er4_trg_fw_archlights_4_1001', 'mdl_er4_impassableleft_17', 'ordinary-fence'];
+const requestedGame = new URLSearchParams(window.location.search).get('game');
+const game = requestedGame === 'ssx-3' || requestedGame === 'ssx-3-beta' ? requestedGame : 'ssx-on-tour';
+const level = game === 'ssx-3' ? 'SSX3_ESS3' : game === 'ssx-3-beta' ? 'SSX3B_ESS3' : 'SSXOT_ER4_DAY';
+const names =
+  game === 'ssx-on-tour'
+    ? ['mdl_er4_trg_fw_archlights_4_1001', 'mdl_er4_impassableleft_17', 'ordinary-fence']
+    : ['mdl_ESS3_seqpop_1105', 'mdl_ESS3_seqpopTimer_1000', 'ordinary-fence'];
 const document = createEmptyEffectsDocument(level);
-document.target.game = 'ssx-on-tour';
+document.target.game = game;
 const rows = names.map((InstanceName, i) => ({
   InstanceName,
   ModelID: 0,

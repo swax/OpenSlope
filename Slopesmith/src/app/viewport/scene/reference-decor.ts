@@ -188,6 +188,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     object: number | null;
     base: THREE.Matrix4;
     defaultVisible: boolean;
+    editorHelper: boolean;
     proxy: boolean;
     piece: number | null;
     piecePivot: THREE.Vector3 | null;
@@ -495,6 +496,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           `${materialWorldEffectsKey(effect)}|anim:${deltaGated ? 'delta:' : ''}${animObjectEffectKey(animation)}` +
           (controlled ? `|control:${inst.sourceIndex}` : '') +
           `|effect-host:${effectControlled}` +
+          `|lighting:${inst.vertexLight?.length ? 'vertex' : inst.lighting ? 'record' : 'scene'}` +
           `|contact:${shadeTint}`;
         const bucket = visibleBuckets.get(key);
         if (bucket) bucket.instances.push(inst);
@@ -616,6 +618,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
               instanceId: k,
               base,
               defaultVisible: inst.visible,
+              editorHelper: inst.editorHelper === true,
               proxy,
               geometry: g,
               level: props.level,
@@ -691,10 +694,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           // private material state needs the narrower InstancedMesh path.
           const staticBatch =
             !bucket.animation && !(model.animation ?? model.rotation) && bucket.controlSourceIndex === null;
-          const native = !!bucket.instances[0]?.lighting;
-          // SSX 3 lights by colours baked per vertex rather than by a record. A placement missing them (its
-          // run did not cover the model) draws at texture brightness inside the same draw.
-          const vertexLit = !native && !!sub.light && bucket.instances.some(inst => !!inst.vertexLight);
+          // Streamed imports also retain an averaged ambient record for consumers without vertex lighting.
+          // Prefer the full bake here so its shadows and tint survive; use the record when the bake is absent.
+          const vertexLit = !!sub.light && !!bucket.instances[0]?.vertexLight?.length;
+          const native = !vertexLit && !!bucket.instances[0]?.lighting;
           // The packed bank, when this submesh can use one: a static draw on a plain page. A scroller or a
           // flipbook owns its Texture's offset and Source, neither of which means anything for one slice of a
           // shared array, so those keep the per-page material `material()` builds for them.
@@ -815,6 +818,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
               object: null,
               base,
               defaultVisible: inst.visible,
+              editorHelper: inst.editorHelper === true,
               proxy: true,
               piece: null,
               piecePivot: null,
@@ -906,6 +910,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
             object: item.object,
             base,
             defaultVisible: inst.visible,
+            editorHelper: inst.editorHelper === true,
             proxy: false,
             piece: item.piece,
             piecePivot: item.piecePivot ? new THREE.Vector3(...item.piecePivot) : null,
@@ -1226,7 +1231,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   function displayMatrix(entry: RuntimeInstanceEntry, matrix: THREE.Matrix4): THREE.Matrix4 {
-    const visible = entry.proxy || (runtimeVisibility.get(entry.sourceIndex) ?? entry.defaultVisible);
+    const visible =
+      entry.proxy || (!entry.editorHelper && (runtimeVisibility.get(entry.sourceIndex) ?? entry.defaultVisible));
     return visible ? matrix : hiddenMatrix(matrix);
   }
 
@@ -1248,7 +1254,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   function runtimeCopySourceEntries(sourceIndex: number): RuntimeInstanceEntry[] {
-    return (runtimeEntries.get(sourceIndex) ?? []).filter(entry => !entry.proxy && !!entry.mesh.parent);
+    return (runtimeEntries.get(sourceIndex) ?? []).filter(
+      entry => !entry.proxy && !entry.editorHelper && !!entry.mesh.parent,
+    );
   }
 
   function createRuntimeInstanceCopies(sourceIndex: number, count: number): RuntimeInstanceCopies {

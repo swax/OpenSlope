@@ -16,6 +16,15 @@ export const isOnTourEffectTrigger = (source: string, ...names: (string | undefi
 export const isOnTourCourseHelper = (source: string, ...names: (string | undefined)[]): boolean =>
   isOnTourBoundaryHelper(source, ...names) || isOnTourEffectTrigger(source, ...names);
 
+/** Named sequence locators, not recovered script behavior. Prefer a placement's
+ * own name: SSX 3 shares the same cube model across unrelated helper roles. */
+export const isSsx3SequenceHelper = (source: string, instanceName?: string, modelName?: string): boolean =>
+  (source === 'ssx-3' || source === 'ssx-3-beta' || /^SSX3B?_/i.test(source)) &&
+  /^mdl_[a-z]{3}[0-9]_(?:ez)?seq(?:pop|gush)(?:trig|timer|flash)?(?:_[0-9]+)*$/i.test(instanceName || modelName || '');
+
+export const isReferenceCourseHelper = (source: string, instanceName?: string, modelName?: string): boolean =>
+  isOnTourCourseHelper(source, instanceName, modelName) || isSsx3SequenceHelper(source, instanceName, modelName);
+
 export interface BoundarySourceInstance {
   InstanceName?: string;
   ModelID?: number;
@@ -49,6 +58,19 @@ export function prepareOnTourCourseHelpers<T extends BoundarySourceInstance>(
           U0: 0,
           SurfaceType: -1,
         }
+      : row,
+  );
+}
+
+/** Read-time policy also covers older ISO caches without rewriting their source rows. */
+export function prepareReferenceCourseHelpers<T extends BoundarySourceInstance>(
+  source: string,
+  instances: readonly T[],
+  modelName: (id: number) => string | undefined,
+): T[] {
+  return prepareOnTourCourseHelpers(source, instances, modelName).map(row =>
+    isSsx3SequenceHelper(source, row.InstanceName, modelName(row.ModelID ?? -1))
+      ? { ...row, Visable: false, PlayerCollision: false, PlayerBounce: false, U0: 0, SurfaceType: -1 }
       : row,
   );
 }

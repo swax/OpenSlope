@@ -7,6 +7,9 @@ import { PropTextureCache, propLightIndexColor } from '../src/app/props/textures
 import { applyTextureAlphaMode } from '../src/app/props/texture-alpha';
 import { propPreviewIntensity } from '../src/core/lighting/prop-lights';
 import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
+import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
+import { createReferenceDecor } from '../src/app/viewport/scene/reference-decor';
+import { decodeProps, type LevelProps } from '../src/core/reference/props';
 import { createGemsLayer } from '../src/app/viewport/scene/gems';
 import {
   applyPropShade,
@@ -453,6 +456,93 @@ async function run(): Promise<void> {
   if (!near(bakedFadePixel, [0, 0, 255], 2))
     throw new Error(`Vertex alpha 0 did not clear a blended vertex-lit sheet: ${bakedFadePixel}`);
   textures.setVertexLighting(null);
+
+  // Real streamed placements carry BOTH an ambient fallback and the vertex bake.
+  // Exercise material selection through the scene builder, not just native(...),
+  // so an ambient-first branch cannot silently turn a shaded prop texture-bright.
+  const bakedRun = new Uint16Array(4).fill(abgr(8, 8, 8));
+  const placement = decodeProps({
+    level: 'SSX3_FIXTURE',
+    models: [],
+    materials: [],
+    crowdFrames: [],
+    instances: [
+      {
+        i: 0,
+        m: 1,
+        p: [0, 0, 0],
+        q: [0, 0, 0, 1],
+        s: [1, 1, 1],
+        n: 'streamed-rock',
+        la: [256, 256, 256],
+        vl: btoa(String.fromCharCode(...new Uint8Array(bakedRun.buffer))),
+      },
+    ],
+  }).instances;
+  const streamed: LevelProps = {
+    level: 'SSX3_FIXTURE',
+    models: [
+      {
+        id: 1,
+        name: 'streamed-rock',
+        subs: [
+          {
+            mat: -1,
+            positions: bakedGeometry.getAttribute('position').array as Float32Array,
+            uvs: bakedGeometry.getAttribute('uv').array as Float32Array,
+            indices: new Uint32Array(bakedGeometry.getIndex()!.array),
+            light: new Float32Array([0, 1, 2, 3]),
+          },
+        ],
+      },
+    ],
+    instances: placement,
+    materials: new Map([[-1, { tex: null, frames: [] }]]),
+    crowdFrames: [],
+    collisionMeshes: new Map(),
+    physicsBodies: new Map(),
+  };
+  for (const merged of [false, true]) {
+    const root = new THREE.Group();
+    root.matrixAutoUpdate = false;
+    root.matrix.copy(RAW_TO_EDITOR).invert();
+    const assets = createPropAssets();
+    assets.propTex.setPs2Normals(true);
+    const layer = createReferenceDecor(
+      {
+        refRoot: root,
+        ray: new THREE.Raycaster(),
+        cb: {},
+        ...(merged ? { renderer: { extensions: { has: () => false } } } : {}),
+      } as any,
+      assets,
+    );
+    layer.setProps(streamed);
+    layer.showProps(true);
+    scene.add(root);
+    renderer.render(scene, camera);
+    const pixel = centrePixel(renderer);
+    if (!near(pixel, bakedHalfPixel, 2))
+      throw new Error(
+        `Streamed scene used ambient instead of baked light (merged=${merged}): ${pixel} vs ${bakedHalfPixel}`,
+      );
+    // Flat bright colors also occur on legitimate retail neon/crowd art. They
+    // are not evidence of a missing bake: preserve the decoded source multiplier
+    // in both games until original-game rendering establishes another rule.
+    for (const level of ['SSX3B_ESS3', 'SSX3_ESS3']) {
+      streamed.level = level;
+      streamed.instances[0].vertexLight = new Uint16Array(4).fill(abgr(22, 22, 22));
+      layer.setProps(streamed);
+      renderer.render(scene, camera);
+      const brightPixel = centrePixel(renderer);
+      const expected = [0xc2, 0xbb, 0xaa].map(value => Math.min(255, value * (22 / 16)));
+      if (!near(brightPixel, expected, 3)) throw new Error(`${level} source lighting was overridden: ${brightPixel}`);
+    }
+    streamed.instances[0].vertexLight = bakedRun;
+    streamed.level = 'SSX3_FIXTURE';
+    scene.remove(root);
+    layer.setProps(null);
+  }
 
   // Runtime frame selection happens AFTER every intact pane has already uploaded the same loader Source.
   // Exercise that exact WebGL-cache boundary: cracking A must allocate a new map/source/GPU texture and B must
