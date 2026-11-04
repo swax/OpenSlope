@@ -142,6 +142,24 @@ function level(
   check(out.templates.length === 2, 'each distinct portable effect is one template');
 }
 
+// ---- common pickups need no source-level resources
+{
+  const rewards: Omit<EffectNode, 'id'>[] = [
+    { mainType: 14, semanticType: 'score.multiplier', payload: { MultiplierScore: 10 }, references: {} },
+    {
+      mainType: 0,
+      semanticType: 'property.node-tombstone',
+      payload: { type0: { SubType: 5, DeadNodeMode: 2 } },
+      references: {},
+    },
+  ];
+  for (const reward of rewards) {
+    const source = level([{ column: 'collision', nodes: [reward] }]);
+    const template = slotEffectTemplate('SSX3B_ESS3', source, source.slots[0]);
+    check(!!template, 'a self-contained common pickup reward is portable');
+  }
+}
+
 // ---- attaching: one shared slot per effect
 {
   const source = level([{ column: 'collision', nodes: [roller(5)] }]);
@@ -181,7 +199,7 @@ function level(
     materials: [],
     effects: [template],
     models: [
-      { id: 1, name: 'bag', subs: [], fx: { t: 0, n: 22, of: 22 } },
+      { id: 1, name: 'bag', pickup: true, subs: [], fx: { t: 0, n: 22, of: 22 } },
       { id: 2, name: 'x', subs: [], fx: { t: 4, n: 1, of: 1 } },
     ],
     instances: [
@@ -190,6 +208,7 @@ function level(
     ],
   } as unknown as PropsPayload;
   const props = decodeProps(payload);
+  check(props.models[0].pickup === true, 'common pickup metadata survives decoding without a title-specific name');
   check(
     props.effects?.length === 1 && props.models[0].effect?.matching === 22 && props.instances[0].effect === 0,
     'the payload’s templates, model defaults and instance effects decode',

@@ -67,6 +67,111 @@ std::optional<std::array<double, 3>> average_light(const Json& value) {
 
 } // namespace
 
+// [Trailmap: 526-common-pickups] These are authored common-format approximations,
+// not a translation of the source world-script VM or its career progression.
+Json streamed_pickups(Json& models, Json& instances, Json& effects, const ImportCancel& cancel) {
+    Json report = {{"Fidelity", "Approximate"}, {"Multipliers", 0}, {"Collectibles", 0}};
+    std::map<unsigned, int> slots;
+    for (std::size_t index = 0; index < models.size(); ++index) {
+        check_cancel(cancel);
+        auto& model = models[index];
+        const auto name = lower(model.value("ModelName", ""));
+        if (!name.starts_with("mdl_") || name.size() < 15 || name[8] != '_' ||
+            !std::all_of(name.begin() + 4, name.begin() + 7, [](char c) { return c >= 'a' && c <= 'z'; }) ||
+            name[7] < '0' || name[7] > '9')
+            continue;
+        const auto end = name.find('_', 9);
+        const auto family = name.substr(9, end == name.npos ? name.npos : end - 9);
+        if (end != name.npos &&
+            (end + 1 == name.size() || !std::all_of(name.begin() + std::ptrdiff_t(end + 1), name.end(),
+                                                    [](char c) { return c >= '0' && c <= '9'; })))
+            continue;
+        const unsigned tier = family == "multia"   ? 2
+                              : family == "multib" ? 3
+                              : family == "multic" ? 5
+                              : family == "multid" ? 10
+                                                   : 0;
+        if (!tier && family != "collecta")
+            continue;
+        const auto existing = model.find("Pickup");
+        if (existing != model.end())
+            continue;
+        // All supported source pickups have a single object. Never replace a
+        // recovered clip or infer a hierarchy for a similarly named model.
+        auto& objects = model.at("ModelObjects");
+        if (objects.size() != 1 || objects[0].value("IncludeAnimation", false) || objects[0].contains("Animation"))
+            continue;
+        const auto id = "openslope-pickup:" + std::to_string(index);
+        model["Pickup"] = {{"Kind", tier ? "score-multiplier" : "collectible"},
+                           {"Value", tier ? tier : 1},
+                           {"Fidelity", "Approximate"}};
+        model["AnimTime"] = 60;
+        objects[0]["IncludeAnimation"] = true;
+        objects[0]["Animation"] = {
+            {"AnimationAction", 32},
+            {"AnimationEntries", Json::array({{{"AnimationMaths", Json::array({{{"Value1", 0},
+                                                                                {"Value2", 0},
+                                                                                {"Value3", 180},
+                                                                                {"Value4", 0},
+                                                                                {"Value5", 0},
+                                                                                {"Value6", 2}}})}}})}};
+        Json spin = {{"id", id + ":spin:0"},
+                     {"mainType", 0},
+                     {"semanticType", "property.anim-object"},
+                     {"references", Json::object()}};
+        spin["payload"]["type0"] = {
+            {"SubType", 256},
+            {"type0Sub256",
+             {{"U0", 1}, {"U1", -1}, {"U2", -1}, {"U3", 30}, {"U4", 0}, {"U5", 1}, {"U6", 0}, {"U7", 3}}}};
+        Json collect = Json::array();
+        if (tier)
+            collect.push_back({{"id", id + ":collect:0"},
+                               {"mainType", 14},
+                               {"semanticType", "score.multiplier"},
+                               {"payload", {{"MultiplierScore", tier}}},
+                               {"references", Json::object()}});
+        Json hide = {{"id", id + ":collect:1"},
+                     {"mainType", 0},
+                     {"semanticType", "property.node-tombstone"},
+                     {"payload", {{"type0", {{"SubType", 5}, {"DeadNodeMode", 2}}}}},
+                     {"references", Json::object()}};
+        collect.push_back(hide);
+        if (effects.at("slots").size() >= 4096)
+            throw std::runtime_error("Pickup effect slot exceeds limit");
+        slots[unsigned(index)] = int(effects.at("slots").size());
+        effects["graphs"].push_back({{"id", id + ":spin"}, {"name", "Pickup spin"}, {"nodes", Json::array({spin})}});
+        effects["graphs"].push_back(
+            {{"id", id + ":collect"}, {"name", tier ? "Score gem" : "Collectible"}, {"nodes", std::move(collect)}});
+        effects["slots"].push_back({{"id", id + ":slot"},
+                                    {"originalIndex", slots.at(unsigned(index))},
+                                    {"circumstances",
+                                     {{"persistent", id + ":spin"},
+                                      {"collision", id + ":collect"},
+                                      {"slot3", nullptr},
+                                      {"slot4", nullptr},
+                                      {"trigger", nullptr},
+                                      {"slot6", nullptr},
+                                      {"slot7", nullptr}}}});
+    }
+    for (auto& instance : instances) {
+        check_cancel(cancel);
+        const auto model = instance.value("ModelID", unsigned(-1));
+        if (!slots.contains(model) || instance.value("EffectSlotIndex", -1) >= 0 || !instance.value("Visable", true))
+            continue;
+        instance["Pickup"] = models.at(model).at("Pickup");
+        instance["EffectSlotIndex"] = slots.at(model);
+        instance["CollsionMode"] = 2;
+        instance["PlayerCollision"] = true;
+        instance["PlayerBounce"] = false;
+        instance["U0"] = 0;
+        const auto multiplier = instance["Pickup"]["Kind"] == "score-multiplier";
+        instance["LTGState"] = multiplier ? 2 : 0;
+        auto& count = report[multiplier ? "Multipliers" : "Collectibles"];
+        count = count.get<unsigned>() + 1;
+    }
+    return report;
+}
+
 // [Trailmap: 524] Complete names only; this does not infer a controller or gate.
 bool ontour_boundary_helper(const std::string& label) {
     const auto name = lower(label);

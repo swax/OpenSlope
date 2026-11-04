@@ -152,11 +152,12 @@ model's default as an index with its count (`fx`), and each copy's own effect (i
 
 **Only effects that act on the prop alone.** Every node must be one of `DEFAULT_EFFECT_KINDS`, in the persistent,
 collision or trigger column, and name no other instance, graph, function or spline:
-- **In:** knock (Roller), fence flex, texture flip, UV scroll, break into pieces (mesh throw) and rider reset,
+- **In:** knock (Roller), fence flex, texture flip, UV scroll, break into pieces (mesh throw), rider reset,
+  model animation and score multipliers,
   plus the debounce, wait and tombstone nodes that sequence them.
 - **Level wiring stays out:** ELYSIUM's glass halfpipe panes that break their neighbours, GARI's LCD logos that
   switch other screens.
-- **Not yet, pending a portability check:** sounds, particle emitters, crowds and gems. Their payloads index
+- **Not yet, pending a portability check:** sounds, particle emitters and crowds. Their payloads index
   the source level's sound bank and particle tables.
 
 **Placing.** The held prop's **Effect** section names the effect, how many copies carry it and whether it is
@@ -174,7 +175,7 @@ it back.
 
 ## Not yet
 
-- **More effect kinds, and member effects.** Sounds, particles, crowds and gems wait on their portability check
+- **More effect kinds, and member effects.** Sounds, particles and crowds wait on their portability check
   (see Effects). Effects that attach to one group member wait on Test hosts per member.
 - **The HATEOAS API.** It assigns whole `o/prop/<id>` registers, so it applies no defaults. Filling in fields
   an agent did not send would change what an assignment means. An agent can still send `memberBehaviour`.

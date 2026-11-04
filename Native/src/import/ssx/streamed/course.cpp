@@ -1323,6 +1323,8 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     collision(records, labels, world_props, output, warnings, cancel, tour);
     auto effects = material_effects(records, world_props, course, cancel, tour);
     auto playtest = streamed_playtest_props(world_props.instances, effects, cancel);
+    if (!tour)
+        playtest["Pickups"] = streamed_pickups(world_props.models, world_props.instances, effects, cancel);
     playtest["CourseHelpersPrepared"] = tour ? prepare_ontour_helpers(world_props.instances, world_props.models) : 0;
     save(output / "PlaytestImport.json", playtest);
     const auto sounds = sound_bindings(records, world_props, output, cancel, tour, course);

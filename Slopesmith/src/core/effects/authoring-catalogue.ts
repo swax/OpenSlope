@@ -571,8 +571,7 @@ export const EFFECT_TEMPLATES: readonly EffectTemplate[] = [
       'CHECK THE MODEL HAS A CLIP. On a model with no animation this still installs and runs, moving nothing, ' +
       'and nothing anywhere says so. The Play window shown below is how you tell: a real clip has a window ' +
       'longer than zero.\n\n' +
-      'Imported models and gem props preserve their animation on export. Other models borrowed from an ' +
-      'extracted level arrive with an empty window however many frames they claim.',
+      'Imported and borrowed models preserve their animation clips on export.',
     nodes: [
       {
         mainType: 0,

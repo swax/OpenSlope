@@ -8,12 +8,12 @@ import { createIsoImportSessions } from './iso-import-sessions';
 import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
-// SSX 3 Beta generation 8 adds the original fog sprite and missing snow riding loops.
+// SSX 3 generation 10 translates spinning pickups with silent collectible removal.
 // Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
 // GBA generation 9 rematches terrain into larger quads without subdividing isolated faces.
 export const isoCourseCacheVersion = (course: string): number =>
-  /^SSX3B_/i.test(course)
-    ? 8
+  /^SSX3B?_/i.test(course)
+    ? 10
     : /^SSXGBA_/i.test(course)
       ? 9
       : /^AVALANCHE_/i.test(course)

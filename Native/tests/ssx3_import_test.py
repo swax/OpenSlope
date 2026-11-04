@@ -127,12 +127,12 @@ def fog_fixture():
     return bytes(b), bytes(instance)
 
 
-def names(instance_rows=None, collision_rows=None):
+def names(instance_rows=None, collision_rows=None, model_rows=None):
     ids = bytearray(le(0) + le(0) + le(5))
     strings = bytearray(ids)
     for tag, rows in [(0, [(1, 'Synthetic patch')]),
                       (1, instance_rows if instance_rows is not None else [(1, 'Synthetic rock'), (257, 'Rock copy')]),
-                      (2, [(1, 'Synthetic model')]), (8, [(1, 'Synthetic metal rail')]),
+                      (2, model_rows if model_rows is not None else [(1, 'Synthetic model')]), (8, [(1, 'Synthetic metal rail')]),
                       (11, collision_rows if collision_rows is not None else [(1, 'Synthetic rock_CollideModel_ProgMesh')])]:
         payload = b''.join(le(0) + le(0) + le(rid) + le(0) for rid, _ in rows)
         ids += bytes([tag]) + len(payload).to_bytes(3, 'little') + le(len(rows)) + payload

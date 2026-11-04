@@ -93,7 +93,7 @@ check(
 );
 
 const bake = bakePlacedProps(
-  [prop],
+  [{ ...prop, specialKind: undefined }],
   () => ({
     subs: [{ mat: -1, positions: [0, 0, 0, 100, 0, 0, 0, 0, 100], uvs: [], indices: [0, 1, 2] }],
     rotation: { clipFrames: 60, axis: 2, segments: [[0, 0, 180, 0, 0, 2]] },
@@ -117,7 +117,7 @@ const exported = buildCanonicalProps(bake.groups, {
 const packedModels = JSON.parse(exported.text['Models.json']).Models;
 check(
   exported.animatedModels === 1 && packedModels[0].AnimTime === 60 && bake.groups[0].subs[0].object === 1,
-  'native spin reaches the exported model and its animated geometry object',
+  'borrowed pickup spin survives export as an ordinary prop without a special gem tag',
 );
 check(
   exported.effectBindings === 1 && JSON.parse(exported.text['Instances.json']).Instances[0].LTGState === 2,

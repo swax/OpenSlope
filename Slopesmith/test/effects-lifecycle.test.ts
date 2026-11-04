@@ -18,17 +18,17 @@ import { PropTextureCache } from './src/app/props/textures';
 const check = (ok, message) => { if (!ok) throw new Error(message); };
 const stage = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), refRoot: new THREE.Group(), worldRoot: new THREE.Group() };
 stage.scene.add(stage.camera, stage.refRoot, stage.worldRoot);
-const states = [0,1].map(() => ({ visible: true, writes: 0, copies: 0, retired: false, stopped: false }));
+const states = [0,1].map(() => ({ visible: true, writes: 0, copies: 0, retired: false, stopped: false, matrix: null }));
 const effectResets = [0, 0];
 const runtime = createReferenceEffectsLayer(stage, {
   setReferenceInstanceVisible: (index, value) => { states[index].visible = value ?? true; },
-  setReferenceInstanceWorldMatrix: index => states[index].writes++,
+  setReferenceInstanceWorldMatrix: (index, matrix) => { states[index].writes++; states[index].matrix = matrix?.clone() ?? null; },
   setReferenceInstanceWorldCopies: (index, matrices) => { states[index].copies = matrices?.length ?? 0; },
   setObjectEffectsStopped: (object, stopped) => { states[object.index].stopped = stopped; },
   retireRideObject: object => { states[object.index].retired = true; },
   restoreRideObject: object => { states[object.index].retired = false; },
   resetObjectEffects: object => { effectResets[object.index]++; },
-  resetSceneRuntime: () => states.forEach(state => Object.assign(state, { visible: true, writes: 0, copies: 0, retired: false, stopped: false })),
+  resetSceneRuntime: () => states.forEach(state => Object.assign(state, { visible: true, writes: 0, copies: 0, retired: false, stopped: false, matrix: null })),
   resolveSpline: () => ({ originalIndex: 0, style: 1, space: 'editor', segments: [[[0,0,0],[0,0,3],[0,0,6],[0,0,9]]] }),
 });
 const node = (semanticType, mainType, payload, references = {}) => ({ id: semanticType, semanticType, mainType, payload, references });
@@ -81,6 +81,16 @@ for (const mode of [2,3]) {
     check(states[0].visible && !states[0].retired && states[0].writes > before, 'breakable reset reinstalls persistent motion');
   } else check(states[0].writes > before, 'ordinary tombstone preserves detached motion');
   runtime.endPlay(); runtime.setWorldEffectsEnabled(false);
+}
+// A pickup's authored tombstone wins over the short generic pickup pop/restore animation.
+for (const reward of [node('score.multiplier', 14, { MultiplierScore: 10 }), null]) {
+  load([], reward ? [reward, wait(0.2), stop(2)] : [stop(2)]);
+  hit(); tick(25);
+  check(!states[0].visible && states[0].retired, 'collected pickup stays hidden past the pop timer');
+  check(states[0].matrix === null, 'a delayed tombstone releases the temporary pop scale');
+  check(states[1].visible && !states[1].retired, 'collecting one shared-model pickup leaves the other present');
+  runtime.endPlay();
+  check(states[0].visible && !states[0].retired, 'leaving the ride restores the collectible');
 }
 // The receiver lives on the target, not on the switch that calls it. A delayed reinstallation must run
 // after a kill; deleting all scheduled work for the host would silently break this chain.

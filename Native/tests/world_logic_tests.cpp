@@ -115,6 +115,16 @@ void pickup(const std::filesystem::path& root) {
     const auto nongem = logic.take_actions();
     check(nongem.size() == 1 && nongem[0].kind == WorldActionKind::MainSound,
           "direct non-Showoff invocation chimes without applying multiplier");
+    auto black = doc;
+    black["graphs"][0]["nodes"][0]["payload"]["MultiplierScore"] = 10;
+    write(root, "Effects.json", black);
+    auto black_logic = WorldLogic::load(root);
+    black_logic.restart(RunMode::Showoff);
+    black_logic.contact(0, 20);
+    const auto black_actions = black_logic.take_actions();
+    check(black_actions.size() == 2 && black_actions[0].kind == WorldActionKind::Multiplier &&
+              black_actions[0].value == 10 && black_actions[1].kind == WorldActionKind::MainSound,
+          "common x10 pickup dispatches its multiplier and chime");
     auto bindings = doc;
     bindings["slots"][0]["originalIndex"] = 17;
     bindings["slots"][0]["id"] = "slot-new";

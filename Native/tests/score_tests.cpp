@@ -76,6 +76,13 @@ void arithmetic() {
           "x3 scales style before rounding and is consumed");
     near(score.status().meter, .42, "multiplier cannot multiply boost fill");
     score.start();
+    score.multiplier(10);
+    score.multiplier(5);
+    air(score, 80, 4.5);
+    score.land();
+    check(score.status().banked == 16970 && score.status().multiplier == 1,
+          "x10 stays strongest and is consumed by the next scored trick");
+    score.start();
     air(score, 241);
     check(score.status().preview == 1017, "four-second threshold opens flat big-air points");
     score.land();

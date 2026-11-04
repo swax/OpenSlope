@@ -326,7 +326,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
    * editor frame as the reference terrain (refRoot then supplies the game-chirality flip for both). Model
    * vertices stay model-local cm — RAW_TO_EDITOR's 1/100 scales them to metres along with the placement.
    *
-   * A model is routed by name: rail / gem models (the trick layer — REF_TRICK_MODEL_RE) go to the Tricks-gated
+   * Common pickups and rail / gem model names (REF_TRICK_MODEL_RE) go to the Tricks-gated
    * refTrickModelsGroup, the scenery (trees / boulders / banners / fences / …) to refPropsGroup, so the Props
    * and Tricks view filters govern their own halves. Each group's visibility follows its last show* toggle.
    */
@@ -458,7 +458,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       // rails + gems are placed as props in the extracted data, but they're the TRICK layer, not scenery:
       // route them to the Tricks-gated group so the Tricks filter shows / hides them (the Props filter keeps
       // just the scenery). Classified by the extractor's own model name (Mdl_Rail* / Gem* / …).
-      const target = REF_TRICK_MODEL_RE.test(model.name) ? refTrickModelsGroup : refPropsGroup;
+      const target = model.pickup || REF_TRICK_MODEL_RE.test(model.name) ? refTrickModelsGroup : refPropsGroup;
       // Hidden instances still need ordinary textured geometry so a graph can reveal a pre-authored broken twin.
       // They enter the batch with a zero-scale matrix; this costs no fragments and avoids rebuilding geometry at
       // the moment of impact.

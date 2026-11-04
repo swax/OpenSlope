@@ -548,7 +548,7 @@ export function bakePlacedProps(
         );
       group.collision = { positions, indices: Array.from(mg.collision.indices) };
     }
-    // Gems opened in the normal toolboxes keep the native spin when exported as ordinary props.
+    // Borrowed models keep their clips when exported as ordinary common-format props.
     // Compact rotation clips move the complete, already-rest-posed geometry about the model origin.
     const compact = mg.rotation;
     const channels: NonNullable<PropModelAnimationObject['channels']> = [null, null, null, null, null, null];
@@ -573,7 +573,7 @@ export function bakePlacedProps(
             ],
           }
         : undefined);
-    const motion = p.specialKind === 'gem' && animation ? bakedPropClip(animation, placementMatrix(p)) : null;
+    const motion = animation ? bakedPropClip(animation, placementMatrix(p)) : null;
     if (motion && p.id) propClips[p.id] = motion.clip;
     ({ vBase, vtBase } = emitPosedSubs(
       lines,

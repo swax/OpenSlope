@@ -98,7 +98,7 @@ try {
   assert(await trickyGame.isEnabled());
   assert(await ssxGame.isEnabled());
   assert(await madtrixGame.isEnabled());
-  assert.equal(await games.getByText('No disc selected', { exact: true }).count(), 7);
+  assert.equal(await games.getByText('No disc selected', { exact: true }).count(), 8);
   const filters = page.getByRole('group', { name: 'Filter ISO maps', exact: true });
   assert(await filters.isHidden());
   const sidebar = await page.locator('.library-sidebar').boundingBox();

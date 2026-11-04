@@ -37,7 +37,7 @@ const level = (name: string, models: object[]) => {
   );
 };
 const clearLevels = () => {
-  for (const name of ['AUTOTEST1', 'COURSE', 'FOREST', 'PARTIAL', 'PADS'])
+  for (const name of ['AUTOTEST1', 'COURSE', 'FOREST', 'PARTIAL', 'PADS', 'PICKUPS'])
     rmSync(join(root, name), { recursive: true, force: true });
 };
 
@@ -98,6 +98,29 @@ try {
     'with no art anywhere the answer is empty rather than a guess',
   );
   check(Object.keys(art.boostPads ?? {}).length === 0, 'without boost art no pad is offered as a donor');
+  clearLevels();
+  level('COURSE', [
+    model('Mdl_Rail_Metal_01', 7),
+    model('Mdl_Icicle_BigA_Chunk2', 3),
+    model('Mdl_Tree_BushyTrunk', 9),
+    model('Mdl_SpeedBoost_Gold_2000', 2),
+    model('Mdl_TrickBoost_RedGreen_5000', 3),
+    model('Gem_TrickMultiplier_YellowX2', 11),
+    model('Gem_TrickMultiplier_OrangeX3', 12),
+    model('Gem_TrickMultiplier_RedX5', 13),
+  ]);
+  level(
+    'PICKUPS',
+    [2, 3, 5, 10].map(value => ({
+      ...model(`Source pickup ${value}`),
+      Pickup: { Kind: 'score-multiplier', Value: value },
+    })),
+  );
+  const pickups = await nativeArtSource();
+  check(
+    pickups.gemLevel === 'PICKUPS' && pickups.gemTiers.map(t => t.tier).join() === '2,3,5,10',
+    'common pickup metadata supplies gem art without title-specific model names',
+  );
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

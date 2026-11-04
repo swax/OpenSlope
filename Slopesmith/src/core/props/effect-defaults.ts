@@ -12,7 +12,8 @@ import type { EffectNode, EffectsDocument } from '../effects/document';
  * Only effects that act on the prop ALONE and read nothing from their level's tables qualify: every node one of
  * `DEFAULT_EFFECT_KINDS`, no node naming another instance, graph, function or spline. That leaves out level wiring
  * (a glass pane that breaks its neighbours, a screen that switches others) and, for now, sounds, particles, crowds
- * and gems, whose payloads point into the source level's banks and tables.
+ * whose payloads point into the source level's banks and tables. Self-contained pickup
+ * clips and score multipliers can travel with their own models.
  */
 
 /** A node as a template carries it: everything but the ids its placement's own graph assigns. */
@@ -45,6 +46,8 @@ export interface PropEffectDefault {
  * placement exactly as on a reference instance, and reads only the prop's own model and materials.
  */
 const EFFECT_KIND_LABELS: ReadonlyMap<string, string> = new Map([
+  ['property.anim-object', 'animated'],
+  ['score.multiplier', 'score multiplier'],
   ['property.roller', 'knockable'],
   ['property.fence', 'flexes when hit'],
   ['property.texture-flip', 'flips its texture'],

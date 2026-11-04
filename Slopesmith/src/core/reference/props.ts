@@ -173,6 +173,8 @@ export interface PropModel {
   id: number;
   name: string;
   subs: PropSub[];
+  /** Common-format pickup; displayed with Tricks regardless of its source game's naming. */
+  pickup?: boolean;
   /** Optional model-local triangle hull for authored copies; independent of visible foliage/decor. */
   collision?: { positions: Float32Array; indices: Uint32Array };
   rotation?: PropModelRotation;
@@ -335,6 +337,7 @@ export interface PropsPayload {
     animation?: PropModelAnimation;
     /** Emitters the SOURCE MODEL declared (an imported GLB's glTF `extras`, docs/032). */
     emitters?: { fields: Record<string, number> }[];
+    pickup?: boolean;
     /** The author's saved defaults for an imported model (docs/069). */
     defaults?: PropBehaviour;
     /** Effect default: template index into `effects`, with its matching / total visible copies (docs/069). */
@@ -488,6 +491,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
   const models: PropModel[] = payload.models.map(m => ({
     id: m.id,
     name: m.name,
+    ...(m.pickup ? { pickup: true } : {}),
     ...(m.collision
       ? {
           collision: {

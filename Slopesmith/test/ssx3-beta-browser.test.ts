@@ -27,7 +27,7 @@ const api = await startApiService({ host: '127.0.0.1', port: 0 });
 const vite = await createServer({
   root: process.cwd(),
   logLevel: 'error',
-  server: { host: '127.0.0.1', port: 0, proxy: { '/api': { target: api.url, ws: true } } },
+  server: { host: '127.0.0.1', port: 0, watch: null, proxy: { '/api': { target: api.url, ws: true } } },
 });
 await vite.listen();
 const browser = await chromium.launch({
@@ -78,6 +78,40 @@ try {
     const fog = await createImageBitmap(files.get('textures/particles/fog0.png')!);
     const fogSize = [fog.width, fog.height];
     fog.close();
+    const sourceModels = (await read('Models.json')).Models as { Pickup?: { Kind: string; Value: number } }[];
+    const sourceInstances = (await read('Instances.json')).Instances as {
+      ModelID: number;
+      Pickup?: { Kind: string };
+    }[];
+    const pickupIds = sourceModels.flatMap((model, id) => (model.Pickup ? [id] : []));
+    const propsPath = '/src/shared/map-props.ts';
+    const { buildLevelPropsUncached, readModelGeometries, nativeArtSource } = await import(
+      /* @vite-ignore */ propsPath
+    );
+    const payload = await buildLevelPropsUncached(local.source, course);
+    const art = await nativeArtSource(local.source);
+    const pickupTemplates = payload.models.filter(
+      (model: { id: number; fx?: unknown }) => pickupIds.includes(model.id) && model.fx,
+    );
+    const geoms = await readModelGeometries(local.source, course, new Set(pickupIds));
+    const exportPath = '/src/core/export/props.ts';
+    const { bakePlacedProps } = await import(/* @vite-ignore */ exportPath);
+    const materialPath = '/src/core/export/materials.ts';
+    const { buildMaterialCombiner } = await import(/* @vite-ignore */ materialPath);
+    const copies = pickupIds.map(id => ({
+      id: `pickup-copy:${id}`,
+      level: course,
+      model: id,
+      name: 'Copied pickup',
+      pos: [0, 0, 0],
+      yaw: 0,
+      scale: 1,
+    }));
+    const baked = bakePlacedProps(
+      copies,
+      (_level: string, model: number) => geoms.get(model),
+      buildMaterialCombiner(new Map()),
+    );
     local.dispose();
     // Reproduce an older cached adapter with the generated snow loops missing.
     const { openIsoCache } = await import(/* @vite-ignore */ cachePath);
@@ -107,6 +141,12 @@ try {
       repairedBytes: repaired.byteLength,
       fogSize,
       fogTexture: effects.particleVolumes?.[0]?.texture,
+      pickupModels: pickupIds.length,
+      pickupUiTagged: payload.models.filter((model: { pickup?: boolean }) => model.pickup).length,
+      pickupTemplates: pickupTemplates.length,
+      pickupClips: Object.keys(baked.propClips).length,
+      pickupTiers: art.gemTiers.map((tier: { tier: number }) => tier.tier).sort((a: number, b: number) => a - b),
+      collectibleIndex: sourceInstances.findIndex(instance => instance.Pickup?.Kind === 'collectible'),
     };
   }, course);
   assert(metadata.courses.includes(course));
@@ -119,6 +159,16 @@ try {
   assert(metadata.repairedBytes > 44, 'Older cached adapters reuse their own original board loop');
   assert(metadata.fogSize.every((size: number) => size > 0));
   assert(metadata.fogTexture?.startsWith('asset2:'), 'Fog binds the imported sprite by its exact asset identity');
+  assert(
+    metadata.pickupModels > 0 && metadata.pickupTemplates === metadata.pickupModels,
+    'Pickups carry portable default effects',
+  );
+  assert(
+    metadata.pickupClips === metadata.pickupModels,
+    'Every pickup retains its animation when copied as an ordinary prop',
+  );
+  assert(metadata.pickupTiers.includes(2));
+  assert.equal(metadata.pickupUiTagged, metadata.pickupModels, 'Common pickup metadata controls Tricks visibility');
   await page.reload();
   await page.getByRole('button', { name: 'SSX 3 Beta', exact: true }).click();
   await card.getByRole('link', { name: /^Play / }).click();
@@ -136,6 +186,22 @@ try {
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
   if (process.env.SLOPESMITH_SSX3_BETA_ISO) {
+    const spinning = await page.evaluate(async () => {
+      const scene = (window as typeof window & { betaSceneForTest: import('three').Scene }).betaSceneForTest;
+      const snapshots = new Map<string, number[]>();
+      for (let frame = 0; frame < 20; ++frame) {
+        for (const object of scene.getObjectsByProperty('name', 'mdl_ESS3_collecta_1000')) {
+          const model = object as import('three').InstancedMesh;
+          if (!model.isInstancedMesh || model.userData.propBatchKind === 'effect-proxy') continue;
+          const before = snapshots.get(model.uuid);
+          if (before?.some((value, index) => Math.abs(value - model.instanceMatrix.array[index]) > 1e-5)) return true;
+          snapshots.set(model.uuid, Array.from(model.instanceMatrix.array));
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return false;
+    });
+    assert(spinning, 'The real collectible model spins during the ride');
     const grounded = await page.evaluate(async () => {
       let count = 0;
       for (let i = 0; i < 40; ++i) {
@@ -182,12 +248,58 @@ try {
       `Preview shade varies by location: ${JSON.stringify(lighting)}`,
     );
     console.log('Preview rider lighting:', lighting);
+    const pickup = await page.evaluate(async index => {
+      const ride = (window as typeof window & { betaRideForTest: import('../src/app/ride/session').TestRide })
+        .betaRideForTest;
+      const options = (ride as unknown as { o: import('../src/app/ride/session').RideStartOpts }).o;
+      const collider = options.obstacles?.find(
+        source => source.object.kind === 'reference' && source.object.index === index,
+      );
+      if (!collider) throw new Error('The collectible has no riding trigger');
+      const point = options.scene.position.clone().setFromMatrixPosition(collider.matrixWorld);
+      options.onObstacleHit!({
+        key: collider.key,
+        object: collider.object,
+        point,
+        normal: point.clone().set(0, 1, 0),
+        impactSpeed: 8,
+        shove: null,
+      });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const meshes = options.scene
+        .getObjectsByProperty('name', 'mdl_ESS3_collecta_1000')
+        .map(object => object as import('three').InstancedMesh)
+        .filter(mesh => mesh.isInstancedMesh && mesh.userData.propBatchKind !== 'effect-proxy')
+        .map(mesh => ({
+          mesh,
+          slot: (mesh.userData.propInsts as { sourceIndex: number }[]).findIndex(
+            instance => instance.sourceIndex === index,
+          ),
+        }))
+        .filter(item => item.slot >= 0);
+      const hidden =
+        meshes.length > 0 &&
+        meshes.every(({ mesh, slot }) =>
+          [0, 1, 2, 4, 5, 6, 8, 9, 10].every(
+            component => Math.abs(mesh.instanceMatrix.array[slot * 16 + component]) < 1e-8,
+          ),
+        );
+      return { solid: collider.solid, hidden, message: document.body.textContent?.includes('Collectible collected') };
+    }, metadata.collectibleIndex);
+    assert.equal(pickup.solid, false, 'Collectibles can be ridden through');
+    assert(pickup.hidden, 'The collected snowflake disappears');
+    assert(!pickup.message, 'Collection has no large HUD message');
+    assert.deepEqual(metadata.pickupTiers, [2, 3, 5, 10]);
   }
   await page.screenshot({ path: join(work, 'beta-riding.png') });
   assert.deepEqual(errors, []);
   console.log(
     `SSX 3 beta browser discovery, import, persistence and riding passed (${metadata.patches} patches). ${work}`,
   );
+} catch (error) {
+  await page.screenshot({ path: join(work, 'failure.png') });
+  console.error('Browser errors:', errors, '\nPage:', await page.locator('body').innerText());
+  throw error;
 } finally {
   await browser.close();
   await vite.close();

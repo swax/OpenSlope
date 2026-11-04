@@ -147,7 +147,7 @@ void TrickScore::spend(double seconds, bool held) {
 }
 
 void TrickScore::multiplier(unsigned tier) {
-    if (tier != 2 && tier != 3 && tier != 5)
+    if (tier != 2 && tier != 3 && tier != 5 && tier != 10)
         throw std::invalid_argument("Invalid score multiplier");
     if (status_.active) {
         status_.multiplier = std::max(status_.multiplier, tier);

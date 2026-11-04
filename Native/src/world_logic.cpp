@@ -1228,7 +1228,7 @@ struct WorldLogic::Data {
                         action(WorldActionKind::Reset, thread, 0, host);
                 } else if (node.main == 14 && thread.rider) {
                     const auto tier = number(p, "MultiplierScore");
-                    if (tier == 2 || tier == 3 || tier == 5) {
+                    if (tier == 2 || tier == 3 || tier == 5 || tier == 10) {
                         reward(host);
                         if (mode == RunMode::Showoff)
                             action(WorldActionKind::Multiplier, thread, tier);

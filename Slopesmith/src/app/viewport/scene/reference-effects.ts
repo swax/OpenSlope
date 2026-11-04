@@ -1966,6 +1966,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         return;
       }
       case 'instance-hide':
+        // The tombstone owns visibility; discard the pop's temporary scale and automatic restoration.
+        if (pickupPops.delete(host.key)) setHostWorldMatrix(host, null);
         stopNode(host, true, command.killDetached);
         setHostVisible(host, false);
         if (source === 'play') hooks.retireRideObject?.(host.object);

@@ -295,6 +295,40 @@ int main() {
         production(root / "production");
         cancellation(root / "cancel");
         boundaries(root / "boundaries");
+        Json models = Json::array(), instances = Json::array();
+        Json effects = {{"graphs", Json::array()}, {"slots", Json::array()}};
+        for (const auto* family :
+             {"multia", "multib", "multic", "multid", "collecta", "collectabreak", "multia_fake"}) {
+            const auto name = std::string("mdl_ESS3_") + family + "_1000";
+            const auto index = models.size();
+            models.push_back({{"ModelName", name},
+                              {"ModelObjects", Json::array({{{"ParentID", -1}, {"IncludeAnimation", false}}})}});
+            instances.push_back(
+                {{"ModelID", index}, {"InstanceName", name}, {"Visable", true}, {"EffectSlotIndex", -1}});
+        }
+        const auto converted = import_detail::streamed_pickups(models, instances, effects, {});
+        check(converted["Multipliers"] == 4 && converted["Collectibles"] == 1, "Convert complete pickup families only");
+        for (unsigned i = 0; i < 5; ++i) {
+            const auto& circumstances = effects["slots"][i]["circumstances"];
+            check(circumstances.size() == 7 && circumstances["trigger"].is_null() && circumstances["slot7"].is_null(),
+                  "Pickup slots include every common circumstance");
+            check(models[i]["AnimTime"] == 60 && models[i]["ModelObjects"][0]["IncludeAnimation"],
+                  "Pickups carry common model clips");
+            check(instances[i]["CollsionMode"] == 2 && instances[i]["PlayerCollision"] &&
+                      !instances[i]["PlayerBounce"] && instances[i]["U0"] == 0 && instances[i]["EffectSlotIndex"] == i,
+                  "Pickups dispatch pass-through contact");
+        }
+        check(models[3]["Pickup"]["Value"] == 10 && instances[3]["LTGState"] == 2,
+              "Keep the fourth score multiplier tier");
+        check(instances[4]["LTGState"] == 0 && effects["graphs"][9]["nodes"].size() == 1 &&
+                  effects["graphs"][9]["nodes"][0]["semanticType"] == "property.node-tombstone",
+              "Collectibles disappear without messages or score rewards");
+        check(!models[5].contains("Pickup") && instances[5]["EffectSlotIndex"] == -1 && !models[6].contains("Pickup"),
+              "Broken art and near matches do not become pickups");
+        const auto saved_models = models, saved_instances = instances, saved_effects = effects;
+        import_detail::streamed_pickups(models, instances, effects, {});
+        check(models == saved_models && instances == saved_instances && effects == saved_effects,
+              "Pickup conversion is idempotent");
         std::filesystem::remove_all(root);
         std::cout << "PASS: " << checks << " playtest recovery, lighting, preservation and transaction checks\n";
         return 0;

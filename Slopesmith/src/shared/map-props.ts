@@ -181,6 +181,7 @@ export interface ModelSub {
 }
 /** One merged model: its name + per-material submeshes and an optional simple rotation clip. */
 export interface ModelGeom {
+  pickup?: boolean;
   name: string;
   subs: ModelSub[];
   collision?: { positions: number[]; indices: number[] };
@@ -258,6 +259,7 @@ interface ModelsJsonModelObject {
 }
 interface ModelsJsonModel {
   ModelName: string;
+  Pickup?: { Kind?: string; Value?: number };
   PlacementCollisionPath?: string;
   PlacementDefaults?: import('../core/doc/types').PropBehaviour;
   AnimTime?: number;
@@ -862,6 +864,7 @@ export async function readModelGeometries(
     if (subs.length)
       out.set(id, {
         name: m.ModelName,
+        ...(m.Pickup?.Kind === 'score-multiplier' || m.Pickup?.Kind === 'collectible' ? { pickup: true } : {}),
         subs,
         ...(collisionCache.has(id) ? { collision: collisionCache.get(id) } : {}),
         ...(m.PlacementDefaults ? { defaults: m.PlacementDefaults } : {}),
@@ -935,6 +938,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   const models: PropsPayload['models'] = [...geoms].map(([id, g]) => ({
     id,
     name: g.name,
+    ...(g.pickup ? { pickup: true } : {}),
     ...(g.defaults ? { defaults: g.defaults } : {}),
     ...(g.collision
       ? {
@@ -1464,7 +1468,7 @@ export async function nativeArtSource(io: MapDataSource): Promise<NativeArt> {
       const model = models.findIndex(candidate => pattern.test(candidate.ModelName ?? ''));
       if (model >= 0) boostPads[kind] = { level, model, name: models[model].ModelName! };
     }
-    if (gems?.tiers.length === 3 && keys.every(key => railSkins[key]) && boostPads.speed && boostPads.trick) break;
+    if (gems?.tiers.length === 4 && keys.every(key => railSkins[key]) && boostPads.speed && boostPads.trick) break;
   }
   if (gems) {
     const dir = join(io.root, safeDataName(gems.level));
@@ -1491,6 +1495,11 @@ export async function nativeArtSource(io: MapDataSource): Promise<NativeArt> {
 function gemTiersOf(models: readonly ModelsJsonModel[]): NativeArt['gemTiers'] {
   const gemTiers: NativeArt['gemTiers'] = [];
   models.forEach((m, id) => {
+    const pickup = m.Pickup;
+    if (pickup?.Kind === 'score-multiplier' && [2, 3, 5, 10].includes(pickup.Value ?? 0)) {
+      if (!gemTiers.some(t => t.tier === pickup.Value)) gemTiers.push({ tier: pickup.Value!, model: id });
+      return;
+    }
     const nm = m.ModelName ?? '';
     if (!nm.startsWith('Gem_TrickMultiplier')) return;
     const tier = nm.includes('YellowX2') ? 2 : nm.includes('OrangeX3') ? 3 : nm.includes('RedX5') ? 5 : 0;

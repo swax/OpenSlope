@@ -9,12 +9,13 @@ from audio_import_test import disc as iso, archive as audio_archive
 from course_titles_test import boot_files, executable
 from import_test import run, ssh
 from riding_audio_import_test import encoded_bank
-from ssx3_import_test import members
+from ssx3_import_test import members, names
 
 
 def preview_disc(conflicting=False, short_fog=False):
     files = members(lambda rows: [(kind - 1 if kind >= 8 else kind,
                                   rid, payload) for kind, rid, payload in rows])
+    files['data/worlds/bam.phm'], files['data/worlds/bam.psm'] = names(model_rows=[(1, 'mdl_ARA1_multia_1000')])
     database = bytearray(files['data/worlds/bam.sdb'])
     struct.pack_into('<I', database, 0, 0x01003600)
     database[168:184] = b'ARA1'.ljust(16, b'\0')
@@ -79,6 +80,9 @@ def main():
             assert (out / 'Audio/SFX/openslope_board/004.loop.wav').is_file()
             assert (out / 'Textures/Particles/fog0.png').read_bytes().startswith(b'\x89PNG')
             assert (out / 'Source/particle.ssh').is_file()
+            pickup = json.loads((out / 'Models.json').read_text())['Models'][0]
+            assert pickup['Pickup']['Kind'] == 'score-multiplier' and pickup['Pickup']['Value'] == 2
+            assert pickup['ModelObjects'][0]['IncludeAnimation'] and pickup['AnimTime'] == 60
         source.write_bytes(preview_disc(short_fog=True))
         run(importer, 'extract', source, 'SSX3B_ARA1', root / 'short-fog', succeeds=False)
         assert not (root / 'short-fog/SSX3B_ARA1').exists()
