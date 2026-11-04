@@ -14,6 +14,10 @@ including stable per-map soundtrack shares, original fog sprites, admitted UV
 animations and pickups. Native props use per-placement baked vertex colours;
 riders use floor shade independently of scenery averages. See [build notes](releases/0.91.0.md).
 
+Version 0.92.0 adds Linux/macOS release packages, Mac graphics compatibility fixes
+and further streamed-effect and tree-collision import updates. See
+[0.92.0 notes](releases/0.92.0.md).
+
 Current disc pickers display source course names on PC and Quest. PC **Choose disc** opens ISO/BIN/GCM/RVZ
 files from any folder, plus supported GBA ROMs; Quest uses its document picker. SSX 3 defaults to named runs, with an advanced
 map-type toggle for stations, connectors and peak bundles. See [disc selection](docs/desktop-iso-0.78.md).
