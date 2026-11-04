@@ -1,7 +1,9 @@
 #include "external_sounds.hpp"
 #include "import/music_cache.hpp"
 #include "import/ssx/formats.hpp"
+#include "import/ssx/streamed/music.hpp"
 #include "openslope/audio_data.hpp"
+#include "openslope/audio_opus.hpp"
 #include "openslope/audio_resolver.hpp"
 #include "openslope/music.hpp"
 #include <algorithm>
@@ -270,6 +272,7 @@ struct Writer {
     std::uint64_t bytes = 0;
     std::set<std::string> banks;
     Json warnings = Json::array();
+    std::uint64_t limit = 512 * 1024 * 1024;
 
     void check() { check_cancel(cancelled); }
 
@@ -280,8 +283,8 @@ struct Writer {
     }
 
     void reserve(std::uint64_t amount) {
-        if (amount > 512 * 1024 * 1024 - bytes)
-            throw std::runtime_error("Course Audio exceeds its 512 MiB budget");
+        if (amount > limit - bytes)
+            throw std::runtime_error("Course audio exceeds its decoded budget");
         bytes += amount;
     }
 
@@ -400,6 +403,10 @@ void tricky_music(const DiscInput& disc, const std::string& course, const std::m
 
 void write_tricky_music(const DiscInput& disc, const std::string& requested, const std::filesystem::path& output,
                         const ImportProgress& progress, const ImportCancel& cancelled) {
+    if (requested.starts_with("SSX3_") || requested.starts_with("SSX3B_")) {
+        write_ssx3_music(disc, requested, output, progress, cancelled);
+        return;
+    }
     if (requested.starts_with("SSX"))
         return; // These families do not yet have a music converter.
     const auto data = disc_directory(disc, "DATA");
@@ -420,6 +427,162 @@ void write_tricky_music(const DiscInput& disc, const std::string& requested, con
     Writer w{disc, output / "Audio", progress, cancelled, 0, {}, Json::array()};
     std::filesystem::create_directories(w.root);
     tricky_music(disc, requested.starts_with("TRICKY_") ? requested.substr(7) : requested, configs, w);
+}
+
+unsigned write_ssx3_music(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
+                          const ImportProgress& progress, const ImportCancel& cancelled) {
+    // [Trailmap: 548-ssx3-music] PLAYLIST.INF supplies the default SSX Mix;
+    // each MUSIC.INF song chooses MUSIC.BIG or MUSIC2.BIG independently.
+    check_cancel(cancelled);
+    const auto data = disc_directory(disc, "DATA");
+    if (std::none_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "CONFIG"; }))
+        return 0;
+    const auto files = disc_directory(disc, "DATA/CONFIG");
+    const auto has = [&](const char* name) {
+        return std::any_of(files.begin(), files.end(),
+                           [&](const auto& e) { return !e.directory && upper(e.name) == name; });
+    };
+    if (!has("MUSIC.INF") || !has("PLAYLIST.INF"))
+        return 0;
+    const auto music_bytes = disc_file(disc, "DATA/CONFIG/MUSIC.INF"),
+               playlist_bytes = disc_file(disc, "DATA/CONFIG/PLAYLIST.INF");
+    const auto songs = config(music_bytes), playlists = config(playlist_bytes);
+    const auto names = values(playlists, section_for(playlists, "SSX MIX"), "SONG");
+    if (names.empty() || names.size() > 64)
+        throw std::runtime_error("Invalid SSX 3 music playlist");
+    Writer w{disc, output / "Audio", progress, cancelled, 0, {}, Json::array()};
+    w.limit = 2ull * 1024 * 1024 * 1024;
+    std::filesystem::create_directories(w.root / "Music");
+    std::map<unsigned, std::unique_ptr<Library>> archives;
+    std::set<std::string> converted;
+    Json playlist = Json::array(), sources = Json::array(), deferred_songs = Json::array();
+    // Browser imports keep the established logical WAV identity and store its
+    // portable Opus sibling, avoiding gigabytes of PCM in the worker's 2 GiB heap.
+    const bool compressed = disc.context && disc.context->external;
+    for (const auto& alias : names) {
+        w.notify("Preparing SSX 3 music: " + alias);
+        const auto section = section_for(songs, alias);
+        const auto archive_id = number(songs, section, "SONGBIG", 1);
+        if (archive_id != 1 && archive_id != 2)
+            throw std::runtime_error("Invalid SSX 3 music archive selector");
+        const auto bank = unsigned(archive_id);
+        const auto archive = bank == 1 ? "DATA/AUDIO/MUSIC.BIG" : "DATA/AUDIO/MUSIC2.BIG";
+        if (!archives.contains(bank))
+            archives[bank] = std::make_unique<Library>(disc, archive);
+        const auto& library = *archives.at(bank);
+        const auto path = filename(one(songs, section, "PATHDATA")), stream = filename(one(songs, section, "MUSDATA"));
+        const auto id = std::filesystem::path(path).stem().string();
+        if (!valid_map_name(id))
+            throw std::runtime_error("Unsafe SSX 3 music identifier");
+        if (!converted.insert(upper(id)).second)
+            continue;
+        const auto graph_bytes = library.read(path), audio = library.read(stream);
+        const auto graph = ssx3_main_music(Bytes{graph_bytes}, cancelled);
+        const auto title = one(songs, section, "TITLE", alias), artist = one(songs, section, "ARTIST");
+        const auto bpm = number(songs, section, "BPM", 120), volume = number(songs, section, "PATHLEVEL", 100) / 100;
+        if (bpm <= 0 || bpm > 1000 || volume < 0 || volume > 1)
+            throw std::runtime_error("Invalid SSX 3 music tempo/volume");
+        Json settings = Json::array();
+        for (const auto& [key, value] : songs.at(section))
+            settings.push_back({key, value});
+        const auto key = music_key(
+            "ssx3-main-music-v2",
+            Json{{"Song", section}, {"Settings", settings}, {"Encoding", compressed ? "opus-128-v1" : "pcm16"}}.dump(),
+            {graph_bytes, audio});
+        const auto folder = w.root / "Music" / id;
+        const auto before = w.bytes;
+        try {
+            cached_music(
+                disc, key, folder,
+                [&] {
+                    w.notify("Decoding music: " + title);
+                    if (!std::filesystem::create_directory(folder))
+                        throw std::runtime_error("Duplicate SSX 3 music directory");
+                    Json sample_info = Json::array();
+                    for (const auto& sample : graph.samples) {
+                        w.check();
+                        const auto decoded = decode_audio_stream(audio, sample.offset);
+                        w.wave(folder / sample.wav, decoded.clip);
+                        if (compressed) {
+                            const auto wav = folder / sample.wav;
+                            auto opus = wav;
+                            opus.replace_extension(".opus");
+                            write_reference_opus(wav, opus);
+                            std::filesystem::remove(wav);
+                        }
+                        sample_info.push_back({{"Rate", decoded.clip.rate},
+                                               {"Channels", decoded.clip.channels},
+                                               {"Samples", decoded.clip.frames()},
+                                               {"Seconds", double(decoded.clip.frames()) / decoded.clip.rate}});
+                    }
+                    graph.save(folder / "graph.json", artist.empty() ? title : title + " - " + artist, bpm, volume);
+                    auto document = json_read(folder / "graph.json");
+                    document["Short"] = id;
+                    document["Artist"] = artist;
+                    document["Fidelity"] = "Approximate";
+                    for (std::size_t i = 0; i < sample_info.size(); ++i)
+                        document["Samples"][i].update(sample_info[i]);
+                    json_file(folder / "graph.json", document);
+                    json_file(folder / "config.json", settings);
+                    std::ofstream source(folder / "source.mpf", std::ios::binary);
+                    source.write(reinterpret_cast<const char*>(graph_bytes.data()),
+                                 std::streamsize(graph_bytes.size()));
+                    if (!source)
+                        throw std::runtime_error("Cannot preserve SSX 3 music graph");
+                },
+                cancelled);
+        } catch (const std::runtime_error& error) {
+            if (std::string(error.what()) != "Unsupported audio codec")
+                throw;
+            check_cancel(cancelled);
+            std::filesystem::remove_all(folder);
+            w.bytes = before;
+            w.notify("Deferring unsupported music codec: " + title);
+            deferred_songs.push_back({{"Song", id},
+                                      {"Title", title},
+                                      {"SourceBank", archive},
+                                      {"SourceStream", stream},
+                                      {"Reason", "unsupported-audio-codec"}});
+            continue;
+        }
+        if (!(disc.context && disc.context->planning)) {
+            w.bytes = before;
+            for (const auto& file : std::filesystem::recursive_directory_iterator(folder))
+                if (file.is_regular_file())
+                    w.reserve(file.file_size());
+        }
+        playlist.push_back(id);
+        sources.push_back({{"Song", id},
+                           {"Title", title},
+                           {"Artist", artist},
+                           {"SourceBank", archive},
+                           {"SourceGraph", path},
+                           {"SourceStream", stream},
+                           {"SourceLoopBank", one(songs, section, "LOOPDATA")},
+                           {"MainTrackSamples", graph.samples.size()},
+                           {"Fidelity", "Approximate"}});
+    }
+    json_file(w.root / "Music/playlist.json", playlist);
+    json_file(
+        w.root / "Music/MusicImport.json",
+        {{"Schema", "openslope-music-import/v1"},
+         {"Game", course.starts_with("SSX3B_") ? "ssx-3-beta" : "ssx-3"},
+         {"Songs", sources},
+         {"DeferredSongs", deferred_songs},
+         {"Encoding", compressed ? "opus-128-v1" : "pcm16"},
+         {"Policy", "Default SSX Mix; reachable main-track intensity branches; zero-count loop exits and song restart"},
+         {"OriginalMusicScheduling", "Deferred"},
+         {"Deferred", {"scripted-events", "async-loop-layer", "playlist-scheduling"}},
+         {"OutputBytes", w.bytes}});
+    if (std::filesystem::is_regular_file(w.root / "Import.json")) {
+        auto report = json_read(w.root / "Import.json");
+        auto& deferred = report["Deferred"];
+        deferred.erase(std::remove(deferred.begin(), deferred.end(), Json("music")), deferred.end());
+        deferred.push_back("music-scripted-events-and-async-loops");
+        report["Music"] = {{"Songs", playlist.size()}, {"Fidelity", "Approximate"}};
+        json_file(w.root / "Import.json", report);
+    }
+    return unsigned(playlist.size());
 }
 
 bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,

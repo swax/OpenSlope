@@ -1537,6 +1537,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
                             : write_ssx3_audio(disc, output, course, progress, cancel);
     if (audio)
         write_streamed_ambient_audio(output, tour, cancel);
+    const auto music = tour ? 0u : write_ssx3_music(disc, course, output, progress, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
                                   {"Game", streamed_game(course, tour)},
                                   {"Origin", "retail"},
@@ -1576,6 +1577,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
           {"TimeOfDay", tour ? (night ? "night" : "day") : "source"},
           {"Warnings", warnings},
           {"AudioAssets", audio},
+          {"MusicSongs", music},
           {"MaterialEffects", effects.at("extensions").at("streamedMaterialSetups")},
           {"PlaytestApproximations", playtest},
           {"SoundBindings", sounds},
@@ -1583,8 +1585,8 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
           {"Deferred",
            {"compiled-world-scripts", "sound-trigger-bindings", "sphere-tree-collision", "model-animation",
             "material-animation", "secondary-texture-pass", "surface-response-parity", "peak-race-connectors",
-            "music-and-board-audio", "native-baked-vertex-lighting", "local-light-cone-playback",
-            "path-rating-and-event-semantics"}}});
+            music ? "music-scripted-events-and-async-loops" : "music", "board-surface-selection",
+            "native-baked-vertex-lighting", "local-light-cone-playback", "path-rating-and-event-semantics"}}});
     notify("Validating shared map contracts");
     static_cast<void>(Terrain::load(output));
     static_cast<void>(Props::load(output));

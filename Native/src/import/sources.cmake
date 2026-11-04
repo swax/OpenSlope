@@ -55,6 +55,7 @@ target_sources(openslope_core PRIVATE
   src/import/ssx/streamed/riding_audio.cpp
   src/import/ssx/streamed/ambient_audio.cpp
   src/import/ssx/streamed/playtest.cpp
+  src/import/ssx/streamed/music.cpp
 
   # Formats shared within the SSX family.
   src/import/ssx/common/patches.cpp

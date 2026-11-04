@@ -49,9 +49,11 @@ const mime = (name: string) =>
     ? 'image/png'
     : /\.wav$/i.test(name)
       ? 'audio/wav'
-      : /\.json$/i.test(name)
-        ? 'application/json'
-        : 'application/octet-stream';
+      : /\.opus$/i.test(name)
+        ? 'audio/ogg; codecs=opus'
+        : /\.json$/i.test(name)
+          ? 'application/json'
+          : 'application/octet-stream';
 let module: Importer | undefined;
 let available: Available | undefined;
 let musicCache: Awaited<ReturnType<typeof openMusicCache>> | undefined;
@@ -77,7 +79,7 @@ async function handle({ data }: MessageEvent<{ file: File; courses: string[]; op
   try {
     const { file, courses, operation } = data;
     if (!module) {
-      const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=40`, self.location.origin).href;
+      const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=41`, self.location.origin).href;
       const runtime = (await import(/* @vite-ignore */ assetUrl('openslope_browser_import.js'))) as {
         default(options: { locateFile: (name: string) => string }): Promise<Importer>;
       };

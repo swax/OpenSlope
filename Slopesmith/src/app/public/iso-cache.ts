@@ -8,12 +8,12 @@ import { createIsoImportSessions } from './iso-import-sessions';
 import { clearMusicCache } from './iso-music-cache';
 
 export const ISO_CACHE_VERSION = 1;
-// SSX 3 generation 10 translates spinning pickups with silent collectible removal.
+// SSX 3 generation 11 imports the SSX Mix soundtrack into common music graphs.
 // Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
 // GBA generation 9 rematches terrain into larger quads without subdividing isolated faces.
 export const isoCourseCacheVersion = (course: string): number =>
   /^SSX3B?_/i.test(course)
-    ? 10
+    ? 11
     : /^SSXGBA_/i.test(course)
       ? 9
       : /^AVALANCHE_/i.test(course)
@@ -243,7 +243,10 @@ export async function cachedCoursePaths(course: string, folder = ''): Promise<st
   try {
     return await new Promise((resolve, reject) => {
       const prefix = `${course}/${folder.toLowerCase()}`;
-      const request = db.transaction('files').objectStore('files').getAllKeys(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
+      const request = db
+        .transaction('files')
+        .objectStore('files')
+        .getAllKeys(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
       request.onsuccess = () => resolve(request.result.map(key => String(key).slice(course.length + 1)));
       request.onerror = () => reject(request.error);
     });
@@ -257,7 +260,10 @@ export async function cachedCourseHasFiles(course: string, folder: string): Prom
   try {
     return await new Promise((resolve, reject) => {
       const prefix = `${course}/${folder.toLowerCase()}`;
-      const request = db.transaction('files').objectStore('files').count(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
+      const request = db
+        .transaction('files')
+        .objectStore('files')
+        .count(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
       request.onsuccess = () => resolve(request.result > 0);
       request.onerror = () => reject(request.error);
     });

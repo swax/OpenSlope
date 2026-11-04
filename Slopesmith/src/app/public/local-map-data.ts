@@ -138,7 +138,7 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     const key = path.toLowerCase();
     const found = urls.get(key);
     if (found) return found;
-    const file = blob(path);
+    const file = blob(path) ?? (/\/audio\/music\/.*\.wav$/i.test(path) ? blob(path.replace(/\.wav$/i, '.opus')) : undefined);
     if (!file) return /\.png$/i.test(path) ? fallbackUrl : 'data:application/octet-stream;base64,';
     const url = URL.createObjectURL(file);
     urls.set(key, url);

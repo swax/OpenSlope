@@ -17,6 +17,20 @@ Preview local-light records remain in `Source/`; terrain lightmaps and baked
 prop lighting are converted, but the preview's distinct local-light layout is
 not yet interpreted.
 
+Both games import the default **SSX Mix** playlist into the common music graph
+format, with source song titles, artists, tempo, volume and intensity branches.
+The July preview supplies 25 songs. Retail supplies 35 entries across two music
+archives; unsupported codecs are listed in `Audio/Music/MusicImport.json` and
+skipped without preventing map import (including retail “Screw Up”, codec 4).
+Native folders retain PCM WAVs; browser imports store portable Opus siblings
+under the existing logical WAV identities and reuse the shared song cache.
+Load the map again from its ISO once to add music to an older browser conversion.
+
+Music is an approximation of the main track. Original scripted event transitions,
+counter-controlled repeats, asynchronous loop layers and playlist scheduling
+remain deferred. Original MPF bytes and song configuration are preserved for
+future improvements. [Trailmap: 548-ssx3-music]
+
 ```powershell
 ./temp/native-core/Release/openslope_import.exe list discs/ssx-3-usa.iso
 ./temp/native-core/Release/openslope_import.exe extract discs/ssx-3-usa.iso SSX3_PEAK1 Maps
@@ -55,6 +69,8 @@ The shared map output includes:
 - Seven configured shared environmental/equipment sound banks under `Audio/SFX/`,
   decoded WAVs and loop slices, bank manifests, `SNOW.INF`, `BANKS.INF`, and a
   sound index. Speech slots and per-location speech banks are omitted.
+- `Audio/Music/` with the SSX Mix playlist, common song graphs and decoded chunks,
+  source MPF/configuration, and an import report. Browser chunks use Opus siblings.
 - Retail `Origin.json`, capability/deferred information in `Import.json`, and
   selected non-speech source records with a resource manifest in `Source/`.
 
@@ -71,7 +87,7 @@ and source-script bindings remain deferred. `SoundBindings.json` preserves the
 structured sound attachments, collision-event lists and external emitter tails
 with source identities and optional portable instance indices. Sound assets are
 exported, but event-to-bank routing, activation and the board surface selector
-remain unresolved. Music, animated models, sphere-tree collision, material
+remain unresolved. Scripted music transitions, animated models, sphere-tree collision, material
 animation playback, secondary texture passes and exact SSX 3 riding behavior
 remain deferred. Multiple triangle-proxy variants select the first and emit a warning.
 [Trailmap: 510-logic, 510-adl, 513-sphere-trees, 511-secondary,

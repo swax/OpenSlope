@@ -40,9 +40,14 @@ std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent, b
             throw std::runtime_error("Unsafe archive member");
         std::istringstream path(name);
         std::string segment;
-        while (std::getline(path, segment, '/'))
-            if (segment != "*" && !valid_map_name(segment))
+        while (std::getline(path, segment, '/')) {
+            // [Trailmap: 548-ssx3-music] Music libraries include an empty
+            // data/audio/*.bnk placeholder. Validate its literal path, then
+            // keep skipping wildcard entries below; never materialize them.
+            std::replace(segment.begin(), segment.end(), '*', '_');
+            if (!valid_map_name(segment))
                 throw std::runtime_error("Unsafe archive member segment");
+        }
         if (!offset || name.find('*') != std::string::npos)
             continue;
         if (offset < end || offset > extent.size || size > extent.size - offset)

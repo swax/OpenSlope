@@ -20,7 +20,7 @@ const course = process.env.SLOPESMITH_SSX3_BETA_COURSE ?? 'SSX3B_ARA1';
 if (!process.env.SLOPESMITH_SSX3_BETA_ISO)
   execFileSync(
     process.platform === 'win32' ? 'python' : 'python3',
-    [resolve('../Native/tests/ssx3_beta_import_test.py'), '--fixture', fixture],
+    [resolve('../Native/tests/ssx3_music_import_test.py'), '--fixture', fixture],
     { windowsHide: true },
   );
 const api = await startApiService({ host: '127.0.0.1', port: 0 });
@@ -37,13 +37,26 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 await page.addInitScript('globalThis.__name = fn => fn;');
-page.setDefaultTimeout(120_000);
+page.setDefaultTimeout(process.env.SLOPESMITH_SSX3_BETA_ISO ? 900_000 : 120_000);
 const errors: string[] = [];
 page.on('pageerror', error => errors.push(error.message));
 try {
   const address = vite.httpServer!.address();
   assert(address && typeof address !== 'string');
   await page.goto(`http://127.0.0.1:${address.port}/isos`);
+  if (process.env.SLOPESMITH_SSX3_BETA_ISO) {
+    page.on('console', message => {
+      if (message.text().startsWith('Music import:')) console.log(message.text());
+    });
+    await page.evaluate(() => {
+      let previous = '';
+      new MutationObserver(() => {
+        const text = document.querySelector('.public-iso-status')?.textContent ?? '';
+        if (text !== previous && /music|saved|validating/i.test(text)) console.log(`Music import: ${text}`);
+        previous = text;
+      }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    });
+  }
   await page.locator('#public-iso').setInputFiles(fixture);
   await page.locator('.public-iso-status').filter({ hasText: 'maps found' }).waitFor();
   assert((await page.getByRole('button', { name: 'SSX 3 Beta', exact: true }).getAttribute('aria-pressed')) === 'true');
@@ -66,6 +79,15 @@ try {
     const dataPath = '/src/app/public/local-map-data.ts';
     const { localMapData } = await import(/* @vite-ignore */ dataPath);
     const local = await localMapData([course]);
+    const musicIndex = await (await fetch(local.resolveAsset(`/api/reference-music?level=${course}`))).json();
+    const song = musicIndex.songs[0];
+    const musicGraph = await (
+      await fetch(local.resolveAsset(`/api/reference-music?level=${course}&song=${song.id}`))
+    ).json();
+    const musicWave = await (
+      await fetch(local.resolveAsset(`/api/reference-music-sample?level=${course}&song=${song.id}&sample=1`))
+    ).arrayBuffer();
+    const musicBuffer = await new OfflineAudioContext(2, 1, 8000).decodeAudioData(musicWave);
     const wave = await (
       await fetch(local.resolveAsset(`/api/board-sound?bank=zboard&slot=4&loop=1&level=${course}`))
     ).arrayBuffer();
@@ -139,6 +161,9 @@ try {
       loopFrames: samples.length,
       peak,
       repairedBytes: repaired.byteLength,
+      musicSongs: musicIndex.songs.length,
+      musicNodes: musicGraph.Nodes.length,
+      musicFrames: musicBuffer.length,
       fogSize,
       fogTexture: effects.particleVolumes?.[0]?.texture,
       pickupModels: pickupIds.length,
@@ -157,6 +182,11 @@ try {
   assert.equal(metadata.needsSound, false);
   assert(metadata.loopFrames >= 32 && metadata.peak > 0.001, 'Snow glide decodes to audible PCM');
   assert(metadata.repairedBytes > 44, 'Older cached adapters reuse their own original board loop');
+  assert(
+    metadata.musicSongs > 0 && metadata.musicNodes > 0 && metadata.musicFrames > 0,
+    'Imported music routes decode',
+  );
+  if (!process.env.SLOPESMITH_SSX3_BETA_ISO) assert.equal(metadata.musicSongs, 2);
   assert(metadata.fogSize.every((size: number) => size > 0));
   assert(metadata.fogTexture?.startsWith('asset2:'), 'Fog binds the imported sprite by its exact asset identity');
   assert(
@@ -174,6 +204,13 @@ try {
   await card.getByRole('link', { name: /^Play / }).click();
   await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
   await page.evaluate(async () => {
+    const audioPath = '/src/app/audio/ride-music.ts';
+    const { RideMusicRuntime } = await import(/* @vite-ignore */ audioPath);
+    const step = RideMusicRuntime.prototype.step;
+    RideMusicRuntime.prototype.step = function (...args: unknown[]) {
+      Object.assign(window, { betaMusicForTest: this });
+      return step.apply(this, args);
+    };
     const path = '/src/app/ride/session.ts';
     const { TestRide } = (await import(/* @vite-ignore */ path)) as typeof import('../src/app/ride/session');
     const start = TestRide.prototype.start;
@@ -185,6 +222,14 @@ try {
   });
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
+  await page.waitForFunction(() => {
+    const music = (
+      window as typeof window & {
+        betaMusicForTest?: { raceCurrent?: { source: AudioBufferSourceNode }; raceMaster?: GainNode };
+      }
+    ).betaMusicForTest;
+    return (music?.raceCurrent?.source.buffer?.length ?? 0) > 0 && (music?.raceMaster?.gain.value ?? 0) > 0;
+  });
   if (process.env.SLOPESMITH_SSX3_BETA_ISO) {
     const spinning = await page.evaluate(async () => {
       const scene = (window as typeof window & { betaSceneForTest: import('three').Scene }).betaSceneForTest;
@@ -294,7 +339,7 @@ try {
   await page.screenshot({ path: join(work, 'beta-riding.png') });
   assert.deepEqual(errors, []);
   console.log(
-    `SSX 3 beta browser discovery, import, persistence and riding passed (${metadata.patches} patches). ${work}`,
+    `SSX 3 beta browser discovery, import, persistence, music and riding passed (${metadata.patches} patches, ${metadata.musicSongs} songs). ${work}`,
   );
 } catch (error) {
   await page.screenshot({ path: join(work, 'failure.png') });

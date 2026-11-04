@@ -12,13 +12,16 @@ from riding_audio_import_test import encoded_bank
 from ssx3_import_test import members, names
 
 
-def preview_disc(conflicting=False, short_fog=False):
+def preview_disc(conflicting=False, short_fog=False, music=None, single_area=False):
     files = members(lambda rows: [(kind - 1 if kind >= 8 else kind,
                                   rid, payload) for kind, rid, payload in rows])
     files['data/worlds/bam.phm'], files['data/worlds/bam.psm'] = names(model_rows=[(1, 'mdl_ARA1_multia_1000')])
     database = bytearray(files['data/worlds/bam.sdb'])
     struct.pack_into('<I', database, 0, 0x01003600)
     database[168:184] = b'ARA1'.ljust(16, b'\0')
+    if single_area:
+        database = database[:80 + 2 * 88]
+        struct.pack_into('<I', database, 8, 2)
     files['data/worlds/bam.sdb'] = bytes(database)
     rows = []
     for name, payload in files.items():
@@ -44,7 +47,7 @@ def preview_disc(conflicting=False, short_fog=False):
                 'DATA/TEXTURES/PARTICLE.SSH': bytes(fog),
                 'DATA/CONFIG/BANKS.INF': b'[WORLD]\nBOARD = ride.bnk\nLAND = ride.bnk\n',
                 'DATA/CONFIG/SNOW.INF': b'# synthetic preview configuration\n',
-                'DATA/AUDIO/AUDIO.BIG': audio_archive({'data/audio/ride.bnk': encoded_bank()})})
+                'DATA/AUDIO/AUDIO.BIG': audio_archive({'data/audio/ride.bnk': encoded_bank()}), **(music or {})})
 
 
 def main():
