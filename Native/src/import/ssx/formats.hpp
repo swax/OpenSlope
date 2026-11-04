@@ -15,7 +15,10 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
 nlohmann::json import_pose(Bytes data, std::size_t offset, double scale = 1);
 std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
                             const ImportCancel& cancel);
-nlohmann::json streamed_material_setup(Bytes program, bool tour);
+nlohmann::json streamed_material_setup(Bytes program, bool tour, bool preview = false);
+std::uint32_t ssx3_setup_property(Bytes bundle, unsigned instance, bool preview);
+std::uint32_t ssx3_setup_persistent(Bytes bundle, unsigned property, bool preview);
+Bytes ssx3_setup_program(Bytes bundle, unsigned program, bool preview);
 nlohmann::json streamed_pickups(nlohmann::json& models, nlohmann::json& instances, nlohmann::json& effects,
                                 const ImportCancel& cancel);
 std::pair<bool, bool> streamed_prop_admission(const std::string& name, bool debug);

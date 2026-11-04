@@ -79,7 +79,7 @@ async function handle({ data }: MessageEvent<{ file: File; courses: string[]; op
   try {
     const { file, courses, operation } = data;
     if (!module) {
-      const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=44`, self.location.origin).href;
+      const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=45`, self.location.origin).href;
       const runtime = (await import(/* @vite-ignore */ assetUrl('openslope_browser_import.js'))) as {
         default(options: { locateFile: (name: string) => string }): Promise<Importer>;
       };

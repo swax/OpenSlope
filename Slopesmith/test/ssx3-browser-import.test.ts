@@ -226,12 +226,15 @@ try {
   assert.equal(result.instances, 2);
   assert.equal(result.texture, '0000_o.png');
   assert.equal(result.game, 'ssx-3');
-  assert.equal(result.movingSlot, -1);
+  assert.equal(result.movingSlot, 0);
   assert.equal(result.helperSlot, -1);
   assert.equal(result.retiredCollision, null, 'An older browser cache cannot reactivate the inferred reset box');
   assert.equal(result.storedCollision, 'openslope-playtest:reset', 'Read repair preserves cached source data');
   assert.equal(result.resetMain, undefined);
-  assert.equal(result.scroll, undefined, 'SSX3 script bindings remain deferred');
+  assert(
+    Math.abs(result.scroll.U1 - 0.01) < 1e-7 && Math.abs(result.scroll.U2 + 0.02) < 1e-7,
+    'SSX3 definition bindings import the complete constant UV setup',
+  );
   assert.deepEqual(result.frames, ['0000_o.png', '0001_o.png']);
   assert.equal(result.soundsDeferred, 'Deferred');
   assert.equal(result.soundRows, 3);

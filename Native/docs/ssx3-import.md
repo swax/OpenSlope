@@ -33,6 +33,14 @@ counter-controlled repeats, asynchronous loop layers and playlist scheduling
 remain deferred. Original MPF bytes and song configuration are preserved for
 future improvements. [Trailmap: 548-ssx3-music]
 
+Complete constant UV-scroll setups now resolve through each prop's source
+definition in retail and the July preview, then use the existing common
+material-effect playback. This includes the `mdl_ERA5_waterfalls` family;
+its motion comes from UV scrolling rather than geometry or a texture flipbook.
+Conditional programs, other material modes and model animation channels remain
+deferred. Reimport older local maps to add these effects.
+[Trailmap: 516-ssx3-bindings, 516-preview-bytecode]
+
 ```powershell
 ./temp/native-core/Release/openslope_import.exe list discs/ssx-3-usa.iso
 ./temp/native-core/Release/openslope_import.exe extract discs/ssx-3-usa.iso SSX3_PEAK1 Maps
@@ -90,7 +98,7 @@ structured sound attachments, collision-event lists and external emitter tails
 with source identities and optional portable instance indices. Sound assets are
 exported, but event-to-bank routing, activation and the board surface selector
 remain unresolved. Scripted music transitions, animated models, sphere-tree collision, material
-animation playback, secondary texture passes and exact SSX 3 riding behavior
+model animation playback, secondary texture passes and exact SSX 3 riding behavior
 remain deferred. Multiple triangle-proxy variants select the first and emit a warning.
 [Trailmap: 510-logic, 510-adl, 513-sphere-trees, 511-secondary,
 516-material-frames, 517-attachments]

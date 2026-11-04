@@ -5,9 +5,87 @@
 #include <optional>
 
 namespace openslope::import_detail {
+namespace {
+constexpr std::uint32_t absent = 0xffffffffu;
+
+// [Trailmap: 516-ssx3-bindings] File tables, not runtime object layouts.
+struct SetupBundle {
+    Bytes bytes;
+    bool available = false;
+
+    SetupBundle(Bytes source, bool preview) : bytes(source) {
+        if (bytes.data.size() < 8 || bytes.le(0) != 4096 || bytes.le(4) != (preview ? 13824u : 14336u))
+            return;
+        bytes.range(0, 92);
+        if (bytes.data.size() > 16 * 1024 * 1024)
+            throw std::runtime_error("Streamed setup bundle exceeds its limit");
+        for (const auto [count, table, width] :
+             {std::array<unsigned, 3>{24, 28, 24}, {56, 60, 4}, {68, 72, 2}, {76, 80, 4}}) {
+            if (bytes.le(count) > 65536)
+                throw std::runtime_error("Too many streamed setup records");
+            bytes.range(bytes.le(table), std::size_t(bytes.le(count)) * width);
+        }
+        const auto start = bytes.le(64), end = bytes.le(72);
+        if (start > end || end > bytes.data.size())
+            throw std::runtime_error("Invalid streamed definition data extent");
+        available = true;
+    }
+
+    std::uint32_t property(unsigned instance) const {
+        if (!available)
+            return absent;
+        if (instance >= bytes.le(68))
+            throw std::runtime_error("Invalid streamed setup instance");
+        const auto definition = bytes.le(bytes.le(72) + instance * 2, 2);
+        if (definition == 65535)
+            return absent;
+        const auto count = bytes.le(76), table = bytes.le(80), start = bytes.le(64), end = bytes.le(72);
+        if (definition >= count)
+            throw std::runtime_error("Invalid streamed setup definition");
+        const auto offset = bytes.le(table + definition * 4);
+        const auto next = definition + 1 < count ? bytes.le(table + (definition + 1) * 4) : end - start;
+        if (offset > next || next > end - start || next - offset < 28)
+            throw std::runtime_error("Invalid streamed setup definition extent");
+        return bytes.le(start + offset + 8);
+    }
+
+    std::uint32_t persistent(unsigned property) const {
+        if (!available)
+            return absent;
+        if (property >= bytes.le(24))
+            throw std::runtime_error("Invalid streamed setup property");
+        return bytes.le(bytes.le(28) + property * 24 + 4);
+    }
+
+    Bytes program(unsigned index) const {
+        if (!available)
+            return {};
+        if (index >= bytes.le(56))
+            throw std::runtime_error("Invalid streamed setup program");
+        const auto at = bytes.le(bytes.le(60) + index * 4);
+        bytes.range(at, 16);
+        const auto extent = bytes.le(at + 8);
+        bytes.range(at, extent);
+        return {bytes.data.subspan(at, extent)};
+    }
+};
+} // namespace
+
+std::uint32_t ssx3_setup_property(Bytes bundle, unsigned instance, bool preview) {
+    return SetupBundle(bundle, preview).property(instance);
+}
+
+std::uint32_t ssx3_setup_persistent(Bytes bundle, unsigned property, bool preview) {
+    return SetupBundle(bundle, preview).persistent(property);
+}
+
+Bytes ssx3_setup_program(Bytes bundle, unsigned program, bool preview) {
+    return SetupBundle(bundle, preview).program(program);
+}
+
 // [Trailmap: 516-literal-setup] Translate a complete, unconditional material
 // setup only. This is a bounded constant decoder, not a world-script VM.
-nlohmann::json streamed_material_setup(Bytes b, bool tour) {
+nlohmann::json streamed_material_setup(Bytes b, bool tour, bool preview) {
     using Json = nlohmann::json;
     if (b.data.size() < 16 || b.le(0) != 0x004e554c)
         return nullptr;
@@ -20,6 +98,7 @@ nlohmann::json streamed_material_setup(Bytes b, bool tour) {
     std::vector<std::pair<unsigned, double>> arguments;
     Json nodes = Json::array();
     bool reset = false;
+    std::optional<unsigned> last_call;
     for (std::size_t p = 16; p < end;) {
         const auto word = b.le(p), op = word & 255, index = (word >> 8) & 255;
         p += 4;
@@ -54,6 +133,7 @@ nlohmann::json streamed_material_setup(Bytes b, bool tour) {
                 if (!std::isfinite(value) || std::abs(value) > 1e6 || !fields.emplace(key, value).second)
                     return nullptr;
             arguments.clear();
+            last_call = index;
             registers[index].reset(); // Calls never produce a constant value.
             if (!reset && nodes.empty() && command == 0 && fields.empty()) {
                 reset = true;
@@ -89,7 +169,12 @@ nlohmann::json streamed_material_setup(Bytes b, bool tour) {
                                    {"U3", value(6, 1)},
                                    {"U4", value(7, 0)},
                                    {"U5", 0}}}}}}}});
-        } else if (op == 0x2a && p == end && arguments.empty()) {
+        } else if (!preview && op == 0x2a && p == end && arguments.empty()) {
+            return nodes.empty() ? Json(nullptr) : nodes;
+        } else if (preview && word == 0x0000021e && p + 4 == end && b.le(p) == 0x0000021f && arguments.empty() &&
+                   last_call == 2) {
+            // [Trailmap: 516-preview-bytecode] Complete paired preview exit;
+            // no branch, unknown command or pending argument can be bypassed.
             return nodes.empty() ? Json(nullptr) : nodes;
         } else {
             return nullptr;

@@ -170,43 +170,43 @@ HELPER_CASES = [
 ]
 
 
-def material_program(tour=False, conditional=False):
+def material_program(tour=False, conditional=False, preview=False):
     # Original literal bytecode: reset, U=.01, V=-.02, install, return.
     code = [0x00000221, 0x00000426, struct.unpack('<I', struct.pack('<f', .01))[0],
             0x00000217, struct.unpack('<I', struct.pack('<f', .02))[0], 0x00020223, 0x00020520,
             0x02130221 if tour else 0x02150221]
     if conditional:
         code.append(0x00000202)
-    code.append(0x0000ff2a)
+    code += [0x0000021e, 0x0000021f] if preview else [0x0000ff2a]
     end = 16 + len(code) * 4
     return struct.pack('<4I', 0x004e554c, end, end, end) + struct.pack('<' + 'I' * len(code), *code)
 
 
-def material_section(conditional=False):
-    program = material_program(conditional=conditional)
+def material_section(conditional=False, preview=False):
+    program = material_program(conditional=conditional, preview=preview)
     b = bytearray(120)
-    struct.pack_into('<I', b, 4, 0x3800)
+    struct.pack_into('<2I', b, 0, 4096, 0x3600 if preview else 0x3800)
     struct.pack_into('<2I', b, 24, 1, 92)
     struct.pack_into('<6I', b, 92, 0xffffffff, 1, *([0xffffffff] * 4))
     struct.pack_into('<2I', b, 56, 1, 116)
     struct.pack_into('<I', b, 116, 120)
     b += program
     data = len(b)
-    b += struct.pack('<7I', 0, 0, 0xffffffff, 1, 0, 0, 0)
+    b += struct.pack('<7I', 0, 65536, 1, 0xffffffff, 0, 0, 0)
     mapping = len(b); b += bytes(4)  # Both placements share one property.
     table = len(b); b += bytes(4)
     struct.pack_into('<5I', b, 64, data, 2, mapping, 1, table)
     return bytes(b)
 
 
-def material_animation(rows, conditional=False):
+def material_animation(rows, conditional=False, preview=False):
     result = []
     for kind, rid, payload in rows:
         if kind == 0:
             payload = bytearray(payload); struct.pack_into('<I', payload, 16, 0)
             payload = bytes(payload) + struct.pack('<3I', 2, 0, 1)
         if kind == 16:
-            payload = material_section(conditional)
+            payload = material_section(conditional, preview)
         result.append((kind, rid, payload))
     return result + [(9, 511, texture())]
 
@@ -223,6 +223,23 @@ def check_materials(out, active=True, instances=2):
         scroll = effects['graphs'][0]['nodes'][0]['payload']['type0']['UVScroll']
         assert abs(scroll['U1'] - .01) < 1e-7 and abs(scroll['U2'] + .02) < 1e-7
         assert effects['slots'][0]['circumstances']['persistent'] == effects['graphs'][0]['id']
+
+
+def invalid_material_binding(rows, field):
+    result = []
+    for kind, rid, payload in material_animation(rows):
+        if kind == 16:
+            payload = bytearray(payload)
+            read = lambda at: struct.unpack_from('<I', payload, at)[0]
+            if field == 'directory': struct.pack_into('<I', payload, 28, 0xffffffff)
+            elif field == 'instance': struct.pack_into('<H', payload, read(72), 1)
+            elif field == 'definition': struct.pack_into('<I', payload, read(80), 0xffffffff)
+            elif field == 'property': struct.pack_into('<I', payload, read(64) + 8, 0x10001)
+            elif field == 'program': struct.pack_into('<I', payload, read(28) + 4, 0x10001)
+            elif field == 'program-offset': struct.pack_into('<I', payload, read(60), 0xffffffff)
+            payload = bytes(payload)
+        result.append((kind, rid, payload))
+    return result
 
 
 def sound_attachments(tour=False):
@@ -398,7 +415,7 @@ def main():
             moving = root / (label + '.iso')
             moving.write_bytes(disc(members(lambda rows: material_animation(rows, conditional))))
             run(executable, 'extract', moving, 'SSX3_A', root / label)
-            check_materials(root / label / 'SSX3_A', active=False)
+            check_materials(root / label / 'SSX3_A', active=not conditional)
         sounds_iso = root / 'sounds.iso'
         sounds_iso.write_bytes(disc(members(lambda rows: rows + [(13, 1, sound_attachments())])))
         run(executable, 'extract', sounds_iso, 'SSX3_A', root / 'sounds')
@@ -491,6 +508,8 @@ def main():
             ('sound-type', lambda rows: rows + [(13, 1, sound_attachments()[:104] + le(4) + sound_attachments()[108:])]),
             ('frame-count', lambda rows: [(k, rid, data[:20] + le(5000) if k == 0 else data)
                                            for k, rid, data in material_animation(rows)]),
+            *[(f'setup-{field}', lambda rows, field=field: invalid_material_binding(rows, field))
+              for field in ['directory', 'instance', 'definition', 'property', 'program', 'program-offset']],
         ]:
             invalid = root / (label + '.iso')
             invalid.write_bytes(disc(members(edit)))

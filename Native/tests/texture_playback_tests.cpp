@@ -141,6 +141,22 @@ void streamed(const std::filesystem::path& parent) {
     check(nodes.is_array() && nodes.size() == 1, "Literal setup becomes one portable material property");
     near(nodes[0]["payload"]["type0"]["UVScroll"]["U1"].get<double>(), -.01f,
          "Constant negation preserves the source scroll direction");
+    auto preview = code;
+    preview.back() = 0x0000021e;
+    preview.push_back(0x0000021f);
+    check(streamed_material_setup({program(preview)}, false, true) == nodes,
+          "Preview's complete paired exit preserves the same portable setup");
+    auto bad_exit = preview;
+    bad_exit.back() = 0x0000031f;
+    check(streamed_material_setup({program(bad_exit)}, false, true).is_null(),
+          "Preview terminal registers must match the supported callback");
+    auto preview_branch = preview;
+    preview_branch.insert(preview_branch.end() - 2, 0x00000202);
+    check(streamed_material_setup({program(preview_branch)}, false, true).is_null(),
+          "Preview branches cannot be skipped to reach the paired exit");
+    check(streamed_material_setup({bytes}, false, true).is_null() &&
+              streamed_material_setup({program(preview)}, false).is_null(),
+          "Compiler return forms are admitted only in their own dialect");
     auto conditional = code;
     conditional.insert(conditional.end() - 1, 0x00000202);
     check(streamed_material_setup({program(conditional)}, false).is_null(),

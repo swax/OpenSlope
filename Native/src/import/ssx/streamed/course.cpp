@@ -658,13 +658,21 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
     for (const auto* key :
          {"slots", "graphs", "functions", "objectProperties", "instances", "physics", "collisionModels", "splines"})
         effects[key] = Json::array();
-    // [Trailmap: 516-setup-bindings] Resolve source identities before assigning
+    // [Trailmap: 516-setup-bindings, 516-ssx3-bindings] Resolve source identities before assigning
     // shared slot indices. No source bytecode is executed by either runtime.
+    const bool preview = course.starts_with("SSX3B_");
+    const auto bundle = [&](unsigned section) -> Bytes {
+        // Preview resource kinds have already been normalized by read_world.
+        const auto found = records.find({16, section});
+        return found == records.end() ? Bytes{} : Bytes{found->second};
+    };
     const auto setup = [&](unsigned resource) -> std::uint32_t {
-        // SSX 3's property-to-setup relation is not established. Its material
-        // frame lists are independent of these On Tour placement bindings.
-        if (!tour)
-            return 0xffffffffu;
+        if (!tour) {
+            const auto property = ssx3_setup_property(bundle(resource & 255), resource >> 8, preview);
+            if (property == 0xffffffffu)
+                return property;
+            return ssx3_setup_persistent(bundle(property & 255), property >> 8, preview);
+        }
         const Bytes instance{get(records, 3, resource)};
         const auto slot = instance.le(152);
         const auto found = records.find({21, slot});
@@ -675,6 +683,8 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
         return b.le(4);
     };
     const auto program = [&](unsigned resource) -> Bytes {
+        if (!tour)
+            return ssx3_setup_program(bundle(resource & 255), resource >> 8, preview);
         const auto found = records.find({22, resource});
         return found == records.end() ? Bytes{} : Bytes{found->second};
     };
@@ -689,7 +699,7 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
             continue;
         auto [entry, fresh] = translated.try_emplace(source, -1);
         if (fresh) {
-            auto nodes = streamed_material_setup(program(source), tour);
+            auto nodes = streamed_material_setup(program(source), tour, preview);
             if (!nodes.is_null()) {
                 require(effects["slots"].size() < 4096, "too many translated material setups");
                 const auto id = "streamed-material:" + std::to_string(source);
@@ -719,7 +729,7 @@ Json material_effects(const Records& records, PropsExport& props, const std::str
     effects["extensions"]["streamedMaterialSetups"] = {{"TranslatedPrograms", effects["graphs"].size()},
                                                        {"TranslatedInstances", instances},
                                                        {"DeferredPrograms", deferred},
-                                                       {"BindingState", tour ? "Supported" : "Deferred"}};
+                                                       {"BindingState", "Supported"}};
     return effects;
 }
 
