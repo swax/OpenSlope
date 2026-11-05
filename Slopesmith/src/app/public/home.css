@@ -262,6 +262,7 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   bottom: var(--public-chat-bottom); left: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-content: end; align-items: end; gap: 12px; padding: 12px; box-sizing: border-box; pointer-events: none;
   container-type: inline-size; }
+.public-play:not(.public-ready) .public-map-overlays { visibility: hidden; }
 .public-launch-controls { grid-area: 1 / 2; display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; }
 .public-map-choices { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 8px;
   max-width: 100%; box-sizing: border-box;

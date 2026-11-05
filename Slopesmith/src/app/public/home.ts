@@ -736,12 +736,13 @@ export async function showPublicHome(): Promise<void> {
       document.body.classList.add('public-ready');
       refreshPeers();
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : String(error);
-      await loadStatus.fail(loading, status.textContent);
-      if (main.classList.contains('public-in-world')) {
-        main.append(status);
+      const message = error instanceof Error ? error.message : String(error);
+      const inWorld = main.classList.contains('public-in-world');
+      status.textContent = inWorld ? `${message} Return to Maps to try again.` : message;
+      if (inWorld) main.append(status);
+      await loadStatus.fail(loading, message);
+      if (inWorld) {
         document.body.classList.add('public-ready');
-        status.textContent += ' Return to Maps to try again.';
       }
     } finally {
       loadStatus.cancel(loading);

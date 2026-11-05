@@ -185,6 +185,10 @@ try {
     const overlay = loadingPage.locator('#load-status');
     await overlay.waitFor({ state: 'visible' });
     assert.equal(await overlay.getAttribute('aria-busy'), 'true');
+    assert(
+      await loadingPage.getByRole('group', { name: 'Play options', exact: true }).isHidden(),
+      'launch controls stay hidden while the loading card owns pointer input',
+    );
     assert.equal(await loadingPage.locator('#load-title').innerText(), 'Loading CUSTOM FOG');
     assert.equal(await loadingPage.locator('#load-label').innerText(), 'Preparing the mountain…');
     assert.equal(
@@ -215,6 +219,11 @@ try {
     );
     await loadingPage.goto(loadingUrl, { waitUntil: 'commit' });
     await loadingPage.locator('#load-status.error').waitFor({ state: 'visible' });
+    assert.match(
+      (await loadingPage.locator('.public-status').textContent()) ?? '',
+      /Return to Maps to try again/,
+      'persistent recovery guidance is ready while the error card is displayed',
+    );
     assert.equal(await loadingPage.locator('#load-label').innerText(), 'Could not finish loading');
     await overlay.waitFor({ state: 'hidden' });
     assert.equal(await overlay.getAttribute('aria-busy'), 'false');
