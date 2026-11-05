@@ -39,8 +39,8 @@
  * entirely on resolving a binary that is sitting in `node_modules`.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
@@ -146,6 +146,8 @@ const EXCLUSIVE_GROUP = new Map([
  * relative operation costs. Isolating these checks retains their deadlines, ratios and complete coverage.
  */
 const RUN_ALONE = new Set([
+  // Cold Chrome launches and service-worker installs must finish within the offline watchdog.
+  'offline-browser.test.ts',
   // Covered browser compilation can consume the CLI help subprocess's startup budget.
   'cli-help.test.ts',
   'multiplayer.test.ts',
@@ -330,6 +332,10 @@ const outcomes: Outcome[] = [];
 const started = Date.now();
 let next = 0;
 
+// Each Vite optimizer renames its deps directory. Parallel checks must not share it.
+const viteCacheRoot = mkdtempSync(join(tmpdir(), 'slopesmith-test-vite-'));
+let viteCacheId = 0;
+
 /**
  * Run one check to completion, holding its output. Concurrent checks interleave their writes, so a check's
  * output is buffered and printed as one block under its own banner — the same thing a serial run shows, just
@@ -339,7 +345,11 @@ function runOne(job: Job): Promise<void> {
   return new Promise(resolve => {
     const at = Date.now();
     const chunks: Buffer[] = [];
-    const child = spawn(job.command, job.args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(job.command, job.args, {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, SLOPESMITH_TEST_VITE_CACHE_DIR: join(viteCacheRoot, String(viteCacheId++)) },
+    });
     child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
     child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
     const finish = (status: number | null, note?: string): void => {

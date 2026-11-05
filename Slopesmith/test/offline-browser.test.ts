@@ -87,7 +87,7 @@ let context: BrowserContext | undefined;
 let page: Page | undefined;
 const errors: string[] = [];
 const watchdog = setTimeout(() => {
-  console.error(`Offline test timed out. Artifacts: ${root}`);
+  console.error(`Offline test timed out at ${page?.url()}. Artifacts: ${root}`);
   process.exit(1);
 }, 180_000);
 async function launch(offline: boolean) {
@@ -102,10 +102,14 @@ async function launch(offline: boolean) {
   page.on('pageerror', error => errors.push(error.message));
   return page;
 }
-async function editorReady() {
-  await page!.waitForFunction(() => document.documentElement.dataset.projectSave === 'saved', undefined, {
-    timeout: 30_000,
-  });
+async function editorReady(reference = false) {
+  if (reference) {
+    await page!.locator('#save-status[data-state="idle"][data-destination="none"]').waitFor();
+  } else {
+    await page!.waitForFunction(() => document.documentElement.dataset.projectSave === 'saved', undefined, {
+      timeout: 30_000,
+    });
+  }
   await page!.locator('#load-status').waitFor({ state: 'hidden' });
 }
 async function fileAction(label: string) {
@@ -256,7 +260,7 @@ try {
   await page!.goto(isoUrl!);
   await page!.getByRole('button', { name: 'Play', exact: true }).waitFor();
   await page!.getByRole('button', { name: 'Inspect map', exact: true }).click();
-  await editorReady();
+  await editorReady(true);
   assert.match(new URL(page!.url()).pathname, /^\/editor(?:\/|$)/);
   assert.equal(new URL(page!.url()).searchParams.get('reference'), 'TRICKY_GARI');
   await page!.goto(`${origin}/maps`);
@@ -279,8 +283,9 @@ try {
   assert.equal(new URL(page!.url()).pathname, '/editor/OFFLINE_SAVED');
   assert.equal(new URL(page!.url()).searchParams.get('local'), id);
   await page!.goto(`${origin}/editor?reference=TRICKY_GARI`);
-  await editorReady();
+  await editorReady(true);
   assert.deepEqual(errors, []);
+  console.log('OFFLINE: cold browser reopen, saved maps and unsaved reference inspection passed');
 
   // A failed download must leave the current release and all local work usable.
   await context!.setOffline(false);
@@ -317,6 +322,7 @@ try {
   await page!.goto(savedEditorUrl);
   await editorReady();
   // A new tab must not retry the deliberately broken worker after downloads are enabled again.
+  console.log('OFFLINE: failed update preserves the active release and saved map');
   writeFileSync(join(dist, 'sw.js'), originalWorker);
   writeFileSync(join(dist, 'index.html'), originalIndex);
   failPrecache = false;
@@ -338,21 +344,20 @@ try {
   await updateNotice.waitFor();
   assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
   // Navigation can retry a previously failed installation; let that installation finish cleaning up too.
-  const updateCachesHandle = await page!.waitForFunction(
+  await page!.waitForFunction(
     async expected => {
       const registration = await navigator.serviceWorker.getRegistration();
       const names = (await caches.keys()).filter(key => key.startsWith('slopesmith-app-'));
       return !registration?.installing &&
         registration?.active?.state === 'activated' &&
         names.length === expected.length &&
-        expected.every(name => names.includes(name))
-        ? names
-        : false;
+        expected.every(name => names.includes(name));
     },
     [originalCache, updatedCache],
   );
-  const updateCaches = (await updateCachesHandle.jsonValue()) as string[];
-  await updateCachesHandle.dispose();
+  const updateCaches = await page!.evaluate(async () =>
+    (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+  );
   assert.deepEqual(
     updateCaches.sort(),
     [originalCache, updatedCache].sort(),

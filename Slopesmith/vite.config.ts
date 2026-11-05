@@ -82,6 +82,7 @@ export default defineConfig(({ mode }) => {
     .filter(Boolean);
 
   return {
+    cacheDir: process.env.SLOPESMITH_TEST_VITE_CACHE_DIR || undefined,
     plugins: [requestLogEndpoint(), dependencyNoticesPlugin(process.cwd()), offlinePlugin()],
     define: { 'import.meta.env.VITE_ASSET_BUILD': JSON.stringify(Date.now().toString(36)) },
     // Loopback only: the API this proxies to is unauthenticated, so reaching the editor from a phone on the
