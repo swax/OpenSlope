@@ -47,7 +47,8 @@ const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
-  npmStep('Slopesmith deterministic tests and coverage', 'coverage', 45 * 60_000),
+  // Windows browser coverage can exceed 45 minutes while still making progress.
+  npmStep('Slopesmith deterministic tests and coverage', 'coverage', (process.platform === 'win32' ? 60 : 45) * 60_000),
   npmStep('Slopesmith production build', 'build'),
   npmStep('Export to glTF smoke test', 'smoke'),
 ];
