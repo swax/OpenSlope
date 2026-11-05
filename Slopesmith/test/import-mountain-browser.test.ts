@@ -68,7 +68,10 @@ const browser = await chromium.launch({
 const errors: string[] = [];
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Import mountain', exact: true });
 async function loadFromFile(page: Page) {
-  await page.getByRole('button', { name: 'Load map', exact: true }).click();
+  const trigger = page.getByRole('button', { name: 'Load map', exact: true });
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await trigger.click();
   await page.getByRole('button', { name: 'Import from file', exact: true }).click();
 }
 async function open(page: Page) {

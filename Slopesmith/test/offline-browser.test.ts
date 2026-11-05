@@ -116,6 +116,16 @@ async function fileAction(label: string) {
   await page!.getByRole('button', { name: 'File menu', exact: true }).click();
   await page!.getByRole('button', { name: label, exact: true }).click();
 }
+// The driver treats a Promise as truthy; await async snapshots before testing readiness.
+async function waitForWorkerState<T>(read: () => Promise<T>, ready: (state: T) => boolean): Promise<T> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const state = await read();
+    assert(Date.now() < deadline, 'Offline worker state did not settle within 30 seconds');
+    if (ready(state)) return state;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
 try {
   await launch(false);
   await page!.goto(`${origin}/maps`);
@@ -313,10 +323,12 @@ try {
     await registration.update();
     await failed;
   });
-  await page!.waitForFunction(
-    async () =>
-      !(await navigator.serviceWorker.getRegistration())?.installing &&
-      (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length === 1,
+  await waitForWorkerState(
+    () => page!.evaluate(async () => ({
+      installing: !!(await navigator.serviceWorker.getRegistration())?.installing,
+      names: (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+    })),
+    state => !state.installing && state.names.length === 1,
   );
   await context!.setOffline(true);
   await page!.goto(savedEditorUrl);
@@ -344,22 +356,20 @@ try {
   await updateNotice.waitFor();
   assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
   // Navigation can retry a previously failed installation; let that installation finish cleaning up too.
-  await page!.waitForFunction(
-    async expected => {
+  const updateState = await waitForWorkerState(
+    () => page!.evaluate(async () => {
       const registration = await navigator.serviceWorker.getRegistration();
-      const names = (await caches.keys()).filter(key => key.startsWith('slopesmith-app-'));
-      return !registration?.installing &&
-        registration?.active?.state === 'activated' &&
-        names.length === expected.length &&
-        expected.every(name => names.includes(name));
-    },
-    [originalCache, updatedCache],
-  );
-  const updateCaches = await page!.evaluate(async () =>
-    (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+      return {
+        installing: !!registration?.installing,
+        active: registration?.active?.state,
+        names: (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+      };
+    }),
+    state => !state.installing && state.active === 'activated' && state.names.length === 2 &&
+      [originalCache, updatedCache].every(name => state.names.includes(name)),
   );
   assert.deepEqual(
-    updateCaches.sort(),
+    updateState.names.sort(),
     [originalCache, updatedCache].sort(),
     'only the current and updated release caches remain',
   );
@@ -374,8 +384,9 @@ try {
   await sibling.close();
   await page!.reload();
   await editorReady();
-  await page!.waitForFunction(
-    async () => (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length === 1,
+  await waitForWorkerState(
+    () => page!.evaluate(async () => (await caches.keys()).filter(key => key.startsWith('slopesmith-app-'))),
+    names => names.length === 1,
   );
   await context!.setOffline(true);
   await page!.goto(savedEditorUrl);
