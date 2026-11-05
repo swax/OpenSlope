@@ -3577,7 +3577,7 @@ async function boot() {
   // Existing users arrive with their last localStorage mountain. If no disk project exists, initialize() makes
   // that exact recovery document the first project; otherwise the URL's map, and failing that the active disk
   // project, wins.
-  const opened = await (inspect && !mapNameInUrl() && !isLocalWorkspace()
+  const opened = await (inspect && !mapNameInUrl()
     ? blankMountain()
     : projectSync.initialize(
         store.mdoc,

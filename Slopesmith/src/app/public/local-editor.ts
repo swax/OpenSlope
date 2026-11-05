@@ -3,7 +3,7 @@ import { configureWorkspace } from '../net/workspace';
 import { missingAssetUrl } from '../net/asset-cache';
 import { setAssetUrlResolver } from '../net/asset-paths';
 import { mapNameAtPath, mapPath } from '../navigation';
-import { blankMountain, migrateMountain } from '../../core/doc/mountain';
+import { migrateMountain } from '../../core/doc/mountain';
 import { computePreflight } from '../../core/export/preflight';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
 import { recordFromReferenceProp } from '../../core/props/adopt';
@@ -123,7 +123,9 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     return [] as string[];
   });
   if (!localOnly && !reference && !cached.length) return;
-  const projects = localOnly ? await openLocalProjects() : null;
+  // Inspect uses the editor's unbound workspace, rather than creating or activating an authored map.
+  const inspection = !!reference && !localRequest && !mapNameAtPath(url.pathname, 'editor');
+  const projects = localOnly ? await openLocalProjects({ restoreActive: !inspection }) : null;
   if (projects) {
     const name = mapNameAtPath(url.pathname, 'editor');
     if (localRequest === 'new') await projects.createNew();
@@ -145,7 +147,7 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
           await projects.copyPublic(bundle, course.id, course.isoAliases);
         } else if (!projects.openNamed(name)) throw new Error('This mountain is private or no longer available.');
       }
-    } else if (reference) await projects.seed(blankMountain(), undefined, `reference:${reference}`);
+    }
     // A project id in an authenticated/capture URL must never bind the guest workspace to a server project.
     url.searchParams.delete('project');
     const active = projects.activeProject();

@@ -451,24 +451,54 @@ try {
     db.close();
   });
   await page.reload();
-  await page.getByRole('link', { name: 'Inspect Garibaldi', exact: true }).click();
-  await ready(page);
+  const inspectionBefore = await page.evaluate(async () => {
+    const path = '/src/app/state/local-projects.ts';
+    const { listLocalProjects, readLocalProject } = await import(/* @vite-ignore */ path);
+    const active = sessionStorage.getItem('slopesmith.localProject');
+    return { projects: await listLocalProjects(), active, mountain: active ? await readLocalProject(active) : null };
+  });
+  const inspectLink = page.getByRole('link', { name: 'Inspect Garibaldi', exact: true });
+  const inspectUrl = (await inspectLink.getAttribute('href'))!;
+  await inspectLink.click();
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
   const referenceSelect = page.getByRole('combobox', { name: 'Reference map', exact: true });
   await referenceSelect.waitFor();
   assert.equal(await referenceSelect.locator('option:checked').textContent(), 'Garibaldi');
   assert.deepEqual(await referenceSelect.locator('option').allTextContents(), ['(none)', 'Garibaldi']);
-  const referenceDownload = page.waitForEvent('download');
-  await fileAction(page, 'Export…');
-  await page
-    .getByRole('dialog', { name: 'Export', exact: true })
-    .getByRole('button', { name: 'Download .slopesmith.zip', exact: true })
-    .click();
-  const referenceBundle = await readMountainArchive(
-    new Blob([readFileSync((await (await referenceDownload).path())!)]),
-  );
-  assert.equal(referenceBundle.document.quads.length, 0, 'Inspect leaves an empty authored workspace');
+  async function assertUnsavedInspection() {
+    const inspected = await page!.evaluate(async () => {
+      const projectsUrl = '/src/app/state/local-projects.ts',
+        storageUrl = '/src/app/state/storage.ts',
+        workspaceUrl = '/src/app/net/workspace.ts';
+      const { listLocalProjects, readLocalProject } = await import(/* @vite-ignore */ projectsUrl);
+      const { MOUNTAIN_KEY } = await import(/* @vite-ignore */ storageUrl);
+      const { workspaceFetch } = await import(/* @vite-ignore */ workspaceUrl);
+      const active = sessionStorage.getItem('slopesmith.localProject');
+      return {
+        projects: await listLocalProjects(),
+        active,
+        mountain: active ? await readLocalProject(active) : null,
+        currentStatus: (await workspaceFetch('/api/projects/current')).status,
+        quads: JSON.parse(localStorage.getItem(MOUNTAIN_KEY) ?? 'null')?.quads?.length,
+      };
+    });
+    assert.deepEqual(inspected.projects, inspectionBefore.projects, 'Inspect does not create or save a private map');
+    assert.equal(inspected.active, inspectionBefore.active, 'Inspect keeps the last selected saved mountain');
+    assert.deepEqual(inspected.mountain, inspectionBefore.mountain, 'Inspect does not modify that mountain');
+    assert.equal(inspected.currentStatus, 204, 'the inspection editor has no bound authored project');
+    assert.equal(inspected.quads, 0, 'Inspect leaves an empty authored workspace');
+    assert.equal(new URL(page!.url()).pathname, '/editor');
+    assert.equal(new URL(page!.url()).searchParams.has('local'), false, 'Inspect has no new local-map URL');
+  }
+  await assertUnsavedInspection();
   await page.screenshot({ path: join(root, 'local-inspect.png') });
+  await page.goto(inspectUrl);
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  await assertUnsavedInspection();
+  await page.reload();
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  await assertUnsavedInspection();
   assert.deepEqual(errors, []);
   await page.goto(importedUrl);
   await ready(page);

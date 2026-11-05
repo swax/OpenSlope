@@ -19,7 +19,7 @@ interface LocalProject {
 }
 
 /** Local projects have their own database and identities; a public source id is never a writable project. */
-export async function openLocalProjects() {
+export async function openLocalProjects({ restoreActive = true }: { restoreActive?: boolean } = {}) {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open('slopesmith-local-workspace', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('projects', { keyPath: 'project.id' });
@@ -47,7 +47,7 @@ export async function openLocalProjects() {
   }
   let active: LocalProject | undefined;
   try {
-    active = projects.get(sessionStorage.getItem('slopesmith.localProject') ?? '');
+    if (restoreActive) active = projects.get(sessionStorage.getItem('slopesmith.localProject') ?? '');
   } catch {
     /* optional */
   }
