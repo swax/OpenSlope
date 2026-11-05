@@ -9,6 +9,10 @@ under **Custom / Authored** and unrecognized courses under **Unknown**. Quest's 
 filters courses by game. Changing a selector never plays or imports a map. Quest's **Ride mode** control
 is under **Ride settings**, keeping the map selectors and Play action visible in the initial panel.
 
+Version 0.93.0 imports incomplete beta fog safely and uses On Tour's per-object
+response flags for pass-through foliage and solid trunks. Imports also preserve
+halo and beam material choices. See [0.93.0 notes](releases/0.93.0.md).
+
 Build 0.91 brings the recent SSX 3/beta/On Tour import updates to PC and Quest,
 including stable per-map soundtrack shares, original fog sprites, admitted UV
 animations and pickups. Native props use per-placement baked vertex colours;
