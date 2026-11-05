@@ -90,6 +90,33 @@ def names(instance_names=None, model_name='mdl_er1_model'):
     return bytes(ids), bytes(strings)
 
 
+def beam_draws(rows, draw=8, animated=False):
+    """One source material shared by an ordinary draw and a special light draw."""
+    result = []
+    for kind, rid, payload, mask in rows:
+        if kind == 0:
+            payload = bytearray(payload)
+            struct.pack_into('<H', payload, 14, 1)
+            if animated:
+                struct.pack_into('<f', payload, 16, .1)
+                payload += struct.pack('<3I', 2, 0, 0)
+        elif kind == 2:
+            payload = bytearray(payload)
+            objects = struct.unpack_from('<I', payload, 8)[0]
+            header = struct.unpack_from('<I', payload, objects + 4)[0]
+            table = struct.unpack_from('<I', payload, header + 28)[0]
+            first = struct.unpack_from('<I', payload, table)[0]
+            struct.pack_into('<H', payload, first + 2, 0)
+            second = len(payload)
+            payload += payload[first:first + 8]
+            struct.pack_into('<H', payload, second + 2, draw)
+            table = len(payload)
+            payload += struct.pack('<2I', first, second)
+            struct.pack_into('<2I', payload, header + 24, 2, table)
+        result.append((kind, rid, bytes(payload), mask))
+    return result
+
+
 def members(edit=None, instance_names=None):
     # Use an existing independently authored surface fixture for its coefficients.
     import ssx3_import_test
@@ -280,8 +307,52 @@ def main():
             payload = (out / 'Source/Resources.bin').read_bytes()
             assert payload[script['Offset']:script['Offset'] + script['Bytes']].startswith(b'original synthetic world script')
             run(executable, 'extract', source, course, root / 'Maps', succeeds=False)
+        for absent in [False, True]:
+            def unavailable_fog(rows):
+                return [(kind, rid, b'' if kind == 4 else payload, mask) for kind, rid, payload, mask in rows
+                        if not (absent and kind == 4)]
+            missing_source = root / f'missing-fog-{absent}.iso'
+            missing_source.write_bytes(disc(members(unavailable_fog)))
+            missing_target = root / f'missing-fog-{absent}'
+            run(executable, 'extract', missing_source, 'SSXOT_ER1_DAY', missing_target, succeeds=False)
+            assert not (missing_target / 'SSXOT_ER1_DAY').exists(), 'On Tour missing fog remains a conversion error'
         for course in ['SSXOT_ALL', 'SSXOT_ALL_DAY', 'SSXOT_ER1', 'SSXOT_ER2_DAY', 'SSXOT_ER1_DUSK']:
             run(executable, 'extract', source, course, root / 'invalid', succeeds=False)
+        for state in [25, 27]:
+            def halo_material(rows):
+                result = []
+                for kind, rid, payload, mask in rows:
+                    if kind == 0:
+                        payload = bytearray(payload)
+                        struct.pack_into('<H', payload, 14, state)
+                    result.append((kind, rid, bytes(payload), mask))
+                return result
+            halo_source = root / f'halo-{state}.iso'
+            halo_source.write_bytes(disc(members(halo_material)))
+            run(executable, 'extract', halo_source, 'SSXOT_ER1_DAY', root / f'halo-{state}')
+            halo_out = root / f'halo-{state}/SSXOT_ER1_DAY'
+            material, = json.loads((halo_out / 'Materials.json').read_text())['Materials']
+            assert material['AlphaMode'] == 'glow' and material['TexturePath'] == '0000.png'
+            assert (halo_out / 'Textures/0000.png').is_file(), 'Additive light sheets retain original texture channels'
+        for draw in [8, 9, 7]:
+            for animated in [False, True]:
+                beam_source = root / f'beam-{draw}-{animated}.iso'
+                beam_source.write_bytes(disc(members(lambda rows: beam_draws(rows, draw, animated))))
+                destination = root / f'beam-{draw}-{animated}'
+                run(executable, 'extract', beam_source, 'SSXOT_ER1_DAY', destination)
+                beam_out = destination / 'SSXOT_ER1_DAY'
+                materials = json.loads((beam_out / 'Materials.json').read_text())['Materials']
+                meshes = json.loads((beam_out / 'Models.json').read_text())['Models'][0]['ModelObjects'][0]['MeshData']
+                opaque, light = [materials[mesh['MaterialID']] for mesh in meshes]
+                assert opaque['AlphaMode'] == 'opaque' and opaque['TexturePath'] == '0000_o.png'
+                assert opaque['TextureFlipbook'] == (['0000_o.png'] * 2 if animated else [])
+                if draw in [8, 9]:
+                    assert light['AlphaMode'] == 'glow' and light['TexturePath'] == '0000.png'
+                    assert light['TextureFlipbook'] == (['0000.png'] * 2 if animated else [])
+                    assert len(materials) == 2, 'Special draws use a separate common material'
+                    assert (beam_out / 'Textures/0000.png').is_file()
+                else:
+                    assert light == opaque and len(materials) == 1, 'Unresolved draw types retain their material'
         for label, distances in [('mixed-race', (-1, 1000, 0)), ('unscored-race', (-1, -1))]:
             paths = members()
             paths['data/worlds/er1d.tp'] = race_path(distances)
@@ -428,5 +499,7 @@ def main():
 if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == '--fixture':
         Path(sys.argv[2]).write_bytes(full_disc(fidelity=True, night_sky=True))
+    elif len(sys.argv) == 3 and sys.argv[1] == '--fixture-beam':
+        Path(sys.argv[2]).write_bytes(disc(members(beam_draws)))
     else:
         main()

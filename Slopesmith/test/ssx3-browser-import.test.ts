@@ -274,12 +274,63 @@ try {
   assert.equal(result.cone, 0.75);
   assert(result.haloBrightness > 0 && result.haloHasNoReach);
   assert(result.files > 15);
+  const missingFogFixture = join(work, 'beta-missing-fog.iso');
+  const generatedFog = spawnSync(
+    process.platform === 'win32' ? 'python' : 'python3',
+    [join(root, 'Native/tests/ssx3_beta_import_test.py'), '--fixture-missing-fog', missingFogFixture],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  assert.equal(generatedFog.status, 0, generatedFog.stderr);
+  const recoveredFog = await page.evaluate(async encoded => {
+    const file = new File([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))], 'preview.iso');
+    await new Promise<void>((resolve, reject) => {
+      const worker = new Worker('/worker.js', { type: 'module' });
+      worker.onerror = event => {
+        worker.terminate();
+        reject(new Error(event.message));
+      };
+      worker.onmessage = event => {
+        if (event.data.type === 'error') {
+          worker.terminate();
+          reject(new Error(event.data.message));
+        } else if (event.data.type === 'done') {
+          worker.terminate();
+          resolve();
+        }
+      };
+      worker.postMessage({ operation: 'extract', file, courses: ['SSX3B_ARA1'] });
+    });
+    const request = indexedDB.open('slopesmith-local-disc', 1);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const read = async (path: string) => {
+      const request = db.transaction('files').objectStore('files').get(`SSX3B_ARA1/${path.toLowerCase()}`);
+      const row = await new Promise<{ blob: Blob }>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      return JSON.parse(await row.blob.text());
+    };
+    const warnings: string[] = (await read('Import.json')).Warnings;
+    const models = (await read('ParticleModels.json')).ParticlePrefabs.length;
+    const instances = (await read('ParticleInstances.json')).Particles.length;
+    const source: { Bin: number; Resource: number }[] = await read('Source/Resources.json');
+    db.close();
+    return { warnings, models, instances, preserved: source.some(row => row.Bin === 5 && row.Resource === 1) };
+  }, readFileSync(missingFogFixture).toString('base64'));
+  assert.equal(recoveredFog.warnings.filter(row => row.startsWith('Skipped preview fog placement')).length, 1);
+  assert.equal(recoveredFog.models, 0);
+  assert.equal(recoveredFog.instances, 0);
+  assert(recoveredFog.preserved, 'Browser import preserves unresolved beta fog instead of aborting the course');
   for (const [game, course, collision] of [
     ['retail', 'SSX3_A', false],
     ['beta', 'SSX3B_ARA1', false],
     ['tour', 'SSXOT_ER1_DAY', false],
     ['retail', 'SSX3_A', true],
     ['beta', 'SSX3B_ARA1', true],
+    ['tour', 'SSXOT_ER1_DAY', true],
   ] as const) {
     const motionFixture = join(work, `${game}-${collision ? 'collision' : 'motion'}.iso`);
     const generatedMotion = spawnSync(
@@ -344,7 +395,12 @@ try {
     assert.equal(imported.commonModels[0].animation.objects.length, 2, `${game}: browser playback keeps both parts`);
     if (collision) {
       const first = imported.commonInstances[0].cp;
-      const second = imported.commonInstances[1].cp;
+      const secondIndex =
+        game === 'tour'
+          ? imported.instances.findIndex((row: { SourceResource: number }) => row.SourceResource === 65539)
+          : 1;
+      assert(secondIndex >= 0);
+      const second = imported.commonInstances[secondIndex].cp;
       assert.equal(first.length, 2, `${game}: inactive proxy slots survive browser import`);
       assert.notEqual(first[1], second[1], `${game}: each placement retains its source part state`);
       const empty = imported.collisionMeshes.find((mesh: { id: string }) => mesh.id === first[1]);

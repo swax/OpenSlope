@@ -317,6 +317,30 @@ void inactive_proxy_parts(const std::filesystem::path& root) {
         check(import_detail::ssx3_collision_parts({bytes}, 0, 1, preview).is_null(),
               "Ambiguous definition/object layouts cannot mask another part");
     }
+    {
+        std::vector<std::uint8_t> bytes(192);
+        const auto put = [&](unsigned offset, std::uint32_t value) {
+            for (unsigned j = 0; j < 4; ++j)
+                bytes[offset + j] = std::uint8_t(value >> (j * 8));
+        };
+        put(144, 192);
+        put(148, 1);
+        put(156, 1234);
+        put(168, 0xffff0003);
+        put(180, 0xffff0002);
+        auto state = import_detail::ontour_collision_parts({bytes}, 2);
+        check(state["Resource"] == 1234 && state["Enabled"] == Json{true, false},
+              "On Tour solid-response flags preserve the trunk and disable canopy contact");
+        put(168, 0xffff0001);
+        put(180, 0xffff0007);
+        check(import_detail::ontour_collision_parts({bytes}, 2)["Enabled"] == Json{true, true},
+              "On Tour preserves other known flags while testing solid response independently");
+        put(180, 0xffff0008);
+        check(import_detail::ontour_collision_parts({bytes}, 2).is_null(), "Unknown On Tour states stay deferred");
+        check(import_detail::ontour_collision_parts({bytes}, 1).is_null(), "On Tour part counts must match");
+        bytes.resize(180);
+        check(import_detail::ontour_collision_parts({bytes}, 2).is_null(), "Truncated On Tour parts stay deferred");
+    }
     std::filesystem::create_directories(root / "Meshes");
     std::filesystem::create_directories(root / "Collision");
     const std::string trunk = "v 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n";

@@ -165,6 +165,35 @@ async function run(): Promise<void> {
   if (partialAlphaPixel[0] < 32 || partialAlphaPixel[0] > 240 || partialAlphaPixel[1] > 12 || partialAlphaPixel[2] > 12)
     throw new Error(`Self-lit imported-prop alpha did not blend partially: ${partialAlphaPixel}`);
 
+  // On Tour's black-backed halo pages have solid texture alpha. Their explicit
+  // additive material must leave the scene visible through black and add light elsewhere.
+  const haloTile = document.createElement('canvas');
+  haloTile.width = haloTile.height = 1;
+  const haloContext = haloTile.getContext('2d')!;
+  haloContext.putImageData(new ImageData(new Uint8ClampedArray([0, 0, 0, 255]), 1, 1), 0, 0);
+  const haloTexture = new THREE.CanvasTexture(haloTile);
+  (textures as unknown as { loader: { load(url: string): THREE.Texture } }).loader = { load: () => haloTexture };
+  const haloMaterial = textures.fullBright(
+    textures.material('HALO', 'opaque-alpha-halo.png', undefined, [], undefined, { alphaMode: 'glow' }),
+  );
+  const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMaterial);
+  renderer.setClearColor(0x204080, 1);
+  renderer.render(scene, camera);
+  const haloBackground = centrePixel(renderer);
+  scene.add(haloMesh);
+  renderer.render(scene, camera);
+  const haloBlack = centrePixel(renderer);
+  if (haloBlack.slice(0, 3).some((value, index) => Math.abs(value - haloBackground[index]) > 1))
+    throw new Error(`Opaque-alpha black halo blocked its background: ${haloBlack} vs ${haloBackground}`);
+  haloContext.putImageData(new ImageData(new Uint8ClampedArray([128, 32, 0, 255]), 1, 1), 0, 0);
+  haloTexture.needsUpdate = true;
+  renderer.render(scene, camera);
+  const haloLit = centrePixel(renderer);
+  if (haloLit[0] <= haloBackground[0] + 10 || haloLit[2] < haloBackground[2] - 1)
+    throw new Error(`Explicit halo did not add light over its background: ${haloLit} vs ${haloBackground}`);
+  scene.remove(haloMesh);
+  renderer.setClearColor(0x000000, 1);
+
   // Exercise the wrapped lollipop's real mixed opaque/translucent atlas too. The wrapper occupies the
   // bottom-right UV quarter exactly as the model maps it; blue behind the sheet makes partial compositing
   // unambiguous.

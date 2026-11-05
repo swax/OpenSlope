@@ -90,6 +90,43 @@ def main():
             pickup = json.loads((out / 'Models.json').read_text())['Models'][0]
             assert pickup['Pickup']['Kind'] == 'score-multiplier' and pickup['Pickup']['Value'] == 2
             assert pickup['ModelObjects'][0]['IncludeAnimation'] and pickup['AnimTime'] == 60
+        # Unfinished optional fog must not prevent importing the rest of a preview course.
+        orphan_payloads = {}
+        def incomplete_fog(rows):
+            instance = next(payload for kind, _, payload in rows if kind == 5)
+            extra = [(4, 513, b'')]
+            for resource in [257, 513]:
+                payload = bytearray(instance)
+                struct.pack_into('<2I', payload, 96, resource, resource)
+                orphan_payloads[resource] = bytes(payload)
+                extra.append((5, resource, bytes(payload)))
+            return rows + extra
+        source.write_bytes(preview_disc(world_edit=incomplete_fog))
+        run(importer, 'extract', source, 'SSX3B_ARA1', root / 'incomplete-fog')
+        out = root / 'incomplete-fog/SSX3B_ARA1'
+        warnings = json.loads((out / 'Import.json').read_text())['Warnings']
+        fog_warnings = [row for row in warnings if row.startswith('Skipped preview fog placement')]
+        assert len(fog_warnings) == 2
+        assert any('257' in row for row in fog_warnings) and any('513' in row for row in fog_warnings)
+        fog, = json.loads((out / 'ParticleModels.json').read_text())['ParticlePrefabs']
+        assert fog['ParticleObjectHeaders'][0]['ParticleObject']['AnimationFrames'][0]['Unknown'] == 200
+        fog_instance, = json.loads((out / 'ParticleInstances.json').read_text())['Particles']
+        assert fog_instance['ParticleName'] == 'Fog 1' and fog_instance['ParticleModelIndex'] == 0
+        original = json.loads((out / 'Source/Resources.json').read_text())
+        bundle = (out / 'Source/Resources.bin').read_bytes()
+        for resource, payload in orphan_payloads.items():
+            row = next(row for row in original if row['Bin'] == 5 and row['Resource'] == resource)
+            assert bundle[row['Offset']:row['Offset'] + row['Bytes']] == payload
+        assert any(row['Bin'] == 4 and row['Resource'] == 513 and row['Bytes'] == 0 for row in original)
+        source.write_bytes(preview_disc(world_edit=lambda rows: [
+            (kind, rid, b'\0' if kind == 4 else payload) for kind, rid, payload in rows]))
+        run(importer, 'extract', source, 'SSX3B_ARA1', root / 'malformed-fog', succeeds=False)
+        assert not (root / 'malformed-fog/SSX3B_ARA1').exists()
+        source.write_bytes(preview_disc(world_edit=lambda rows: [
+            (kind, rid, payload[:100] if kind == 5 else payload)
+            for kind, rid, payload in rows if kind != 4]))
+        run(importer, 'extract', source, 'SSX3B_ARA1', root / 'truncated-fog', succeeds=False)
+        assert not (root / 'truncated-fog/SSX3B_ARA1').exists()
         for conditional in [False, True]:
             source.write_bytes(preview_disc(world_edit=lambda rows: material_animation(rows, conditional, preview=True),
                                             model_name='mdl_ARA1_fixture_1000'))
@@ -110,7 +147,8 @@ def main():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--fixture':
-        Path(sys.argv[2]).write_bytes(preview_disc())
+    if len(sys.argv) == 3 and sys.argv[1] in ['--fixture', '--fixture-missing-fog']:
+        edit = (lambda rows: [row for row in rows if row[0] != 4]) if sys.argv[1] == '--fixture-missing-fog' else None
+        Path(sys.argv[2]).write_bytes(preview_disc(world_edit=edit))
     else:
         main()

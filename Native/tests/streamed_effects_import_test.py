@@ -69,7 +69,7 @@ def collision_section(preview=False, unknown=False):
 def collision_fixture(game, unknown=False):
     def edit(rows):
         result = []
-        for kind, rid, data in rows:
+        for kind, rid, data, *tail in rows:
             if kind == 2:
                 data = animated_model(data)
             if kind == 12:
@@ -82,10 +82,19 @@ def collision_fixture(game, unknown=False):
                 data += first + second
             if kind == 16:
                 data = collision_section(game == 'beta', unknown)
-            result.append((kind, rid, data))
+            if game == 'tour' and kind == 3:
+                data = bytearray(data)
+                struct.pack_into('<ffHH', data, 160, 1e30, 0, 3, 65535)
+                struct.pack_into('<ffHH', data, 172, 1e30, 0, 8 if unknown else 2, 65535)
+                second = bytearray(data)
+                struct.pack_into('<H', second, 180, 3)
+                result.append((kind, 65539, bytes(second), *tail))
+            result.append((kind, rid, bytes(data), *tail))
         return result
     if game == 'beta':
         return beta.preview_disc(world_edit=edit, model_name='mdl_ARA1_compound_fixture')
+    if game == 'tour':
+        return tour.disc(tour.members(edit))
     return retail.disc(retail.members(edit))
 
 
@@ -139,7 +148,7 @@ def main():
             run(executable, 'extract', iso, course, destination)
             boost = '_boosta_' in name or '_boostb_' in name
             check_map(destination / course, collectible=not boost and name != 'mdl_er4_boost_1', boost=boost)
-        for game, course in [('retail', 'SSX3_A'), ('beta', 'SSX3B_ARA1')]:
+        for game, course in [('retail', 'SSX3_A'), ('beta', 'SSX3B_ARA1'), ('tour', 'SSXOT_ER1_DAY')]:
             for unknown in [False, True]:
                 image = root / f'{game}-collision-{unknown}.iso'
                 image.write_bytes(collision_fixture(game, unknown))
@@ -147,6 +156,8 @@ def main():
                 run(executable, 'extract', image, course, destination)
                 out = destination / course
                 rows = json.loads((out / 'Instances.json').read_text())['Instances']
+                if game == 'tour':
+                    rows = [row for row in rows if row['SourceResource'] in [3, 65539]]
                 a, b = [row['CollsionModelPaths'] for row in rows]
                 assert len(a) == len(b) == 2, 'partial collision keeps complete object alignment'
                 assert (a[1] != b[1]) == (not unknown), 'each definition controls its own shared proxy admission'

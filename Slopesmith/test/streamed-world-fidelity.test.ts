@@ -74,7 +74,7 @@ assert(
 );
 assert.equal(isoCourseCacheVersion('SSX3_A'), 15);
 assert.equal(isoCourseCacheVersion('SSX3B_ESS3'), 15);
-assert.equal(isoCourseCacheVersion('SSXOT_ER1_DAY'), 12);
+assert.equal(isoCourseCacheVersion('SSXOT_ER1_DAY'), 14);
 assert.equal(isoCourseCacheVersion('SSX_SNOW'), 3);
 assert.equal(isoCourseCacheVersion('GARI'), 1);
 console.log('Streamed world fidelity: legacy/shared spotlight cones, halo reach and selective cache refresh PASS');

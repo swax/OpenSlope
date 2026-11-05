@@ -107,6 +107,24 @@ nlohmann::json ssx3_collision_parts(Bytes bundle, unsigned instance, unsigned ob
     return {{"Resource", row.le(12)}, {"Enabled", std::move(enabled)}};
 }
 
+// [Trailmap: 552-ontour-part-admission] On Tour stores bounded object response
+// states on the placement. Its solid-response bit is independent of the other states.
+nlohmann::json ontour_collision_parts(Bytes instance, unsigned objects) {
+    using Json = nlohmann::json;
+    const auto end = 160 + std::size_t(objects) * 12;
+    if (!objects || objects > 256 || instance.data.size() < end || instance.le(148) != 1 ||
+        instance.le(144) != ((end + 15) & ~std::size_t(15)) || instance.le(156) == absent)
+        return nullptr;
+    Json enabled = Json::array();
+    for (unsigned i = 0; i < objects; ++i) {
+        const auto state = instance.le(168 + i * 12, 2);
+        if (state & ~7u)
+            return nullptr;
+        enabled.push_back((state & 1) != 0);
+    }
+    return {{"Resource", instance.le(156)}, {"Enabled", std::move(enabled)}};
+}
+
 // [Trailmap: 516-literal-setup] Translate a complete, unconditional material
 // setup only. This is a bounded constant decoder, not a world-script VM.
 nlohmann::json streamed_material_setup(Bytes b, bool tour, bool preview) {

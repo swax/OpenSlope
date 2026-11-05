@@ -71,16 +71,26 @@ export function analyzeTextureImage(image: CanvasImageSource): TextureAlphaAnaly
 /** Apply the framebuffer state shared by prop, terrain-array, and thumbnail materials. With the default-on MSAA
  * preference, cutouts use Unity-style alpha-to-coverage. The opt-out uses Three's stable alpha hash as its
  * single-sample equivalent: partial edge texels become depth-writing spatial coverage while true holes vanish. */
-export function applyTextureAlphaMode(material: THREE.Material, mode: TextureAlphaMode, sheet = false): void {
+export function applyTextureAlphaMode(
+  material: THREE.Material,
+  mode: TextureAlphaMode,
+  sheet = false,
+  explicitGlow = false,
+): void {
+  // An explicit common-format glow is additive. A glow inferred from an old alpha
+  // sheet keeps its existing smooth-alpha policy rather than acquiring a new blend law.
+  const additive = mode === 'glow' && explicitGlow;
+  const blending = additive ? THREE.AdditiveBlending : THREE.NormalBlending;
   const transparent = mode === 'blend' || mode === 'glow';
   const coverage = mode === 'cutout' && cutoutAlphaToCoverage;
   // In coverage mode alpha must survive into the fragment output: WebGL's sample mask consumes the continuous
   // value directly. Three deliberately keeps that alpha for a non-transparent alphaToCoverage material.
   const alphaTest = mode === 'glow' || (mode === 'cutout' && !coverage) ? 0.05 : 0;
-  const depthWrite = mode === 'blend' ? !sheet : true;
+  const depthWrite = additive ? false : mode === 'blend' ? !sheet : true;
   const alphaHash = mode === 'cutout' && !coverage;
   if (
     material.transparent === transparent &&
+    material.blending === blending &&
     material.alphaTest === alphaTest &&
     material.depthWrite === depthWrite &&
     material.alphaHash === alphaHash &&
@@ -88,6 +98,7 @@ export function applyTextureAlphaMode(material: THREE.Material, mode: TextureAlp
   )
     return;
   material.transparent = transparent;
+  material.blending = blending;
   material.alphaTest = alphaTest;
   material.depthWrite = depthWrite;
   material.alphaHash = alphaHash;

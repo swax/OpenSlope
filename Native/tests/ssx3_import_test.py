@@ -462,6 +462,15 @@ def main():
         assert fog['ParticleObjectHeaders'][0]['ParticleObject']['AnimationFrames'][0]['Unknown'] == 200
         fog_instance, = json.loads((out / 'ParticleInstances.json').read_text())['Particles']
         assert fog_instance['ParticleModelIndex'] == 0
+        for absent in [False, True]:
+            def unavailable_fog(rows):
+                return [(kind, rid, b'' if kind == 4 else payload) for kind, rid, payload in rows
+                        if not (absent and kind == 4)]
+            missing_source = root / f'missing-fog-{absent}.iso'
+            missing_source.write_bytes(disc(members(unavailable_fog)))
+            missing_target = root / f'missing-fog-{absent}'
+            run(executable, 'extract', missing_source, 'SSX3_A', missing_target, succeeds=False)
+            assert not (missing_target / 'SSX3_A').exists(), 'Retail missing fog remains a conversion error'
         assert not json.loads((out / 'Import.json').read_text())['Complete']
         assert json.loads((out / 'Origin.json').read_text())['Game'] == 'ssx-3'
         source_row = next(row for row in json.loads((out / 'Source/Resources.json').read_text()) if row['Bin'] == 16)

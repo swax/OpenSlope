@@ -300,6 +300,47 @@ try {
   assert.equal(result.soundLevel, 'SSXOT_ER1_NIGHT');
   assert.equal(result.needsSoundUpdate, false, 'Deferred On Tour audio must not block play with an ISO reload prompt');
   assert.deepEqual(result.cached, ['SSXOT_ER1_NIGHT'], 'The current importer must publish a current cache version');
+  const beamFixture = join(work, 'beam.iso');
+  const generatedBeam = spawnSync(
+    process.platform === 'win32' ? 'python' : 'python3',
+    [join(root, 'Native/tests/ontour_import_test.py'), '--fixture-beam', beamFixture],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  assert.equal(generatedBeam.status, 0, generatedBeam.stderr);
+  const beam = await page.evaluate(async encoded => {
+    const file = new File([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))], 'beam.iso');
+    await new Promise<void>((resolve, reject) => {
+      const worker = new Worker('/worker.js', { type: 'module' });
+      worker.onerror = event => {
+        worker.terminate();
+        reject(new Error(event.message));
+      };
+      worker.onmessage = event => {
+        if (event.data.type === 'error' || event.data.type === 'done') {
+          worker.terminate();
+          if (event.data.type === 'error') reject(new Error(event.data.message));
+          else resolve();
+        }
+      };
+      worker.postMessage({ operation: 'extract', file, courses: ['SSXOT_ER1_DAY'] });
+    });
+    const moduleUrl = '/local-data.js';
+    const { localMapData } = await import(moduleUrl);
+    const local = await localMapData(['SSXOT_ER1_DAY']);
+    try {
+      const models = await local.source.readJsonOr('SSXOT_ER1_DAY/Models.json', null);
+      const materials = await local.source.readJsonOr('SSXOT_ER1_DAY/Materials.json', null);
+      return models.Models[0].ModelObjects[0].MeshData.map(
+        (mesh: { MaterialID: number }) => materials.Materials[mesh.MaterialID],
+      );
+    } finally {
+      local.dispose();
+    }
+  }, readFileSync(beamFixture).toString('base64'));
+  assert.equal(beam[0].AlphaMode, 'opaque');
+  assert.equal(beam[0].TexturePath, '0000_o.png');
+  assert.equal(beam[1].AlphaMode, 'glow');
+  assert.equal(beam[1].TexturePath, '0000.png', 'Light draws use a glow variant through actual browser persistence');
   console.log('On Tour browser Wasm worker: scan, extraction and IndexedDB map publication PASS');
 } finally {
   await browser?.close();

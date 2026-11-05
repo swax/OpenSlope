@@ -143,12 +143,13 @@ export class ThumbRenderer {
       [...new Set([file, ...frames])].map(name => this.alphaCache.get(makeTexRef(level, name))),
       { mode: source?.alphaMode, alphaPass: source?.blend, priority: source?.prio, pixelAlpha: source?.pixelAlpha },
     );
-    const k = `${texKey}:${mode}`;
+    const explicitGlow = source?.alphaMode === 'glow';
+    const k = `${texKey}:${mode}:${explicitGlow ? 1 : 0}`;
     let m = this.matCache.get(k);
     if (!m) {
       const tex = this.texCache.get(texKey) ?? null;
       m = tex ? new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }) : this.neutral;
-      if (m !== this.neutral) applyTextureAlphaMode(m, mode);
+      if (m !== this.neutral) applyTextureAlphaMode(m, mode, false, explicitGlow);
       this.matCache.set(k, m);
     }
     return m;

@@ -116,6 +116,25 @@ check(
 );
 setCutoutAlphaToCoverage(false); // the remainder exercises the default fast path
 const blendSheetMaterial = new THREE.MeshLambertMaterial();
+const inferredGlowMaterial = new THREE.MeshLambertMaterial();
+applyTextureAlphaMode(inferredGlowMaterial, 'glow');
+check(
+  inferredGlowMaterial.blending === THREE.NormalBlending && inferredGlowMaterial.depthWrite,
+  'legacy pixel-inferred glow keeps its smooth-alpha rendering',
+);
+const additiveGlowMaterial = new THREE.MeshLambertMaterial();
+applyTextureAlphaMode(additiveGlowMaterial, 'glow', true, true);
+check(
+  additiveGlowMaterial.transparent &&
+    additiveGlowMaterial.blending === THREE.AdditiveBlending &&
+    !additiveGlowMaterial.depthWrite,
+  'explicit common-format glow adds light without writing a black occluding sheet',
+);
+applyTextureAlphaMode(additiveGlowMaterial, 'opaque');
+check(
+  additiveGlowMaterial.blending === THREE.NormalBlending && additiveGlowMaterial.depthWrite,
+  'a material leaving explicit glow restores its ordinary blend and depth state',
+);
 applyTextureAlphaMode(blendSheetMaterial, 'blend', true);
 check(
   blendSheetMaterial.transparent && !blendSheetMaterial.depthWrite && blendSheetMaterial.alphaTest === 0,

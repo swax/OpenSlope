@@ -434,6 +434,8 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
                   const std::filesystem::path& output, Json& warnings, const ImportCancel& cancel, bool tour = false) {
     PropsExport out;
     std::map<std::uint32_t, unsigned> material_ids;
+    std::map<std::uint32_t, std::vector<unsigned>> material_pages;
+    std::map<std::uint32_t, unsigned> additive_material_ids;
     std::set<std::uint32_t> debug_materials;
     auto name = [&](unsigned kind, std::uint32_t rid) {
         const auto it = names.find({kind, rid});
@@ -447,7 +449,12 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
         Bytes b{bytes};
         b.range(0, 20);
         const auto texture = b.le(0, 2), state = b.le(14, 2);
-        const bool alpha = (state & (2 | 4 | 64)) != 0;
+        auto& pages = material_pages[key.second];
+        pages.push_back(texture);
+        // [Trailmap: 552-ontour-halo-blend] Keep black-backed light sheets in
+        // the common additive glow path, independently of their texture alpha.
+        const bool additive = tour && (state & 24) == 24;
+        const bool alpha = additive || (state & (2 | 4 | 64)) != 0;
         (alpha ? out.alpha : out.opaque).insert(texture);
         // [Trailmap: 516-material-frames] Animated materials append their
         // ordered page list. The list alone does not imply a running clock.
@@ -459,6 +466,7 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
             for (unsigned i = 0; i < count; ++i) {
                 const auto frame = b.le(24 + i * 4);
                 require(frame < 4096, "invalid material frame page");
+                pages.push_back(frame);
                 (alpha ? out.alpha : out.opaque).insert(frame);
                 frames.push_back(number(frame) + (alpha ? ".png" : "_o.png"));
             }
@@ -470,11 +478,37 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
                                  {"TexturePath", number(texture) + (alpha ? ".png" : "_o.png")},
                                  {"TextureFlipbook", frames},
                                  {"UnknownInt18", alpha ? 0x40000 : 0},
-                                 {"AlphaMode", state & 64  ? "glow"
+                                 {"AlphaMode", additive || (state & 64) ? "glow"
                                                : state & 4 ? "blend"
                                                : state & 2 ? "cutout"
                                                            : "opaque"}});
     }
+    // [Trailmap: 552-ontour-beam-draw] A light draw can override an otherwise
+    // opaque shared material. Keep its ordinary uses and ordered frame pages intact.
+    const auto additive_material = [&](std::uint32_t source) {
+        const auto base = material_ids.at(source);
+        if (out.materials.at(base).at("AlphaMode") == "glow")
+            return base;
+        const auto found = additive_material_ids.find(source);
+        if (found != additive_material_ids.end())
+            return found->second;
+        auto material = out.materials.at(base);
+        const auto& pages = material_pages.at(source);
+        material["MaterialName"] = material.at("MaterialName").get<std::string>() + " (additive draw)";
+        material["AlphaMode"] = "glow";
+        material["UnknownInt18"] = material.at("UnknownInt18").get<unsigned>() | 0x40000u;
+        material["TexturePath"] = number(pages.front()) + ".png";
+        material["TextureFlipbook"] = Json::array();
+        for (std::size_t i = 0; i < pages.size(); ++i) {
+            out.alpha.insert(pages[i]);
+            if (i)
+                material["TextureFlipbook"].push_back(number(pages[i]) + ".png");
+        }
+        const auto id = unsigned(out.materials.size());
+        out.materials.push_back(std::move(material));
+        additive_material_ids.emplace(source, id);
+        return id;
+    };
     for (const auto& [key, bytes] : records) {
         if (key.first != 2 || (!tour && !sections.contains(sector(key.second, tour))))
             continue;
@@ -525,6 +559,9 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
                     require(slot < material_count, "mesh material slot outside model table");
                     const auto material = b.le(material_table + 4 + slot * 4);
                     require(material_ids.contains(material), "model references missing material");
+                    const auto draw = b.le(entry + 2, 2);
+                    const auto imported_material = tour && (draw == 8 || draw == 9) ? additive_material(material)
+                                                                                   : material_ids.at(material);
                     debug = debug && debug_materials.contains(material);
                     drawn = true;
                     const auto payload = transfers(b, base, base + b.le(entry + 4));
@@ -533,7 +570,7 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
                     const auto n = write_ssx3_mesh(Bytes{payload}, b.number(24), b.number(28), b.number(32),
                                                    output / "Meshes" / file, cancel);
                     object["MeshData"].push_back({{"MeshPath", file},
-                                                  {"MaterialID", material_ids.at(material)},
+                                                  {"MaterialID", imported_material},
                                                   {"VertexLightingBase", vertices}});
                     vertices += n;
                 }
@@ -664,18 +701,19 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
         row["CollsionModelPaths"] = bindings.at(binding);
         row["CollsionMode"] = 1;
         row["PlayerCollision"] = props.solid_instances.contains(resource);
-        if (!tour) {
+        {
             const auto bundle = records.find({16, resource & 255});
             const auto objects = props.models.at(row.at("ModelID").get<unsigned>()).at("ModelObjects").size();
-            const auto state = ssx3_collision_parts(bundle == records.end() ? Bytes{} : Bytes{bundle->second},
-                                                    resource >> 8, unsigned(objects), preview);
+            const auto state = tour ? ontour_collision_parts(original, unsigned(objects))
+                                    : ssx3_collision_parts(bundle == records.end() ? Bytes{} : Bytes{bundle->second},
+                                                           resource >> 8, unsigned(objects), preview);
             if (state.is_null() || state.at("Resource") != binding_resources.at(binding) ||
                 state.at("Enabled").size() != row.at("CollsionModelPaths").size())
                 continue;
             // Preserve object/proxy alignment and shared source geometry. A
             // disabled part has vertices but no collision faces in the common
             // format; all consumers can retain its slot without making a wall.
-            // [Trailmap: 552-part-admission]
+            // [Trailmap: 552-part-admission, 552-ontour-part-admission]
             Json disabled = Json::array();
             auto& paths = row["CollsionModelPaths"];
             for (std::size_t i = 0; i < paths.size(); ++i) {
@@ -1011,7 +1049,7 @@ void splines(const Records& records, const std::map<Key, std::string>& names, co
 }
 
 void lights_and_fog(const Records& records, const std::set<unsigned>& sections, const std::filesystem::path& output,
-                    bool tour = false, bool beta = false) {
+                    Json& warnings, bool tour = false, bool beta = false) {
     // [Trailmap: 515-light-record, 515-placeholder, 515-halo-record,
     // 515-fog-model, 515-fog-placement] Do not read placeholder light bounds.
     Json lights = Json::array(), models = Json::array(), instances = Json::array();
@@ -1083,8 +1121,20 @@ void lights_and_fog(const Records& records, const std::set<unsigned>& sections, 
         if (key.first != 5 || !sections.contains(sector(key.second, tour)))
             continue;
         Bytes b{bytes};
+        b.range(0, 128); // Require the stored transform and world bounds even for an unavailable preview effect.
         const auto model = b.le(tour ? 100 : 96);
-        require(ids.contains(model), "fog placement has no model");
+        // [Trailmap: 510-preview-fog-models] The preview retains placements for
+        // unavailable optional fog. Preserve their source, without inventing puffs.
+        if (beta && !ids.contains(model)) {
+            const auto definition = records.find({4, model});
+            if (definition == records.end() || definition->second.empty()) {
+                warnings.push_back("Skipped preview fog placement " + std::to_string(key.second) + ": model " +
+                                   std::to_string(model) + " has no data; source record preserved.");
+                continue;
+            }
+        }
+        require(ids.contains(model), ("fog placement has no model (placement " + std::to_string(key.second) +
+                                      ", model " + std::to_string(model) + ")").c_str());
         auto row = import_pose(b, 16);
         row["ParticleModelIndex"] = ids.at(model);
         row["ParticleName"] = "Fog " + std::to_string(key.second);
@@ -1504,7 +1554,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     auto lighting_sections = selected;
     if (tour)
         lighting_sections.insert(0);
-    lights_and_fog(records, lighting_sections, output, tour, beta);
+    lights_and_fog(records, lighting_sections, output, warnings, tour, beta);
     if (!sky.empty()) {
         notify("Converting sky dome");
         std::filesystem::create_directories(output / "Skybox/Textures");

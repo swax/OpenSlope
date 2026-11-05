@@ -529,7 +529,7 @@ export class PropTextureCache {
 
   private applyTrackedAlpha(material: THREE.Material): void {
     const spec = this.alphaSpecs.get(material);
-    if (spec) applyTextureAlphaMode(material, this.alphaMode(spec), !!spec.opts.sheet);
+    if (spec) applyTextureAlphaMode(material, this.alphaMode(spec), !!spec.opts.sheet, spec.opts.alphaMode === 'glow');
   }
 
   private trackAlpha(material: THREE.Material, spec: PropMaterialAlphaSpec): void {
@@ -982,11 +982,12 @@ export class PropTextureCache {
     const texture = this.arrayBank?.textures[array];
     if (!texture) return null;
     const mode = this.alphaMode({ level, file, frames: [], opts });
-    const k = `${array}|${mode}|${opts.sheet ? 1 : 0}${opts.native ? 1 : 0}${opts.vertexLit ? 1 : 0}`;
+    const explicitGlow = opts.alphaMode === 'glow';
+    const k = `${array}|${mode}|${explicitGlow ? 1 : 0}|${opts.sheet ? 1 : 0}${opts.native ? 1 : 0}${opts.vertexLit ? 1 : 0}`;
     let material = this.arrayMats.get(k);
     if (!material) {
       material = this.lit(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }));
-      applyTextureAlphaMode(material, mode, !!opts.sheet);
+      applyTextureAlphaMode(material, mode, !!opts.sheet, explicitGlow);
       useTextureArray(material, texture, `prop:${k}`);
       if (opts.native || opts.vertexLit) this.nativeRecordUniform(material).value = 1;
       if (opts.vertexLit) this.vertexLightUniform(material).value = 1;

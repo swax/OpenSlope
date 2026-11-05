@@ -25,6 +25,7 @@ std::uint32_t ssx3_setup_property(Bytes bundle, unsigned instance, bool preview)
 std::uint32_t ssx3_setup_persistent(Bytes bundle, unsigned property, bool preview);
 Bytes ssx3_setup_program(Bytes bundle, unsigned program, bool preview);
 nlohmann::json ssx3_collision_parts(Bytes bundle, unsigned instance, unsigned objects, bool preview);
+nlohmann::json ontour_collision_parts(Bytes instance, unsigned objects);
 nlohmann::json streamed_pickups(nlohmann::json& models, nlohmann::json& instances, nlohmann::json& effects,
                                 const ImportCancel& cancel, bool tour = false);
 std::pair<bool, bool> streamed_prop_admission(const std::string& name, bool debug);
