@@ -43,7 +43,22 @@ class FakeServices:
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="slopesmith-release-test-")
-        self.root = Path(self.temp.name)
+        # Windows runners may give tempfile an 8.3 path while resolve() returns its long name.
+        self.root = Path(self.temp.name).resolve()
+        if os.name == "nt":
+            replace = os.replace
+
+            def replace_directory_link(source, destination):
+                source, destination = Path(source), Path(destination)
+                if source.is_symlink() and source.is_dir() and destination.is_symlink():
+                    destination.unlink()
+                return replace(source, destination)
+
+            # Windows cannot rename over a directory symlink. Model that POSIX primitive for these
+            # service/rollback tests; Linux CI and release packaging exercise the real atomic rename.
+            replacement = patch.object(release.os, "replace", side_effect=replace_directory_link)
+            replacement.start()
+            self.addCleanup(replacement.stop)
         self.tree = self.root / "payload"
         self.tree.mkdir()
         self.output = self.root / "output"
