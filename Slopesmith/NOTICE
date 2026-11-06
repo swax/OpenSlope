@@ -127,6 +127,7 @@ Build and development dependencies. The standard build uses these on the build m
 not include them in dist/ or dist-server/:
 
     npm-development-only: @eslint/js — MIT License
+    npm-development-only: @happy-dom/global-registrator — MIT License
     npm-development-only: @types/node — MIT License
     npm-development-only: @types/three — MIT License
     npm-development-only: ajv — MIT License
@@ -134,7 +135,9 @@ not include them in dist/ or dist-server/:
     npm-development-only: c8 — ISC License
     npm-development-only: esbuild — MIT License
     npm-development-only: eslint — MIT License
+    npm-development-only: fake-indexeddb — Apache License 2.0
     npm-development-only: globals — MIT License
+    npm-development-only: happy-dom — MIT License
     npm-development-only: playwright-core — Apache License 2.0
     npm-development-only: prettier — MIT License
     npm-development-only: prettier-plugin-java — Apache License 2.0

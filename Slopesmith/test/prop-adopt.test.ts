@@ -132,6 +132,25 @@ check(
   check(record.subs[1].object === 1, 'an animated submesh keeps the object it belongs to');
 }
 
+// Imported props already name their texture bank; their wire-format frames may still be bare files.
+{
+  const { props, model } = riverLevel();
+  props.level = '@import';
+  props.materials.set(110, { tex: 'Custom/river.png', frames: ['river.png', 'river_f1.png'], blend: true });
+  props.materials.set(7, { tex: 'OTHER/rock.png', frames: ['OTHER/rock.png', 'OTHER/rock_f1.png'] });
+  const { record } = recordFromReferenceProp(props, model, model.name);
+  check(record.materials[0].tex === 'Custom/river.png', 'copying an imported prop preserves its custom texture ref');
+  check(
+    record.materials[0].frames?.join() === 'Custom/river.png,Custom/river_f1.png',
+    'bare imported flipbook frames inherit the material texture bank, not @import',
+  );
+  check(record.materials[1].tex === 'OTHER/rock.png', 'cross-level imported textures retain their source bank');
+  check(
+    record.materials[1].frames?.join() === 'OTHER/rock.png,OTHER/rock_f1.png',
+    'qualified imported flipbook frames are not qualified a second time',
+  );
+}
+
 // ---- declared motion, and the awkward cases ---------------------------------------------------------------------
 {
   const { props, model } = riverLevel();

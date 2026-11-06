@@ -7,7 +7,7 @@ The design rationale is [001](001-design.md); what the result is serialized into
 Code: `src/core/math/spine.ts` (centerline), `src/core/doc/mountain.ts` (generation — `buildMeshFromCourse`/`seatCourse`), `src/core/math/bezier.ts`
 (quilt + evaluation), `src/core/mesh/tessellation.ts` (viewport tessellation).
 
-The terrain generator (`buildMeshFromCourse`, behind New map and a reference's "new mountain from this
+The terrain generator (`buildMeshFromCourse`, behind New map's Generated course and a reference's "new mountain from this
 course") is a separate topology-general path. Every authored course knot creates a primary
 random-height edge chain perpendicular to the course, with **width** meaning the full endpoint-to-endpoint edge
 length (210 m by default). The first edge seeds a height profile; each following edge carries forward the previous
@@ -38,7 +38,8 @@ Freshly generated terrain also receives a deterministic default surface pass. Th
 patches whose centres lie within 75 m overhead of the course are snow (`1`), and the rest are powder (`3`). A
 gentle far-field pocket at least 110 m from and 20 m below its nearest course point becomes slow powder (`4`).
 
-**New map** on the main library page asks for a name and Local or Server storage, then creates a 300 m,
+**New map** on the main library page asks for a name, terrain and Local or Server storage. **Blank — no
+terrain** is the default: an empty mesh ready for the Edit tools. **Generated course** creates a 300 m,
 ten-knot editable starter course and lofts it immediately through the generator above. The reference's
 **New mountain from this course** uses the same generator with a terrain dialog. Alongside edge width,
 roughness, target patch size and seed, that dialog exposes **height**: the
@@ -47,7 +48,7 @@ a taller height extrapolates its final downhill direction. Reference lines are a
 points are resampled, so leaving the displayed reference height unchanged is a geometry-preserving no-op rather
 than an accidental tail extension.
 
-For programmatic empty mountains, `blankMountain` runs no generator: it returns a document with an empty mesh — zero vertices, zero
+Blank maps use `blankMountain`, which runs no generator: it returns a document with an empty mesh — zero vertices, zero
 quads — carrying only its name, its spacing and a straight fall-line guide run (`straightCourse`) descending at
 the supplied slope. Every surface can then be drawn by hand with Edit ▸ create patch (`P`), which requires no
 existing geometry: `resolvePlacementEndpoint` falls back to a screen-facing construction plane through the view

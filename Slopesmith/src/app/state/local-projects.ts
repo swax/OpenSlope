@@ -1,4 +1,4 @@
-import { migrateMountain, defaultMountain } from '../../core/doc/mountain';
+import { migrateMountain, blankMountain } from '../../core/doc/mountain';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { ProjectBundle } from '../../core/project/transfer';
 import { sha256 } from '../../core/reference/asset-hash';
@@ -111,7 +111,7 @@ export async function openLocalProjects({ restoreActive = true }: { restoreActiv
     return select ? activate(row) : snapshot(row);
   }
   async function createNew() {
-    const document = defaultMountain();
+    const document = blankMountain();
     const names = new Set([...projects.values()].map(row => row.project.name.toLowerCase()));
     let number = 1;
     while (names.has(`mountain${String(number).padStart(2, '0')}`)) number++;
@@ -241,7 +241,7 @@ export async function openLocalProjects({ restoreActive = true }: { restoreActiv
       return active ? Response.json(await activateSaved(active)) : new Response(null, { status: 204 });
     if (path === '/api/projects') {
       if (method === 'GET') return Response.json({ projects: [...projects.values()].map(row => row.project) });
-      if (method === 'POST') return Response.json(await create(migrateMountain(body.document ?? defaultMountain())));
+      if (method === 'POST') return Response.json(await create(migrateMountain(body.document ?? blankMountain())));
     }
     if (path === '/api/projects/transfer' && method === 'POST' && body.bundle) {
       const document = migrateMountain(body.bundle.document);

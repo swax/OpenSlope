@@ -51,6 +51,7 @@ if (!existsSync(reportPath)) {
     ...areaRows,
     '',
     '_Scope: all hand-written `src/**/*.ts`; generated TypeScript is excluded. Unloaded files count as 0%._',
+    '_V8 coverage comes from Node/DOM/API tests. Real browser tests run separately; their page scripts are not V8-instrumented by c8._',
   ].join('\n');
 }
 

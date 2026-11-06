@@ -1,4 +1,4 @@
-import { makeTexRef } from '../paint/textures';
+import { makeTexRef, parseTexRef } from '../paint/textures';
 import type { LevelProps, PropModel } from '../reference/props';
 import type { ImportedPropRecord } from './imported';
 
@@ -21,9 +21,10 @@ import type { ImportedPropRecord } from './imported';
  *
  *  - **Material ids become LOCAL** (0…n−1). A record's are, and the catalogue rebases them onto a running
  *    counter when it is assembled, so importing one model can never renumber another's (docs/032).
- *  - **Texture refs become CROSS-LEVEL.** A shipped material names a bare file in its own level's bank
+ *  - **Bare texture refs become CROSS-LEVEL.** A shipped material names a bare file in its own level's bank
  *    ("0106.png"); a record has no level of its own, so the ref is qualified to the one it came from
  *    ("GARI/0106.png") — the form `resolvePropTex` and the export's tile combiner both already take.
+ *    Imported materials already name their bank, so those refs stay unchanged.
  *
  * That second one gets the copy DRAWING correctly and no further: an extracted level's bank is read-only, so
  * a ref into it is paint the author cannot change. Copying the pixels is `adoptRecordArt` on the server —
@@ -78,11 +79,14 @@ export function recordFromReferenceProp(props: LevelProps, model: PropModel, nam
     tris += Math.floor(sub.indices.length / 3);
   }
 
+  const qualify = (level: string, ref: string) => (parseTexRef(ref).level ? ref : makeTexRef(level, ref));
   const materials: ImportedPropRecord['materials'] = [];
   for (const [sourceMat, slot] of [...slotOf.entries()].sort((a, b) => a[1] - b[1])) {
     const source = props.materials.get(sourceMat);
-    const tex = source?.tex ? makeTexRef(props.level, source.tex) : null;
-    const frames = (source?.frames ?? []).filter(Boolean).map(frame => makeTexRef(props.level, frame));
+    const tex = source?.tex ? qualify(props.level, source.tex) : null;
+    // Imported payloads carry bare frames relative to the material's bank, rather than @import.
+    const frameLevel = tex ? parseTexRef(tex).level : props.level;
+    const frames = (source?.frames ?? []).filter(Boolean).map(frame => qualify(frameLevel, frame));
     materials[slot] = {
       id: slot,
       tex,

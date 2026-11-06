@@ -101,12 +101,39 @@ try {
   const mountain = defaultMountain();
   mountain.name = 'PUBLIC_RUN';
   mountain.quadTex = { 0: 'Custom/snow.png' };
+  mountain.props = [{ level: '@import', model: 7, name: 'Public prop', pos: [0, 0, 0], yaw: 0, scale: 1 }];
   const created = (await (await call('/api/projects', 'POST', { document: mountain })).json()) as any;
   const id = created.project.id as string;
   mkdirSync(join(created.project.folder, 'assets', 'textures'), { recursive: true });
   writeFileSync(
     join(created.project.folder, 'assets', 'textures', 'snow.png'),
     encodePng({ w: 1, h: 1, data: new Uint8Array([255, 255, 255, 255]) }),
+  );
+  for (const [name, color] of [
+    ['prop.png', [200, 40, 40, 255]],
+    ['prop_f1.png', [40, 200, 40, 255]],
+  ] as const)
+    writeFileSync(
+      join(created.project.folder, 'assets', 'textures', name),
+      encodePng({ w: 1, h: 1, data: new Uint8Array(color) }),
+    );
+  mkdirSync(join(created.project.folder, 'assets', 'props'), { recursive: true });
+  writeFileSync(
+    join(created.project.folder, 'assets', 'props', 'public-prop.json'),
+    JSON.stringify({
+      id: 7,
+      name: 'Public prop',
+      tris: 1,
+      subs: [
+        {
+          mat: 0,
+          pos: Buffer.from(new Float32Array([0, 0, 0, 200, 0, 0, 0, 0, 200]).buffer).toString('base64'),
+          uv: Buffer.from(new Float32Array([0, 0, 1, 0, 0, 1]).buffer).toString('base64'),
+          idx: Buffer.from(new Uint32Array([0, 1, 2]).buffer).toString('base64'),
+        },
+      ],
+      materials: [{ id: 0, tex: 'Custom/prop.png', frames: ['Custom/prop.png', 'Custom/prop_f1.png'] }],
+    }),
   );
   await call(`/api/publication?kind=project&id=${id}`, 'PUT', { published: true });
   await vite.listen();
@@ -126,9 +153,16 @@ try {
   assert.equal(
     await starter.title(),
     'MOUNTAIN01 - Slopesmith',
-    'Editor opens the default course when no map is current',
+    'Editor opens a blank mountain when no map is current',
   );
   assert(new URL(starter.url()).searchParams.get('local')?.startsWith('local-'));
+  const starterDocument = await starter.evaluate(async () => {
+    const path = '/src/app/state/local-projects.ts';
+    const id = new URL(location.href).searchParams.get('local');
+    return (await (await import(/* @vite-ignore */ path)).readLocalProject(id))?.document;
+  });
+  assert.equal(starterDocument.vertices.length, 0);
+  assert.equal(starterDocument.quads.length, 0);
   await starterContext.close();
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   page = await context.newPage();
@@ -203,7 +237,9 @@ try {
     `guest startup sends no map mutation: ${requests}`,
   );
   assert(
-    requests.every(request => /GET \/api\/(auth\/session|public\/courses|public\/project|texture)$/.test(request)),
+    requests.every(request =>
+      /GET \/api\/(auth\/session|public\/courses|public\/project|custom-props|texture)$/.test(request),
+    ),
     `guest startup requests: ${requests}`,
   );
 
@@ -224,8 +260,46 @@ try {
   assert.equal(bundle.document.name, 'LOCAL_RUN');
   assert.equal(
     bundle.assets.filter(asset => asset.kind === 'texture').length,
-    1,
-    'the editable export keeps custom art',
+    3,
+    'the editable export keeps terrain textures and every imported prop frame',
+  );
+  assert.deepEqual(
+    bundle.assets
+      .filter(asset => asset.kind === 'texture')
+      .map(asset => asset.name)
+      .sort(),
+    ['prop.png', 'prop_f1.png', 'snow.png'],
+  );
+  const propTextures = await page.evaluate(async () => {
+    const clientUrl = '/src/app/net/client.ts';
+    const pathsUrl = '/src/app/net/asset-paths.ts';
+    const { clientFetch } = await import(/* @vite-ignore */ clientUrl);
+    const { textureRefUrl } = await import(/* @vite-ignore */ pathsUrl);
+    const payload = await (await clientFetch('/api/custom-props')).json();
+    const material = payload.materials[0];
+    const frames = await Promise.all(
+      material.frames.map(async (ref: string) => {
+        const url = textureRefUrl(ref);
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        context.drawImage(image, 0, 0);
+        return { local: url.startsWith('blob:'), pixel: [...context.getImageData(0, 0, 1, 1).data] };
+      }),
+    );
+    return { tex: material.tex, frames };
+  });
+  assert.equal(propTextures.tex, 'Custom/prop.png', 'the copied prop retains its original texture bank');
+  assert.deepEqual(
+    propTextures.frames,
+    [
+      { local: true, pixel: [200, 40, 40, 255] },
+      { local: true, pixel: [40, 200, 40, 255] },
+    ],
+    'every copied prop frame decodes from browser storage with the original pixels',
   );
   assert.equal(bundle.missing?.length ?? 0, 0);
   assert(bundle.blobs?.[bundle.assets[0].hash]);

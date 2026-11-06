@@ -53,7 +53,6 @@ try {
   await page.goto('http://scene.test/');
   await page.addScriptTag({ type: 'module', content: bundle.outputFiles[0].text });
   await page.waitForFunction(() => (window as any).sceneToolboxes);
-  const state = () => page.evaluate(() => (window as any).sceneToolboxes.state());
   const category = (name: string) => page.locator('.sp-scene-categories .sp-out-row').filter({ hasText: name });
   const targets = page.getByRole('group', { name: 'Scene toolbox mountain' });
   const choose = (target: string) => targets.getByRole('button', { name: target, exact: true }).click();
@@ -74,54 +73,16 @@ try {
     ['Camera', 'View'],
   ]) {
     await page.locator('.sp-scene-categories .sp-out-row').filter({ hasText: name }).click();
-    assert.equal((await state()).target, 'authored');
     await beforeSwitch(`.sp-scene-card:visible:has(> .lil-title:text-is("${common}"))`);
     await choose('Reference');
-    const ref = await state();
-    assert.equal(ref.target, 'reference');
-    if (name !== 'AI Paths') assert(ref.cards.includes('Reference: Garibaldi'));
-    if (name === 'Skybox' || name === 'God Rays') assert.equal(ref.skyTarget, 'reference');
     await beforeSwitch(`.sp-scene-card:visible:has(> .lil-title:text-is("${common}"))`);
-    if (name === 'Camera') {
-      assert.equal(await page.getByRole('spinbutton', { name: 'Camera position X', exact: true }).inputValue(), '100');
-      await choose('Mountain');
-      assert.equal(await page.getByRole('spinbutton', { name: 'Camera position X', exact: true }).inputValue(), '10');
-      await choose('Reference');
-      assert.equal(await page.getByRole('combobox', { name: 'Camera coordinates' }).count(), 0);
-      await page.getByRole('spinbutton', { name: 'Camera position X', exact: true }).fill('125');
-      await choose('Mountain');
-      assert.equal(await page.getByRole('spinbutton', { name: 'Camera position X', exact: true }).inputValue(), '35');
-      await choose('Reference');
-      await page.getByRole('button', { name: 'Apply', exact: true }).click();
-      assert.equal((await state()).view.pos[0], 125, 'Changing coordinate frames preserves the pending camera edit');
-    }
   }
-  await page.locator('.sp-scene-categories .sp-out-row').filter({ hasText: 'Lighting' }).click();
-  assert.equal((await state()).target, 'reference', 'Each section remembers its side');
-  await page.evaluate(() => (window as any).sceneToolboxes.selectKnot());
-  assert((await state()).cards.includes('Knot 0'));
-  await choose('Reference');
-  assert(!(await state()).cards.includes('Knot 0'), 'Mountain knot controls are hidden on Reference');
-  await page.evaluate(() => (window as any).sceneToolboxes.selectPath());
-  assert.equal((await state()).category, 'aiPaths');
-  assert.equal((await state()).target, 'reference');
-  await page.locator('.sp-scene-categories .sp-out-row').filter({ hasText: 'Sound' }).click();
-  assert(await page.locator('.sp-scene-card:visible').getByText('Rider sound', { exact: true }).count());
-  await page.evaluate(() => (window as any).sceneToolboxes.reference(''));
-  assert(await category('Reference: None').count());
-  await page.locator('.sp-scene-categories .sp-out-row').filter({ hasText: 'Camera' }).click();
-  assert(await page.getByRole('spinbutton', { name: 'Camera position X', exact: true }).isDisabled());
-  await page.evaluate(() => (window as any).sceneToolboxes.reference('Snowdream'));
-  assert(await category('Reference: Snowdream').count());
-  assert(!(await page.getByRole('spinbutton', { name: 'Camera position X', exact: true }).isDisabled()));
   mkdirSync(new URL('../../temp', import.meta.url), { recursive: true });
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(880, 1080);
   await page.screenshot({ path: fileURLToPath(new URL('../../temp/scene-toolboxes.png', import.meta.url)) });
   assert.deepEqual(errors, []);
-  console.log(
-    'PASS: Scene reference labels, shared controls, seven Mountain/Reference switches, selection routing, sky preview and camera coordinates',
-  );
+  console.log('PASS: real Scene toolbox layout keeps shared controls above all seven Mountain/Reference switches');
 } finally {
   await browser.close();
 }

@@ -1,3 +1,4 @@
+// browser: smoke
 // tier: integration
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir } from 'node:fs/promises';
@@ -52,6 +53,13 @@ async function locals(page: Page) {
     return (await import(/* @vite-ignore */ path)).listLocalProjects();
   });
 }
+async function localDocument(page: Page) {
+  const id = new URL(page.url()).searchParams.get('local');
+  return page.evaluate(async id => {
+    const path = '/src/app/state/local-projects.ts';
+    return (await (await import(/* @vite-ignore */ path)).readLocalProject(id))?.document;
+  }, id);
+}
 try {
   const guest = await browser.newContext({ viewport: { width: 375, height: 800 } });
   const page = await guest.newPage();
@@ -61,23 +69,10 @@ try {
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/projects') guestWrites++;
   });
   await open(page);
-  assert.equal(await dialog(page).getByLabel('Save location').inputValue(), 'local');
-  assert.equal(await dialog(page).locator('option[value="server"]').count(), 0, 'guests cannot choose server storage');
-  assert.equal(await dialog(page).getByLabel('Map name').inputValue(), 'MOUNTAIN01');
-  await dialog(page).getByLabel('Map name').fill('CANCELLED_MAP');
-  await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();
-  await dialog(page).waitFor({ state: 'hidden' });
-  assert.equal((await locals(page)).length, 0, 'cancel creates no map');
-  await page.getByRole('button', { name: 'New map', exact: true }).click();
   await page.keyboard.press('Escape');
   await dialog(page).waitFor({ state: 'hidden' });
-  assert.equal((await locals(page)).length, 0, 'Escape creates no map');
+  assert.equal((await locals(page)).length, 0, 'native Escape dismisses without creating a map');
   await page.getByRole('button', { name: 'New map', exact: true }).click();
-  const create = dialog(page).getByRole('button', { name: 'Create map', exact: true });
-  await dialog(page).getByLabel('Map name').fill('');
-  assert(await create.isDisabled());
-  await dialog(page).getByLabel('Map name').fill('bad/name');
-  assert(await create.isDisabled());
   await dialog(page).getByLabel('Map name').fill('HOME_LOCAL');
   assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth));
   await dialog(page).screenshot({ path: join(root, 'new-map-local.png') });
@@ -85,13 +80,14 @@ try {
   await page.waitForURL('**/editor/HOME_LOCAL?local=*');
   const localId = new URL(page.url()).searchParams.get('local');
   assert(localId?.startsWith('local-'));
+  assert.equal(guestWrites, 0, 'local creation sends no server create request');
+  await page.reload();
+  await page.getByRole('button', { name: 'File menu', exact: true }).waitFor();
+  const localBlank = await localDocument(page);
+  assert.equal(localBlank.spacing, 30);
+  assert.equal(localBlank.vertices.length, 0);
+  assert.equal(localBlank.quads.length, 0);
   assert.equal((await locals(page)).find((project: { id: string }) => project.id === localId)?.name, 'HOME_LOCAL');
-  assert.equal(guestWrites, 0, 'local creation never sends a server create request');
-  const localDocument = await page.evaluate(async id => {
-    const path = '/src/app/state/local-projects.ts';
-    return (await (await import(/* @vite-ignore */ path)).readLocalProject(id))?.document;
-  }, localId);
-  assert.equal(localDocument.spacing, 30, 'local maps use the new patch size');
   await page.getByRole('button', { name: 'File menu', exact: true }).click();
   for (const name of ['New mountain…', 'Open mountain…', 'Import mountain…'])
     assert.equal(await page.getByRole('button', { name, exact: true }).count(), 0);
@@ -99,7 +95,7 @@ try {
   const library = page.locator('.sp-menu-pop').getByRole('button').first();
   assert.equal(await library.innerText(), 'Library');
   await library.click();
-  await page.waitForURL(`${origin}/`);
+  await page.waitForURL(origin + '/');
   await page.getByRole('button', { name: 'New map', exact: true }).click();
   await dialog(page).getByLabel('Map name').fill('home_local');
   assert(await dialog(page).getByRole('button', { name: 'Create map', exact: true }).isDisabled());
@@ -111,43 +107,21 @@ try {
   signedIn.on('pageerror', error => errors.push(error.message));
   await open(signedIn);
   const form = dialog(signedIn);
-  assert.equal(await form.getByLabel('Save location').inputValue(), 'local');
   await form.getByLabel('Map name').fill('HOME_SERVER');
+  await form.getByLabel('Terrain', { exact: true }).selectOption('generated');
   await form.getByLabel('Save location').selectOption('server');
-  await form.screenshot({ path: join(root, 'new-map-server.png') });
-  let fail = true;
-  await signedIn.route('**/api/projects', async route => {
-    if (route.request().method() === 'POST' && fail) {
-      fail = false;
-      return route.fulfill({ status: 503, json: { error: 'Temporary test failure' } });
-    }
-    return route.continue();
-  });
-  await form.getByRole('button', { name: 'Create map', exact: true }).click();
-  await form.getByRole('alert').filter({ hasText: 'Temporary test failure' }).waitFor();
-  assert.equal(await form.getByLabel('Map name').inputValue(), 'HOME_SERVER');
-  assert.equal(await form.getByLabel('Save location').inputValue(), 'server');
   await form.getByRole('button', { name: 'Create map', exact: true }).click();
   await signedIn.waitForURL('**/editor/HOME_SERVER?project=*');
   const projectId = new URL(signedIn.url()).searchParams.get('project');
   assert(projectId);
-  const stored = await signedIn.request.get(`${origin}/api/projects/${projectId}`);
-  const snapshot = await stored.json();
-  assert.equal(snapshot.project.id, projectId);
-  assert.equal(snapshot.project.ownerId, editor.id, 'server maps belong to the signed-in editor');
+  const snapshot = await (await signedIn.request.get(origin + '/api/projects/' + projectId)).json();
+  assert.equal(snapshot.project.ownerId, editor.id, 'authenticated UI creation owns its real API project');
   assert.equal(snapshot.document.name, 'HOME_SERVER');
-  assert.equal(snapshot.document.spacing, 30, 'server maps use the new patch size');
-  assert.equal((await locals(signedIn)).length, 0, 'server creation creates no local copy');
-  await open(signedIn);
-  await dialog(signedIn).getByLabel('Map name').fill('HOME_SERVER');
-  await dialog(signedIn).getByRole('button', { name: 'Create map', exact: true }).click();
-  await signedIn.waitForURL('**/editor/HOME_SERVER?local=*');
-  assert.equal((await locals(signedIn)).length, 1, 'signed-in users can still choose local storage');
-  const projects = await signedIn.request.get(`${origin}/api/projects`);
-  assert.equal((await projects.json()).projects.length, 1, 'local creation does not duplicate the server map');
+  assert(snapshot.document.quads.length > 0, 'generated terrain travels from the native form to storage');
+  assert.equal((await locals(signedIn)).length, 0, 'server creation makes no local copy');
   assert.deepEqual(errors, []);
   console.log(
-    `New map: naming, local/server persistence, mountain defaults, authentication, cancellation, validation, retry and mobile dialog PASS. ${root}`,
+    'PASS mobile map creation, native form submission, editor navigation/reload, library return and authenticated server persistence',
   );
 } finally {
   await browser.close();

@@ -38,17 +38,27 @@
  * loader, but `npx` costs an extra ~0.75s of process startup per check — a minute across the suite, spent
  * entirely on resolving a binary that is sitting in `node_modules`.
  */
-import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { stopProcessTree } from '../../tools/run-process.mjs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import {
+  browserSmoke,
+  matchesEnvironment,
+  matchesFilter,
+  testEnvironment,
+  type EnvironmentSelection,
+  unfinishedTests,
+  type TestRunRecord,
+} from './test-selection';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 
 /** Where the last run's durations are remembered, so this one can start the long poles first. Ignored by git. */
-const TIMINGS = join(root, 'temp', 'test-timings.json');
+const TIMINGS = join(root, 'temp', process.env.NODE_V8_COVERAGE ? 'test-timings-covered.json' : 'test-timings.json');
 /** What an unseen check is assumed to cost when ordering: about the median, so a new file lands mid-pack. */
 const UNKNOWN_MS = 1_500;
 
@@ -115,6 +125,7 @@ const EXCLUSIVE_GROUP = new Map([
   ['snowfall-webgl.test.ts', 'browser-webgl'],
   ['stock-boards-webgl.test.ts', 'browser-webgl'],
   ['avalanche-browser.test.ts', 'browser-webgl'],
+  ['public-environment.test.ts', 'browser-webgl'],
   ['sync-browser.test.ts', 'browser-webgl'],
   ['edit-prop-tools.test.ts', 'browser-webgl'],
   ['extrusion-toolbox-browser.test.ts', 'browser-webgl'],
@@ -234,7 +245,25 @@ if (!['fast', 'integration', 'full'].includes(tierValue)) {
 const tier = tierValue as Tier;
 const only = argv[argv.indexOf('--only') + 1];
 const filter = argv.includes('--only') && only && !only.startsWith('--') ? only : null;
-const selectionLabel = filter ? `filter ${JSON.stringify(filter)}` : `${tier} tier`;
+if (argv.includes('--only') && !filter) throw new Error('--only requires a file or area name');
+const retryArg = argv.includes('--retry') ? argv[argv.indexOf('--retry') + 1] : undefined;
+if (argv.includes('--retry') && (!retryArg || retryArg.startsWith('--')))
+  throw new Error('--retry requires a previous run directory or results.json');
+if (retryArg && filter) throw new Error('Choose --retry or --only');
+const retrySelection = retryArg
+  ? unfinishedTests(
+      JSON.parse(
+        readFileSync(resolve(root, retryArg, ...(retryArg.endsWith('.json') ? [] : ['results.json'])), 'utf8'),
+      ) as TestRunRecord,
+    )
+  : null;
+const environment = (
+  argv.includes('--environment') ? argv[argv.indexOf('--environment') + 1] : 'all'
+) as EnvironmentSelection;
+if (!['node', 'dom', 'api', 'browser', 'non-browser', 'all'].includes(environment))
+  throw new Error('Invalid --environment');
+const smokeOnly = argv.includes('--browser-smoke');
+const selectionLabel = `${retryArg ? `focused retry of ${retryArg}` : filter ? `filter ${JSON.stringify(filter)}` : `${tier} tier`}; ${environment}${smokeOnly ? ' smoke' : ''}`;
 const askedJobs = Number(argv.includes('--jobs') ? argv[argv.indexOf('--jobs') + 1] : process.env.SLOPESMITH_TEST_JOBS);
 /**
  * Deliberately well under the core count. The ordinary checks share a bounded pool; timing benchmarks and
@@ -250,38 +279,62 @@ const jobs =
 const allDiscovered = readdirSync(here)
   .filter(name => name.endsWith('.test.ts'))
   .sort();
+if (retrySelection) {
+  const labels = new Set([...allDiscovered.map(name => `test/${name}`), ...WITH_ARGUMENTS.map(job => job.label)]);
+  const missing = [...retrySelection].filter(label => !labels.has(label));
+  if (missing.length)
+    console.warn(
+      `Previous checks were removed or renamed; select their replacements explicitly: ${missing.join(', ')}`,
+    );
+}
 const listedHere = [...NEEDS_LOCAL_DATA, ...EXCLUSIVE_GROUP.keys(), ...RUN_ALONE];
 const missingListed = listedHere.filter(name => !allDiscovered.includes(name));
 if (missingListed.length) {
   throw new Error(`run.ts names checks that no longer exist: ${missingListed.join(', ')}`);
 }
 const tierOf = new Map(allDiscovered.map(name => [name, declaredTier(name)] as const));
+const sourceOf = new Map(allDiscovered.map(name => [name, readFileSync(join(here, name), 'utf8')]));
+const inEnvironment = (name: string) =>
+  matchesEnvironment(testEnvironment(sourceOf.get(name)!), environment) &&
+  (!smokeOnly || browserSmoke(sourceOf.get(name)!));
 const inTier = (name: string): boolean => tier === 'full' || tierOf.get(name) === tier;
+const requested = (name: string): boolean =>
+  filter ? matchesFilter(name, filter) : retrySelection ? retrySelection.has(`test/${name}`) : inTier(name);
 const discovered = allDiscovered
   .filter(name => local || !NEEDS_LOCAL_DATA.has(name))
   // An explicit area filter is an iteration request and may reach any tier. This keeps
   // `npm test -- --only sync` useful even though the unfiltered `npm test` is the fast tier.
-  .filter(name => filter || inTier(name))
-  .filter(name => !filter || name.includes(filter))
+  .filter(requested)
+  .filter(inEnvironment)
   .sort();
 
-const extra = filter
+const includeExtras = !filter && !smokeOnly && ['all', 'non-browser', 'node'].includes(environment);
+const extra = !includeExtras
   ? []
-  : WITH_ARGUMENTS.filter(one => tier === 'full' || one.tier === tier).filter(one => local || !one.localOnly);
+  : WITH_ARGUMENTS.filter(one =>
+      retrySelection ? retrySelection.has(one.label) : tier === 'full' || one.tier === tier,
+    ).filter(one => local || !one.localOnly);
 const skipped = local
   ? []
   : [
-      ...[...NEEDS_LOCAL_DATA].filter(name => (filter ? name.includes(filter) : inTier(name))),
-      ...(filter
+      ...[...NEEDS_LOCAL_DATA].filter(name => inEnvironment(name) && requested(name)),
+      ...(!includeExtras
         ? []
-        : WITH_ARGUMENTS.filter(one => one.localOnly && (tier === 'full' || one.tier === tier)).map(one => one.label)),
+        : WITH_ARGUMENTS.filter(
+            one =>
+              one.localOnly && (retrySelection ? retrySelection.has(one.label) : tier === 'full' || one.tier === tier),
+          ).map(one => one.label)),
     ].sort();
 const tierOmitted =
-  filter || tier === 'full'
+  filter || retrySelection || tier === 'full'
     ? []
     : [
-        ...allDiscovered.filter(name => !NEEDS_LOCAL_DATA.has(name) && !inTier(name)).map(name => `test/${name}`),
-        ...WITH_ARGUMENTS.filter(one => !one.localOnly && one.tier !== tier).map(one => one.label),
+        ...allDiscovered
+          .filter(name => inEnvironment(name) && !NEEDS_LOCAL_DATA.has(name) && !inTier(name))
+          .map(name => `test/${name}`),
+        ...(includeExtras
+          ? WITH_ARGUMENTS.filter(one => !one.localOnly && one.tier !== tier).map(one => one.label)
+          : []),
       ].sort();
 
 interface Job {
@@ -300,6 +353,7 @@ const queue: Job[] = [
   })),
   ...extra.map(one => ({ label: one.label, command: one.command, args: one.args })),
 ];
+if (!queue.length) throw new Error(`No tests selected (${selectionLabel})`);
 
 if (listOnly) {
   console.log(`${selectionLabel} (${queue.length} checks):`);
@@ -327,36 +381,96 @@ interface Outcome {
   label: string;
   ok: boolean;
   ms: number;
+  status?: number | null;
 }
 const outcomes: Outcome[] = [];
 const started = Date.now();
+mkdirSync(join(root, 'temp'), { recursive: true });
+const runDir = mkdtempSync(join(root, 'temp', 'test-run-'));
+const running = new Map<ChildProcess, string>();
+let interrupted = false;
+const save = () => {
+  writeFileSync(
+    join(runDir, 'results.json'),
+    JSON.stringify(
+      {
+        selection: selectionLabel,
+        started,
+        interrupted,
+        running: [...running.values()],
+        pending: queue.slice(next).map(job => job.label),
+        outcomes,
+      },
+      null,
+      2,
+    ),
+  );
+  writeFileSync(TIMINGS, JSON.stringify(known, null, 2));
+};
+console.log(`Results and live logs: ${relative(root, runDir)}`);
 let next = 0;
 
-// Each Vite optimizer renames its deps directory. Parallel checks must not share it.
+function stopChild(child: ChildProcess) {
+  stopProcessTree(child);
+}
+function stopRun() {
+  if (interrupted) return;
+  interrupted = true;
+  save();
+  for (const child of running.keys()) stopChild(child);
+}
+process.on('SIGINT', stopRun);
+process.on('SIGTERM', stopRun);
+const heartbeat = setInterval(() => {
+  console.log(`RUNNING (${Math.round((Date.now() - started) / 1000)}s): ${[...running.values()].join(', ')}`);
+}, 30_000);
+heartbeat.unref();
+
+// Each Vite optimizer renames its deps directory. Workers have isolated caches and reuse them sequentially.
 const viteCacheRoot = mkdtempSync(join(tmpdir(), 'slopesmith-test-vite-'));
-let viteCacheId = 0;
 
 /**
  * Run one check to completion, holding its output. Concurrent checks interleave their writes, so a check's
  * output is buffered and printed as one block under its own banner — the same thing a serial run shows, just
  * ordered by when each finished rather than when each started.
  */
-function runOne(job: Job): Promise<void> {
+function runOne(job: Job, workerId: number): Promise<void> {
   return new Promise(resolve => {
     const at = Date.now();
     const chunks: Buffer[] = [];
     const child = spawn(job.command, job.args, {
       cwd: root,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, SLOPESMITH_TEST_VITE_CACHE_DIR: join(viteCacheRoot, String(viteCacheId++)) },
+      env: { ...process.env, SLOPESMITH_TEST_VITE_CACHE_DIR: join(viteCacheRoot, String(workerId)) },
+      windowsHide: true,
+      detached: process.platform !== 'win32',
     });
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
+    running.set(child, job.label);
+    console.log(`START ${job.label}`);
+    save();
+    const log = join(runDir, job.label.replace(/[^a-zA-Z0-9.-]/g, '_') + '.log');
+    const capture = (chunk: Buffer) => {
+      chunks.push(chunk);
+      appendFileSync(log, chunk);
+    };
+    child.stdout.on('data', capture);
+    child.stderr.on('data', capture);
+    let finished = false;
+    const deadline = setTimeout(() => {
+      capture(Buffer.from('\nTest exceeded its 10 minute deadline; terminating its process tree.\n'));
+      stopChild(child);
+    }, 10 * 60_000);
+    deadline.unref();
     const finish = (status: number | null, note?: string): void => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(deadline);
       const ms = Date.now() - at;
       const ok = status === 0;
-      outcomes.push({ label: job.label, ok, ms });
+      outcomes.push({ label: job.label, ok, ms, status });
+      running.delete(child);
       known[job.label] = ms;
+      save();
       process.stdout.write(`\n${'='.repeat(78)}\n  ${job.label}  (${(ms / 1000).toFixed(1)}s)\n${'='.repeat(78)}\n`);
       process.stdout.write(Buffer.concat(chunks).toString());
       if (note) process.stdout.write(`\n  ${note}\n`);
@@ -381,7 +495,7 @@ let aloneBusy = false;
  * back to it, rather than blocking the whole pool behind it.
  */
 function claim(): Job | null {
-  if (aloneBusy) return null;
+  if (aloneBusy || interrupted) return null;
   for (let i = next; i < queue.length; i++) {
     const job = queue[i];
     if (job.runAlone && activeJobs > 0) continue;
@@ -397,11 +511,11 @@ function claim(): Job | null {
   return null;
 }
 
-async function worker(): Promise<void> {
+async function worker(_value: unknown, workerId: number): Promise<void> {
   for (;;) {
     const job = claim();
     if (!job) {
-      if (next >= queue.length) return;
+      if (next >= queue.length || interrupted) return;
       // Only constrained checks are left and another worker holds the needed slot. Idle rather than spinning;
       // this costs at most one poll interval on a queue that is already seconds wide.
       await new Promise(resolve => {
@@ -409,7 +523,7 @@ async function worker(): Promise<void> {
       });
       continue;
     }
-    await runOne(job);
+    await runOne(job, workerId);
     if (job.exclusiveGroup) busyGroups.delete(job.exclusiveGroup);
     activeJobs--;
     if (job.runAlone) aloneBusy = false;
@@ -417,6 +531,10 @@ async function worker(): Promise<void> {
 }
 
 await Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, worker));
+clearInterval(heartbeat);
+process.off('SIGINT', stopRun);
+process.off('SIGTERM', stopRun);
+save();
 
 try {
   mkdirSync(dirname(TIMINGS), { recursive: true });
@@ -444,4 +562,4 @@ process.stdout.write(
 );
 for (const outcome of failed) process.stdout.write(`  FAILED  ${outcome.label}\n`);
 process.stdout.write('\n');
-process.exit(failed.length ? 1 : 0);
+process.exit(interrupted ? 130 : failed.length ? 1 : 0);

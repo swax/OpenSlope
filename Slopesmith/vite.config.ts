@@ -75,6 +75,7 @@ function requestLogEndpoint(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
+  const testing = !!process.env.SLOPESMITH_TEST_VITE_CACHE_DIR;
   const env = loadEnv(mode, process.cwd(), 'SLOPESMITH_');
   const allowedHosts = (process.env.SLOPESMITH_ALLOWED_HOSTS ?? env.SLOPESMITH_ALLOWED_HOSTS ?? '')
     .split(',')
@@ -84,7 +85,9 @@ export default defineConfig(({ mode }) => {
   return {
     cacheDir: process.env.SLOPESMITH_TEST_VITE_CACHE_DIR || undefined,
     plugins: [requestLogEndpoint(), dependencyNoticesPlugin(process.cwd()), offlinePlugin()],
-    define: { 'import.meta.env.VITE_ASSET_BUILD': JSON.stringify(Date.now().toString(36)) },
+    define: {
+      'import.meta.env.VITE_ASSET_BUILD': JSON.stringify(testing ? 'test' : Date.now().toString(36)),
+    },
     // Loopback only: the API this proxies to is unauthenticated, so reaching the editor from a phone on the
     // same Wi-Fi is a deliberate act — `npm run dev -- --host` binds the LAN address on both halves and then
     // http://<desktop-ip>:5179 works (the terminal prints the Network: URL on start).
@@ -94,6 +97,22 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5179,
       allowedHosts,
+      // Browser checks exercise stable fixtures, not HMR. Generated reports/data must not trigger dev reloads.
+      watch: testing
+        ? null
+        : {
+            ignored: [
+              '**/temp/**',
+              '**/coverage/**',
+              '**/.coverage-tmp/**',
+              '**/dist-server/**',
+              '**/workspace/**',
+              '**/.slopesmith/**',
+              '**/Maps/**',
+              '**/courses/**',
+              '**/demos/**',
+            ],
+          },
       proxy: {
         ...(process.env.SLOPESMITH_MULTIPLAYER_URL
           ? {

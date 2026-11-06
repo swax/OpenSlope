@@ -1,33 +1,22 @@
-// tier: integration
+// tier: fast
+// environment: dom
 import assert from 'node:assert/strict';
-import { createServer } from 'vite';
-import { chromium } from 'playwright-core';
-import { chromiumExecutable } from './browser-test-support';
+import { installTestDom } from './dom-test-support';
 import { encodePng } from '../src/server/routes/png';
-
+const cleanup = installTestDom();
 const png = Array.from(encodePng({ w: 1, h: 1, data: new Uint8Array([255, 0, 0, 255]) }));
-const vite = await createServer({ root: process.cwd(), logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
-const browser = await chromium.launch({ executablePath: chromiumExecutable(), headless: true });
 try {
-  await vite.listen();
-  const origin = vite.resolvedUrls!.local[0].replace(/\/$/, '');
-  const page = await browser.newPage();
-  await page.addInitScript('globalThis.__name = value => value');
-  await page.route('**/audit.html', route =>
-    route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Legacy map test</title>' }),
-  );
-  await page.goto(`${origin}/audit.html`);
-  const result = await page.evaluate(async pixels => {
-    const cacheUrl = '/src/app/public/iso-cache.ts';
-    const localUrl = '/src/app/public/lazy-local-map-data.ts';
-    const apiUrl = '/src/app/public/local-asset-api.ts';
-    const workspaceUrl = '/src/app/net/workspace.ts';
-    const pinsUrl = '/src/app/net/asset-versions.ts';
-    const projectsUrl = '/src/app/state/local-projects.ts';
-    const mountainUrl = '/src/core/doc/mountain.ts';
-    const propsUrl = '/src/shared/map-props.ts';
-    const publicUrl = '/src/app/public/course-assets.ts';
-    const compatibilityUrl = '/src/app/public/imported-assets.ts';
+  const result = await (async (pixels: number[]) => {
+    const cacheUrl = '../src/app/public/iso-cache.ts';
+    const localUrl = '../src/app/public/lazy-local-map-data.ts';
+    const apiUrl = '../src/app/public/local-asset-api.ts';
+    const workspaceUrl = '../src/app/net/workspace.ts';
+    const pinsUrl = '../src/app/net/asset-versions.ts';
+    const projectsUrl = '../src/app/state/local-projects.ts';
+    const mountainUrl = '../src/core/doc/mountain.ts';
+    const propsUrl = '../src/shared/map-props.ts';
+    const publicUrl = '../src/app/public/course-assets.ts';
+    const compatibilityUrl = '../src/app/public/imported-assets.ts';
     const { openIsoCache, cacheTransaction, isoCourseCacheVersion } = await import(cacheUrl);
     const { lazyLocalMapData: localMapData } = await import(localUrl);
     const { installLocalAssetApi } = await import(apiUrl);
@@ -199,7 +188,7 @@ try {
       emptyExactTable,
       disposedReadRejected,
     };
-  }, png);
+  })(png);
   assert.equal(
     result.emptyParticleUrl,
     '/api/particle-texture?name=fog0.png',
@@ -246,6 +235,5 @@ try {
     'Legacy Tricky browser storage, local assets, source isolation, public filtering and exact fingerprints PASS',
   );
 } finally {
-  await browser.close();
-  await vite.close();
+  await cleanup();
 }

@@ -37,10 +37,17 @@ Useful commands:
 npm run serve     # API only, on http://127.0.0.1:5180
 npm test                  # fast edit-time checks
 npm run test:integration  # server, socket, browser, and CPU-heavy checks
+npm run test:dom          # UI/storage behavior in Node, without Vite or Chrome
+npm run test:api          # actual HTTP service checks without a browser
+npm run test:browser      # small native-browser smoke lane
+npm run test:node         # complete Node/DOM/API lane
+npm run test:browser:full # complete real-browser lane, without c8
 npm run test:full         # required gate: every check under test/
 npm run test:local        # full gate plus checks that read extracted Maps/ data
 npm run typecheck # strict TypeScript check
 npm run lint      # ESLint over src, test, scripts, and tools; the gate requires zero findings
+npm run check     # typecheck, lint, fast tests
+npm run check:smoke # check plus the small browser lane
 npm run build     # production browser and server builds
 npm run smoke     # default mountain -> export -> real Snowknife glTF -> verify GLB
 ```

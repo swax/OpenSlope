@@ -16,13 +16,17 @@ work does not request a complete repository verification run.
   checks. Run integration or browser tests when the changed flow needs them.
   Broaden to the affected component's fast suite when focused checks are
   insufficient. Avoid building unrelated components.
+- Prefer Node for logic and asset bytes, DOM/IndexedDB checks for UI and storage,
+  and direct HTTP tests for APIs. Use `test:browser` for the small native-browser
+  smoke lane when the changed behavior needs it. Keep real layout, WebGL, image
+  decoding, service-worker and navigation assertions in browser checks.
 - Re-run checks when relevant source, dependencies, configuration, or integration
   assumptions change. Do not repeat an unchanged successful check just because
   the next action is a commit.
 - Run `npm run verify` for an explicit full-validation request, release
   preparation, or broad changes across components or shared contracts. Explain
-  what requires the full run before starting it. Coverage and the complete
-  browser suite belong to that full run, not every local commit.
+  what requires the full run before starting it. Node/DOM/API coverage and the
+  complete uninstrumented browser suite belong to that full run, not every local commit.
 - Preserve the existing pre-push hook and CI checks. Do not bypass mandatory
   audits or silently reduce their coverage.
 

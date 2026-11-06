@@ -30,12 +30,12 @@ plus globals such as the sun and the skybox. \`GET /api/projects/{id}\` returns 
 
 ## Creating a map
 
-\`POST /api/projects {}\` creates the default starter mountain — a complete, rideable 400 m-wide run — and
+\`POST /api/projects {}\` creates a blank mountain — an empty mesh with a straight guide run — and
 answers with the project and its full document. Pass \`{"name": "NOEL RIDGE"}\` to name it at birth (the
 same free-name rule as a rename: sanitised to NOELRIDGE, suffixed \`_2\` when taken — the response says what
-landed). Start there and edit; composing a whole document from nothing is rarely worth it. The response's
-\`_links\` and \`_actions\` are your map of everything below. If you do compose one — the only reason is
-topology, which registers cannot change — read it first with \`POST /api/projects/validate {"document": …}\`,
+landed). Add terrain with the editor's Edit tools, or supply a complete \`document\` when creating the map.
+The response's \`_links\` and \`_actions\` are your map of everything below. Before submitting new topology,
+which registers cannot change, read it with \`POST /api/projects/validate {"document": …}\`,
 which answers \`{ok, counts, problems}\` and creates nothing.
 
 ## Editing: registers
@@ -264,7 +264,7 @@ selects with.
     printf '{"name":"COPPERHORN","document":%s}' "$(cat doc.json)" > create.json
     ID=$(curl -s "\${auth[@]}" -d @create.json $API/projects | jq -r .project.id)
 
-(\`-d '{"name":"COPPERHORN"}'\` on its own starts from the default rideable mountain instead.)
+(\`-d '{"name":"COPPERHORN"}'\` on its own creates a blank mountain with no terrain.)
 
 **3. Upload the art you drew.** Raw bytes as the body, parameters in the query string:
 

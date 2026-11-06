@@ -6,7 +6,7 @@ import type { ProjectActor } from '../projects';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { LabelDefinition, V3 } from '../../core/doc/types';
 import { changeSummary, describeChanges } from '../../core/doc/compare';
-import { migrateMountain } from '../../core/doc/mountain';
+import { blankMountain, migrateMountain } from '../../core/doc/mountain';
 import {
   documentRegisters,
   objectFamilyOf,
@@ -872,7 +872,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
               rel: 'create',
               href: '/api/projects',
               method: 'POST',
-              title: 'Create a map — an empty body starts from the default rideable mountain; `name` names it at birth',
+              title: 'Create a map — an empty body starts with blank terrain; `name` names it at birth',
               schema: '/api/schemas/CreateMap',
               body: { name: '' },
               ...gate(identity, 'editor'),
@@ -902,11 +902,11 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       }
       if (req.method === 'POST' && !parts.length) {
         const body = (await readJsonBody(req)) as { document?: unknown; name?: unknown };
-        // No document means the default starter mountain. The browser always sends one; an API caller that
+        // No document means a blank mountain. The browser sends the chosen terrain; an API caller that
         // wants "a mountain to start editing" should not have to compose a whole document to ask for it —
         // nor rename in a second request when it already knows what the map is called.
         const created = await projects.createProject(
-          body.document ?? {},
+          body.document ?? blankMountain(),
           clientId,
           true,
           projectActor(identity).id,

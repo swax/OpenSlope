@@ -1664,7 +1664,7 @@ export function blankMountain(
   };
 }
 
-/** Stock document for first launch and invalid legacy input: the same course-loft workflow as New mountain. */
+/** Generated-course preset and fallback for invalid legacy input. New maps default to blankMountain(). */
 export function defaultMountain(): QuadMeshDoc {
   const generated = buildMeshFromCourse(
     starterCourse(DEFAULT_COURSE_HEIGHT_M, 1),

@@ -163,7 +163,8 @@ itself: a `// tier: fast` marker on the first line puts it in the edit-time loop
 in the integration tier. A new check therefore defaults to integration, which means it cannot silently make
 the edit-time loop slower, while it still cannot disappear from the required gate — and there is no list in
 the runner to keep in step with the directory. This is deliberately different from the old per-check npm
-scripts: there remain only three stable tier commands, and `test:full` still reaches every discovered check.
+scripts: `test:full` still reaches every discovered check. Environment selectors provide smaller loops
+without maintaining a second list of all tests.
 
 Anything in `test/` that is NOT itself a check lacks the `.test.ts` suffix, which is what keeps the glob from
 executing a helper as a check. Shared fixtures end in `.fixture.ts` (`meshops.fixture.ts`,
@@ -174,9 +175,15 @@ API service, `browser-test-support.ts` finds the installed Chromium the WebGL ch
 ```
 npm test                          # quick, deterministic edit-time feedback
 npm run test:integration          # server/socket/browser and CPU-heavy checks
+npm run test:dom                  # actual UI and storage behavior in Node
+npm run test:api                  # actual HTTP APIs without a browser
+npm run test:browser              # five native-browser smoke checks
+npm run test:node                 # all Node/DOM/API checks
+npm run test:browser:full          # all browser checks, without V8 instrumentation
 npm run test:full                 # everything a fresh clone can run — what CI runs
 npm run test:local                # the full tier plus extracted Maps/ checks
 npx tsx test/run.ts --only ride   # one area from either tier, while iterating
+npx tsx test/run.ts --only local-texture-upload.test.ts # exact file, from either tier
 npx tsx test/run.ts --tier fast --list # what the fast tier would run
 npx tsx test/run.ts --tier full --list # the complete discovered gate
 ```
@@ -196,14 +203,45 @@ gate (`npm run lint`, zero findings, run by `tools/verify.mjs`, the pre-push hoo
 check); its header states every non-default decision, including that `test/` and `tools/` may use `any` while
 `src/` and `scripts/` may not.
 
+The strict TypeScript check uses incremental state in `temp/typescript.tsbuildinfo`. ESLint's
+content-based cache is `temp/eslintcache`. These are ignored local accelerators; source/configuration
+changes invalidate them, and neither changes the configured validation scope or zero-warning policy.
+Use `npm run typecheck -- --watch` and `node --watch --import tsx test/<area>.test.ts` for continuous
+feedback while editing one behavior.
+
+Prefer Node for data, conversion and scene-state assertions, DOM tests for UI events and IndexedDB
+contracts, and API tests for real HTTP behavior. `dom-test-support.ts` installs happy-dom with
+fake-indexeddb while preserving Node's native byte, fetch and crypto APIs. `dom-fixture-support.ts`
+loads actual UI modules directly, providing CSS and raw-text import hooks without starting Vite. Keep browser checks for
+real layout, WebGL pixels, image/audio decoding, navigation, service workers and platform persistence.
+Do not simulate layout or graphics and then claim those capabilities were verified.
+
+`// environment: dom` declares a DOM test. The runner detects real Playwright launcher imports for
+the browser lane, recognizes API service imports, and treats the remaining checks as Node tests.
+`// browser: smoke` opts a browser check into the short lane. `test-selection.test.ts` verifies that
+the browser and non-browser selections partition discovery and that smoke markers launch browsers.
+`--environment` also accepts `node`, `api`, `dom`, `browser`, `non-browser` or `all` directly.
+
+`npm run coverage` instruments only Node/DOM/API tests: c8 cannot measure JavaScript executed in
+a separate Chrome page. The full gate and nightly workflow run every browser assertion separately,
+without instrumenting the Vite server. All handwritten source still contributes to the coverage
+denominator, including files those Node tests do not load.
+
+Runs write live logs and incremental `results.json` files under ignored `temp/test-run-*` directories.
+Timing caches distinguish instrumented and normal runs. Each worker reuses an isolated Vite cache;
+concurrent workers never share an optimizer directory. Active tests are reported every 30 seconds.
+Cancellation and ten-minute per-test deadlines terminate only that test run's own process trees.
+`--retry temp/test-run-<id>` selects that run's failed, active and pending checks. It is labelled a
+focused retry and never counts an earlier pass as a new result. Use it to recover an interrupted
+investigation; new or affected passing checks still need their own focused validation.
+
 Checks in any tier run **up to six at a time** — one per core, capped at six, and `--jobs` overrides — which is
 deliberately well under the core count: the
 gate's wall clock is pinned by its longest single check, so the idle cores buy no speed and instead keep
 the checks that wait on sockets and debounce windows off their deadlines. Resource groups in `run.ts` keep the
-three checks that share the accounts store and library cache from overlapping each other, and likewise prevent
-the two real-browser SwiftShader checks from launching browsers together. The one socket check known to fail on
-a saturated machine briefly runs alone; the long CPU check already pins the full tier, so this reliability does
-not normally add to its wall clock.
+checks that share the accounts store and library cache from overlapping each other, and serialize the heavy
+SwiftShader group. Load-sensitive socket checks and timing benchmarks run alone. The browser smoke command
+uses one worker; the complete browser lane uses two, while retaining these resource constraints.
 
 Start the browser-edit loop with focused checks (`npm test -- --only <area>`)
 and the relevant type/lint checks; `npm test` provides wider fast-tier feedback.
@@ -211,8 +249,9 @@ Run integration or browser checks for the flows a change affects, and build when
 the change affects packaging or needs a production check. Reuse successful
 results while the relevant inputs remain unchanged.
 
-`npm run test:full` remains the complete discovered suite, run with coverage by
-the nightly workflow and by `npm run verify` from the repository root. Use that
+`npm run test:full` remains the complete discovered suite. The nightly workflow
+and `npm run verify` run the same suite as Node/DOM/API coverage plus the complete
+uninstrumented browser lane. Use that
 complete gate for release preparation, broad changes across components or shared
 contracts, and explicit full-validation requests. Routine local commits follow
 the [focused validation policy](../../CONTRIBUTING.md#routine-development).

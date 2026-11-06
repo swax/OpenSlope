@@ -1,5 +1,5 @@
 import './new-map.css';
-import { defaultMountain } from '../../core/doc/mountain';
+import { blankMountain, defaultMountain } from '../../core/doc/mountain';
 import { safeDataName } from '../../core/export/names';
 import { localEditorUrl, mapPath } from '../navigation';
 import { clientId } from '../net/client';
@@ -53,6 +53,27 @@ function showMapDialog(options: MapDialogOptions, importing: boolean): void {
   while (taken.has(`mountain${String(number).padStart(2, '0')}`)) number++;
   name.value = importing ? '' : `MOUNTAIN${String(number).padStart(2, '0')}`;
   nameLabel.append(name);
+  const terrainLabel = element('label', '', 'Terrain');
+  const terrain = element('select', '');
+  terrain.setAttribute('aria-label', 'Terrain');
+  for (const [value, label] of [
+    ['blank', 'Blank — no terrain'],
+    ['generated', 'Generated course'],
+  ]) {
+    const option = element('option', '', label);
+    option.value = value;
+    terrain.append(option);
+  }
+  terrainLabel.append(terrain);
+  const terrainHint = element('p', 'public-new-map-hint');
+  const updateTerrain = () => {
+    terrainHint.textContent =
+      terrain.value === 'generated'
+        ? 'Start with a generated course and terrain.'
+        : 'Start empty and build terrain with the Edit tools.';
+  };
+  terrain.onchange = updateTerrain;
+  updateTerrain();
   const locationLabel = element('label', '', 'Save location');
   const storage = element('select', '');
   const local = element('option', '', 'Local — this browser');
@@ -74,7 +95,16 @@ function showMapDialog(options: MapDialogOptions, importing: boolean): void {
   const create = element('button', 'public-new-map-submit', submitLabel);
   create.type = 'submit';
   actions.append(cancel, create);
-  form.append(heading, ...(importing ? [fileLabel, fileStatus] : []), nameLabel, locationLabel, hint, error, actions);
+  form.append(
+    heading,
+    ...(importing ? [fileLabel, fileStatus] : []),
+    nameLabel,
+    ...(!importing ? [terrainLabel, terrainHint] : []),
+    locationLabel,
+    hint,
+    error,
+    actions,
+  );
   dialog.append(form);
   document.body.append(dialog);
   let saving = false;
@@ -146,11 +176,13 @@ function showMapDialog(options: MapDialogOptions, importing: boolean): void {
     if (create.disabled) return;
     saving = true;
     submitError = '';
-    create.disabled = cancel.disabled = name.disabled = storage.disabled = file.disabled = true;
+    create.disabled = cancel.disabled = name.disabled = terrain.disabled = storage.disabled = file.disabled = true;
     create.textContent = importing ? 'Importing…' : 'Creating…';
     error.textContent = '';
     try {
       const value = name.value.trim();
+      const document = importing ? undefined : terrain.value === 'generated' ? defaultMountain() : blankMountain();
+      if (document) document.name = value;
       let target: string;
       let importedProject: ClientProject | undefined;
       let absent: string[] = [];
@@ -159,7 +191,7 @@ function showMapDialog(options: MapDialogOptions, importing: boolean): void {
         const response = await fetch(importing ? '/api/projects/transfer' : '/api/projects', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-slopesmith-client': clientId },
-          body: JSON.stringify(importing ? { bundle, name: value } : { name: value }),
+          body: JSON.stringify(importing ? { bundle, name: value } : { document, name: value }),
         });
         const result = (await response.json()) as { project: ClientProject; absent?: string[]; error?: string };
         if (!response.ok) throw new Error(result.error ?? 'Could not create the server map.');
@@ -185,9 +217,7 @@ function showMapDialog(options: MapDialogOptions, importing: boolean): void {
             project = result.project;
             absent = result.absent ?? [];
           } else {
-            const document = defaultMountain();
-            document.name = value;
-            project = (await projects.seed(document)).project;
+            project = (await projects.seed(document!)).project;
           }
           importedProject = project;
           target = localEditorUrl(project.name, project.id);
@@ -201,7 +231,7 @@ function showMapDialog(options: MapDialogOptions, importing: boolean): void {
     } catch (cause) {
       submitError = cause instanceof Error ? cause.message : String(cause);
       saving = false;
-      cancel.disabled = name.disabled = storage.disabled = file.disabled = false;
+      cancel.disabled = name.disabled = terrain.disabled = storage.disabled = file.disabled = false;
       create.textContent = submitLabel;
       check();
     }

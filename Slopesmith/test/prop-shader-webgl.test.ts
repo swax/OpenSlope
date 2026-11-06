@@ -1,3 +1,4 @@
+// browser: smoke
 /**
  * Real browser/WebGL regression for prop materials. It bundles the tiny fixture beside this file, serves it
  * from loopback, and launches an installed Chromium-family browser through playwright-core (no downloaded

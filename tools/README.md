@@ -35,20 +35,60 @@ git diff --cached --check
 npm --prefix Slopesmith test -- --only glb-import
 npm --prefix Slopesmith test -- --only blender-bridge
 npm --prefix Slopesmith test -- --only public-course-list
+npm --prefix Slopesmith test -- --only local-texture-upload.test.ts
+npm --prefix Slopesmith run test:dom
+npm --prefix Slopesmith run test:api
+npm --prefix Slopesmith run test:browser
 npm --prefix Slopesmith run typecheck
 npm --prefix Slopesmith run lint
 ```
 
 The named tests are examples: choose the checks for the behavior being edited.
 `--only` reaches matching checks in either tier, including integration tests.
+A complete `.test.ts` filename selects exactly that file; an area name is a substring filter.
 For wider Slopesmith changes, `npm --prefix Slopesmith test` runs its fast tier
 without coverage or the full browser suite. Use Native or Snowknife checks when
 those components or their shared contracts are affected.
 
+`npm --prefix Slopesmith run check` combines type checking, lint and the fast tier.
+`check:smoke` also runs the small browser smoke lane. Use the browser lane when a change
+affects native form submission, navigation, rendering, image decoding or browser persistence.
+DOM checks run actual UI modules with happy-dom and fake-indexeddb; they do not require Vite or Chrome.
+For a focused test that should rerun when its imports change, run it directly in Node watch mode:
+
+```text
+cd Slopesmith
+node --watch --import tsx test/prop-adopt.test.ts
+```
+
+Run the compiler watcher in a separate terminal from `Slopesmith/`:
+
+```text
+npm run typecheck -- --watch
+```
+
+TypeScript stores incremental state and ESLint stores a content-based cache under ignored
+`Slopesmith/temp/`. Both commands still check the complete configured scope, and changed inputs
+invalidate their cached results. A clean checkout runs the same checks without warm caches.
+
+For broad component verification, `test:node` runs all Node/DOM/API tests, `coverage`
+adds V8 instrumentation to that lane, and `test:browser:full` runs every browser check
+without instrumentation. `test:full` still discovers and runs both lanes. The complete
+gate and nightly CI run coverage **and** the complete browser lane; browser assertions
+have not been removed from those gates.
+
+Each runner invocation prints its `Slopesmith/temp/test-run-*` directory. `results.json`
+records completed, active and pending checks after each outcome; per-test logs update live.
+The runner prints active tests every 30 seconds and stops its own process trees on cancellation
+or a per-test deadline. The outer verification tool also terminates descendants on a timeout.
+`npm --prefix Slopesmith test -- --retry temp/test-run-<id>` runs only failed, interrupted
+and pending checks from that run. This is a focused retry, not a new full-gate result;
+new tests and previously passing tests are outside that selection.
+
 `npm run verify` retains the complete repository gate for release preparation,
 broad changes across components or shared contracts, and explicit full-validation
 requests. The existing pre-push hook and CI still run their mandatory checks;
-the nightly workflow runs the complete Slopesmith suite with coverage. A
+the nightly workflow runs Node coverage and the complete browser suite separately. A
 documentation-only change does not require a compiler or browser run.
 
 ## Formatting

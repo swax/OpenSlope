@@ -5,10 +5,6 @@ import { chromium, type Browser, type WebSocketRoute } from 'playwright-core';
 import { chromiumExecutable } from './browser-test-support';
 
 const member = { id: 'fixture', username: 'Fixture', role: 'viewer', anonymous: true };
-let configFailures = 0;
-let holdVisitor = false;
-let configRequests = 0;
-let visitorRequests = 0;
 const vite = await createServer({
   root: process.cwd(),
   logLevel: 'error',
@@ -35,20 +31,8 @@ const vite = await createServer({
           }
           res.setHeader('content-type', 'application/json');
           if (path === '/api/play/config') {
-            configRequests++;
-            if (configFailures > 0) {
-              configFailures--;
-              res.statusCode = 503;
-              res.end('{}');
-              return;
-            }
             res.end(JSON.stringify({ enabled: true, socketPath: '/api/play/session', ticketPath: '/api/play/ticket' }));
           } else if (path === '/api/public/visitor') {
-            visitorRequests++;
-            if (holdVisitor) {
-              holdVisitor = false;
-              return;
-            } // Let the client's timeout abort this request.
             res.end(JSON.stringify({ member }));
           } else if (path === '/api/play/ticket')
             res.end(JSON.stringify({ ticket: 'fixture', expiresAt: Date.now() + 60_000 }));
@@ -69,7 +53,6 @@ try {
   const sockets = new Set<WebSocketRoute>();
   let accept = true;
   let presence = true;
-  let welcome = true;
   let welcomes = 0;
   const snapshot = () => JSON.stringify({ t: 'site-presence', online: 3, courses: {}, members: [] });
   await context.routeWebSocket('**/api/play/session', socket => {
@@ -83,7 +66,6 @@ try {
       const message = JSON.parse(String(data));
       if (message.t !== 'hello') return;
       welcomes++;
-      if (!welcome) return;
       socket.send(
         JSON.stringify({
           t: 'welcome',
@@ -159,53 +141,11 @@ try {
   await page.getByRole('button', { name: 'Online users', exact: true }).waitFor();
   await page.locator('.public-online[data-count="3"]').waitFor();
 
-  // TCP can remain OPEN through a silent outage. Missing heartbeats must initiate a fresh connection.
-  await page.clock.install();
-  await page.clock.fastForward(60_001);
-  await page.getByRole('button', { name: 'Offline — users and chat', exact: true }).waitFor();
-  await page.clock.runFor(1100);
-  await page.getByRole('button', { name: 'Online users', exact: true }).waitFor();
-
-  // An opened socket that never receives its welcome must not block reconnection forever either.
-  welcome = false;
-  const beforeStall = welcomes;
-  for (const socket of sockets) socket.close({ code: 1012, reason: 'Fixture handshake stall' });
-  await page.getByRole('button', { name: 'Offline — users and chat', exact: true }).waitFor();
-  await page.clock.runFor(1100);
-  await waitForWelcome(beforeStall);
-  await page.clock.runFor(10_001);
-  welcome = true;
-  await page.clock.runFor(2100);
-  await page.getByRole('button', { name: 'Online users', exact: true }).waitFor();
-  assert.equal(navigations, 1, 'all reconnects update the original page without navigation or reload');
-
-  await page.close();
-  // A page first opened offline also starts presence automatically, even if APIs are slow to recover.
-  const cold = await context.newPage();
-  cold.on('pageerror', error => errors.push(error.message));
-  let coldNavigations = 0;
-  cold.on('framenavigated', frame => {
-    if (frame === cold.mainFrame()) coldNavigations++;
-  });
-  await cold.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }));
-  await cold.goto(`${vite.resolvedUrls!.local[0]}connection-fixture?offline=1`);
-  await cold.getByRole('button', { name: 'Offline — users and chat', exact: true }).waitFor();
-  const previousConfigs = configRequests;
-  const previousVisitors = visitorRequests;
-  configFailures = 1;
-  holdVisitor = true;
-  await cold.evaluate(() => {
-    Reflect.deleteProperty(navigator, 'onLine');
-    window.dispatchEvent(new Event('online'));
-  });
-  await cold.getByRole('button', { name: 'Online users', exact: true }).waitFor({ timeout: 25_000 });
-  assert(configRequests >= previousConfigs + 3, 'bootstrap retries after config failure and visitor timeout');
-  assert.equal(visitorRequests, previousVisitors + 2, 'the timed-out visitor request is retried');
-  assert.equal(coldNavigations, 1, 'an offline launch reconnects without reloading');
+  assert.equal(navigations, 1, 'network and socket reconnects retain the original page');
   assert.deepEqual(errors, []);
   await context.close();
   console.log(
-    'OFFLINE INDICATOR PASS: automatic reconnect, silent socket/handshake timeouts, offline launch and API recovery without reload.',
+    'OFFLINE INDICATOR PASS: native browser network events, socket reconnect, player count visibility and responsive outage styling.',
   );
 } finally {
   await browser?.close();

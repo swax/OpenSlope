@@ -71,11 +71,13 @@ jobs:
         timeout-minutes: 5
         run: npm --prefix Slopesmith run lint
 
-      - name: Run deterministic Slopesmith tests with coverage
-        # The complete covered browser suite exceeded 26 minutes locally; the previous
-        # nightly run stopped at 15 minutes before reaching the remaining checks.
-        timeout-minutes: 45
+      - name: Run Node, DOM and API tests with V8 coverage
+        timeout-minutes: 20
         run: npm --prefix Slopesmith run coverage
+
+      - name: Run every real-browser check without Node instrumentation
+        timeout-minutes: 45
+        run: npm --prefix Slopesmith run test:browser:full
 
       - name: Build Slopesmith
         timeout-minutes: 8
@@ -100,7 +102,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: full-test-results
-          path: TestResults
+          path: |
+            TestResults
+            Slopesmith/temp/test-run-*
           if-no-files-found: ignore
           retention-days: 7
 

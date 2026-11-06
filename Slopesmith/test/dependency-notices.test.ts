@@ -7,11 +7,34 @@ import {
   readDependencyPolicy,
   recordsFromModuleIds,
   renderInstalledNotices,
+  dependencyNoticesPlugin,
 } from '../tools/dependency-notices.mjs';
 import { check, failures } from './check';
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const policy = await readDependencyPolicy(appRoot);
+// Development fixtures do not consume notices, while real imports and production builds must validate.
+const absentRoot = join(appRoot, 'temp', `notice-policy-absent-${crypto.randomUUID()}`);
+const development: any = dependencyNoticesPlugin(absentRoot);
+development.configResolved({ command: 'serve' });
+await development.buildStart();
+check(true, 'a dev fixture without a notice import starts without scanning dependencies');
+let lazyRejected = false;
+try {
+  await development.load(development.resolveId('virtual:slopesmith-dependency-notices'));
+} catch {
+  lazyRejected = true;
+}
+check(lazyRejected, 'a development notice import still rejects a missing policy');
+const production: any = dependencyNoticesPlugin(absentRoot);
+production.configResolved({ command: 'build' });
+let productionRejected = false;
+try {
+  await production.buildStart();
+} catch {
+  productionRejected = true;
+}
+check(productionRejected, 'production always validates the notice policy before bundling');
 check(
   [...policy.browser].sort().join(',') === ['lil-gui', 'livekit-client', 'three', 'three-mesh-bvh'].join(','),
   'NOTICE identifies the four browser-bundled direct dependencies',

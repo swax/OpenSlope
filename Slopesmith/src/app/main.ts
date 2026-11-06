@@ -2,7 +2,6 @@ import type { CoursePath, PlacedProp } from '../core/doc/types';
 import { takeMountainImportNotice } from './mountain/import-notice';
 import { SURFACE_TYPES } from '../core/doc/types';
 import {
-  defaultMountain,
   blankMountain,
   migrateMountain,
   type BrushOp,
@@ -177,7 +176,7 @@ const bootMode: Mode = new URLSearchParams(location.search).has('reference')
 // from the migrated document, the validated mode, and the persisted view toggles. Everything below reads and
 // writes it as store.<field>.
 const store = createStore({
-  mdoc: storedMountain ? migrateMountain(storedMountain) : defaultMountain(), // legacy heightfield -> control net
+  mdoc: storedMountain ? migrateMountain(storedMountain) : blankMountain(), // legacy heightfield -> control net
   currentMode: bootMode,
   storedUi,
 });
@@ -4205,7 +4204,7 @@ async function leaveDeletedMap(map: { projectId: string; name: string }): Promis
     let document: EditDoc;
     if (remaining.length) document = await projectSync.open(remaining[0].id);
     else {
-      document = defaultMountain();
+      document = blankMountain();
       await projectSync.create(document);
     }
     joinMap(document);

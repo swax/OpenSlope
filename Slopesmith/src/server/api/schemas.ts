@@ -75,8 +75,8 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
   CreateMap: {
     type: 'object',
     description:
-      'POST /api/projects. With no document, the server creates the default starter mountain — a ' +
-      'complete, exportable terrain the editor also starts from — and the response carries the created ' +
+      'POST /api/projects. With no document, the server creates a blank mountain with no terrain. ' +
+      'The response carries the created ' +
       'project plus its full document, including every vertex/quad id needed for register addressing.',
     properties: {
       name: {
@@ -90,8 +90,8 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       document: {
         description:
           'Optional complete mountain document (see /api/schemas/MountainDocument). Omit it to ' +
-          'start from the default mountain, which is the recommended path for an agent: edit the result ' +
-          'through register assignments rather than composing a document from nothing.',
+          'start with an empty mesh and a straight guide run. Add terrain through a document PUT; ' +
+          'edit existing geometry, objects and settings through register assignments.',
       },
     },
   },
@@ -839,7 +839,7 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
 const INDEX_HINTS: Record<string, string> = {
   BrowserView: 'Browser view fragments: camera, labels, presentation and PNG output',
   Login: 'Sign a browser session in (programs use a bearer key instead)',
-  CreateMap: 'Create a mountain, from the default starter or a whole document',
+  CreateMap: 'Create a blank mountain or supply a whole document',
   SaveDocument: 'Replace a whole document optimistically (the only topology write)',
   AssignRegisters: 'Edit a map register-by-register, or a whole labelled section by rule',
   SeatPlacements: 'Put a section of placements on the ground in one call',

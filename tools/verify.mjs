@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { runProcess } from './run-process.mjs';
 import { fileURLToPath } from 'node:url';
 import { pythonCommand } from './python.mjs';
 
@@ -33,6 +33,7 @@ const snowknifeSteps = [
 // once already, and let the release path miss the manifest check.
 const hygieneSteps = [
   ['Pre-push guard tests', process.execPath, ['--test', 'tools/pre-push.test.mjs'], 3 * 60_000],
+  ['Verification process cleanup tests', process.execPath, ['--test', 'tools/run-process.test.mjs'], 60_000],
   ['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000],
 ];
 const nativeSteps = [
@@ -47,8 +48,9 @@ const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
-  // Windows browser coverage can exceed 45 minutes while still making progress.
-  npmStep('Slopesmith deterministic tests and coverage', 'coverage', (process.platform === 'win32' ? 60 : 45) * 60_000),
+  // V8 coverage measures Node/DOM/API code. Browser assertions still all run, without instrumenting Vite.
+  npmStep('Slopesmith Node, DOM and API tests with coverage', 'coverage', 20 * 60_000),
+  npmStep('Slopesmith complete browser suite', 'test:browser:full', 45 * 60_000),
   npmStep('Slopesmith production build', 'build'),
   npmStep('Export to glTF smoke test', 'smoke'),
 ];
@@ -59,12 +61,11 @@ const steps = slopesmithOnly
 const started = Date.now();
 for (const [label, command, args, timeout] of steps) {
   console.log(`\n=== ${label} ===`);
-  const result = spawnSync(command, args, {
+  const result = await runProcess(command, args, {
     cwd: root,
     env: process.env,
     stdio: 'inherit',
     timeout,
-    windowsHide: true,
   });
 
   if (result.error) {

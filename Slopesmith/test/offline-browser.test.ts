@@ -121,7 +121,7 @@ async function waitForWorkerState<T>(read: () => Promise<T>, ready: (state: T) =
   const deadline = Date.now() + 30_000;
   for (;;) {
     const state = await read();
-    assert(Date.now() < deadline, 'Offline worker state did not settle within 30 seconds');
+    assert(Date.now() < deadline, `Offline worker state did not settle within 30 seconds: ${JSON.stringify(state)}`);
     if (ready(state)) return state;
     await new Promise(resolve => setTimeout(resolve, 50));
   }
@@ -324,10 +324,11 @@ try {
     await failed;
   });
   await waitForWorkerState(
-    () => page!.evaluate(async () => ({
-      installing: !!(await navigator.serviceWorker.getRegistration())?.installing,
-      names: (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
-    })),
+    () =>
+      page!.evaluate(async () => ({
+        installing: !!(await navigator.serviceWorker.getRegistration())?.installing,
+        names: (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+      })),
     state => !state.installing && state.names.length === 1,
   );
   await context!.setOffline(true);
@@ -357,15 +358,19 @@ try {
   assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
   // Navigation can retry a previously failed installation; let that installation finish cleaning up too.
   const updateState = await waitForWorkerState(
-    () => page!.evaluate(async () => {
-      const registration = await navigator.serviceWorker.getRegistration();
-      return {
-        installing: !!registration?.installing,
-        active: registration?.active?.state,
-        names: (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
-      };
-    }),
-    state => !state.installing && state.active === 'activated' && state.names.length === 2 &&
+    () =>
+      page!.evaluate(async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        return {
+          installing: !!registration?.installing,
+          active: registration?.active?.state,
+          names: (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')),
+        };
+      }),
+    state =>
+      !state.installing &&
+      state.active === 'activated' &&
+      state.names.length === 2 &&
       [originalCache, updatedCache].every(name => state.names.includes(name)),
   );
   assert.deepEqual(

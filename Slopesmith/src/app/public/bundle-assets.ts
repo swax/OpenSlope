@@ -5,7 +5,7 @@ import type { PropsPayload } from '../../core/reference/props';
 const unpack = (value: string) => Uint8Array.from(atob(value), char => char.charCodeAt(0));
 
 /** The editor and solo player resolve the same self-contained mountain's custom art. */
-export function bundleAssets(source: ProjectBundle | (() => ProjectBundle | undefined)) {
+export function bundleAssets(source: ProjectBundle | (() => ProjectBundle | undefined), origin = location.origin) {
   const urls = new Map<string, string>();
   function assetUrl(kind: BundleAssetKind, name: string): string {
     const bundle = typeof source === 'function' ? source() : source;
@@ -23,8 +23,8 @@ export function bundleAssets(source: ProjectBundle | (() => ProjectBundle | unde
   }
   return {
     resolve(path: string): string {
-      const url = new URL(path, location.origin), q = url.searchParams;
-      if (url.origin !== location.origin) return path;
+      const url = new URL(path, origin), q = url.searchParams;
+      if (url.origin !== origin) return path;
       if (url.pathname === '/api/texture' && q.get('level')?.toLowerCase() === 'custom') return assetUrl('texture', q.get('name') ?? '');
       if (url.pathname === '/api/custom-sound') return assetUrl('sound', q.get('name') ?? '');
       if (url.pathname === '/api/custom-music-file') return assetUrl('music', q.get('name') ?? '');

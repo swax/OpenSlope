@@ -7,6 +7,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./temp/typescript.tsbuildinfo",
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

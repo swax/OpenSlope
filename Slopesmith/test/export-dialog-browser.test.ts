@@ -1,3 +1,4 @@
+// browser: smoke
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
@@ -10,6 +11,7 @@ import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { addUser } from '../src/server/accounts/users';
+import { defaultMountain } from '../src/core/doc/mountain';
 import { readMountainArchive } from '../src/app/mountain/archive';
 import { authoredAiNetwork } from '../src/core/doc/ai-paths';
 import { reconstructPathLine, type CoursePathFile } from '../src/core/reference/terrain';
@@ -63,7 +65,11 @@ try {
       })
     ).ok(),
   );
-  await page.goto(`${origin}/editor`);
+  // Export lighting assertions need terrain; a new editor session now starts blank.
+  const created = await page.request.post(`${origin}/api/projects`, { data: { document: defaultMountain() } });
+  assert(created.ok());
+  const { project } = await created.json();
+  await page.goto(`${origin}/editor/${project.name}?project=${project.id}`);
   await page.waitForFunction(() =>
     ['saved', 'shared', 'following'].includes(document.documentElement.dataset.projectSave ?? ''),
   );

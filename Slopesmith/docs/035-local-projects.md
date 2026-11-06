@@ -71,6 +71,9 @@ New mountains and imported mountain ZIPs create projects. The mountain picker re
 activates an existing project. Switching mountains resets undo/redo because snapshots from two mountains must
 never share a history stack.
 
+**New map** defaults to **Blank — no terrain** for both Local and Server storage. Choose **Generated course**
+to start with terrain instead. A first visit to the editor with no saved map also creates a blank mountain.
+
 Use **Load map → Import from file** beside **New map** on the main library page to choose an editable ZIP, its destination (Local or Server),
 and its name. The proposed name comes from the filename without `.slopesmith.zip` or `.zip`; it remains editable.
 Local imports work without signing in. Server imports require a signed-in account with permission to create maps.

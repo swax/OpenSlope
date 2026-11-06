@@ -316,7 +316,7 @@ export function createDialogs(deps: DialogDeps) {
 
     let note: HTMLElement | null = null;
     if (isNew) {
-      note = banner(host, NEW_MOUNTAIN_NOTE.lofted, 'info');
+      note = banner(host, NEW_MOUNTAIN_NOTE.blank, 'info');
     } else {
       banner(
         host,
@@ -333,7 +333,7 @@ export function createDialogs(deps: DialogDeps) {
     const sourceHeight = replacement?.drop ?? DEFAULT_COURSE_HEIGHT_M;
     const o = {
       name: 'MOUNTAIN01',
-      shape: 'lofted' as 'lofted' | 'blank',
+      shape: (isNew ? 'blank' : 'lofted') as 'lofted' | 'blank',
       width: DEFAULT_TERRAIN_WIDTH_M,
       height: sourceHeight,
       slope: DEFAULT_BLANK_SLOPE_DEG,
@@ -347,8 +347,8 @@ export function createDialogs(deps: DialogDeps) {
       shapeCtl = tip(
         g
           .add(o, 'shape', {
-            'lofted course': 'lofted',
             'blank — no terrain': 'blank',
+            'lofted course': 'lofted',
           })
           .name('terrain'),
         'What the new mountain starts as — the note above describes the selected choice.',

@@ -128,7 +128,8 @@ The gate stops at the first failure and runs:
 3. `Snowknife.Tests` — synthetic .NET tests, including byte-format round trips and cross-repository contracts.
 4. Slopesmith's strict TypeScript check and its ESLint pass (`npm --prefix Slopesmith run lint`, zero findings).
 5. Slopesmith's deterministic full suite — every check under `Slopesmith/test/` is discovered, including those
-   outside the fast edit-time tier, with an informational coverage report. The three that read extracted
+   outside the fast edit-time tier. Node/DOM/API checks produce informational V8 coverage; every real-browser
+   check then runs without Node instrumentation. The three that read extracted
    `Maps/` data are excluded; `npm --prefix Slopesmith run test:local` adds them.
 6. The Slopesmith client and server production build.
 7. The end-to-end authored-map export and real `snowknife gltf` smoke test.
@@ -136,8 +137,8 @@ The gate stops at the first failure and runs:
 No retail ISO or extracted assets are needed. `verify` explicitly filters out Snowknife's `EndToEnd` category even
 on a machine that has the data, so the gate you run locally is the gate the nightly `Full Windows verification`
 workflow runs. The per-push `Verify` workflow runs a subset that fits the repository's GitHub Actions minute
-budget: the hygiene gate, whichever fast suites the push touches, Slopesmith's type check and lint, and the
-production build. Coverage and the export smoke test run nightly. A passing
+budget: the hygiene gate, whichever fast suites the push touches, Slopesmith's type check, lint, browser smoke, and the
+production build. Node coverage, the complete browser lane and the export smoke test run nightly. A passing
 per-push `Verify` result covers that fast subset; `npm run verify` provides the
 complete local result when full validation is needed. The complete gate does
 not launch Unity because CI would need a Unity license and a project installation. The importer
@@ -145,8 +146,8 @@ integration test below covers the platform-neutral Unity code without requiring 
 
 ### Push-time gate
 
-Install the pre-push hook once per clone, and the checks the `Verify` workflow would run for a push run on
-your machine first:
+Install the pre-push hook once per clone to run the mandatory audits and affected fast suites on
+your machine before a push. CI also runs the browser smoke lane and production build:
 
 ```text
 npm run hooks:install

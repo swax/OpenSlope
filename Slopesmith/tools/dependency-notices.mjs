@@ -134,22 +134,23 @@ export function inventoryDocument(records) {
 }
 
 async function recordsFromInventory(appRoot, inventory) {
-  const records = [];
-  for (const expected of inventory.packages ?? []) {
-    const packageRoot = resolve(appRoot, expected.path);
-    const relativePath = relative(appRoot, packageRoot);
-    if (relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
-      throw new Error(`browser notice inventory escapes Slopesmith/: ${expected.path}`);
-    }
-    const record = await installedRecord(packageRoot, appRoot);
-    if (record.path !== expected.path || record.name !== expected.name || record.version !== expected.version) {
-      throw new Error(
-        `installed package drift for ${expected.path}: expected ${expected.name}@${expected.version}, ` +
-          `found ${record.name}@${record.version}`,
-      );
-    }
-    records.push(record);
-  }
+  const records = await Promise.all(
+    (inventory.packages ?? []).map(async expected => {
+      const packageRoot = resolve(appRoot, expected.path);
+      const relativePath = relative(appRoot, packageRoot);
+      if (relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+        throw new Error(`browser notice inventory escapes Slopesmith/: ${expected.path}`);
+      }
+      const record = await installedRecord(packageRoot, appRoot);
+      if (record.path !== expected.path || record.name !== expected.name || record.version !== expected.version) {
+        throw new Error(
+          `installed package drift for ${expected.path}: expected ${expected.name}@${expected.version}, ` +
+            `found ${record.name}@${record.version}`,
+        );
+      }
+      return record;
+    }),
+  );
   return records.sort((a, b) => a.path.localeCompare(b.path));
 }
 
@@ -177,7 +178,18 @@ export async function renderInstalledNotices(records, heading) {
     'PACKAGES',
     ...records.map(record => `- ${record.name}@${record.version} (${record.license})`),
   ];
-  for (const record of records) {
+  const legalText = await Promise.all(
+    records.map(async record => ({
+      record,
+      files: await Promise.all(
+        record.legalFiles.map(async filename => ({
+          filename,
+          body: (await readFile(join(record.root, filename), 'utf8')).trimEnd(),
+        })),
+      ),
+    })),
+  );
+  for (const { record, files } of legalText) {
     lines.push(
       '',
       '='.repeat(80),
@@ -192,8 +204,7 @@ export async function renderInstalledNotices(records, heading) {
           'Its package.json license metadata is recorded above.]',
       );
     }
-    for (const filename of record.legalFiles) {
-      const body = (await readFile(join(record.root, filename), 'utf8')).trimEnd();
+    for (const { filename, body } of files) {
       lines.push('', '-'.repeat(80), filename, '-'.repeat(80), body);
     }
   }
@@ -215,28 +226,39 @@ async function findInstalledPackageRoot(name, fromRoot, appRoot) {
 
 /** Resolve the actually installed runtime closure for external server packages (development packages excluded). */
 export async function installedDependencyClosure(appRoot, directNames) {
-  const queue = [];
-  for (const name of sorted(directNames)) {
-    const root = await findInstalledPackageRoot(name, appRoot, appRoot);
-    if (!root) throw new Error(`required installed dependency is missing: ${name}`);
-    queue.push(root);
-  }
+  const queue = await Promise.all(
+    sorted(directNames).map(async name => {
+      const root = await findInstalledPackageRoot(name, appRoot, appRoot);
+      if (!root) throw new Error(`required installed dependency is missing: ${name}`);
+      return root;
+    }),
+  );
   const seen = new Set();
   const records = [];
   while (queue.length) {
-    const root = queue.shift();
-    const key = resolve(root).toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const record = await installedRecord(root, appRoot);
-    records.push(record);
-    const required = Object.keys(record.manifest.dependencies ?? {});
-    const optional = Object.keys(record.manifest.optionalDependencies ?? {});
-    for (const name of sorted(new Set([...required, ...optional]))) {
-      const child = await findInstalledPackageRoot(name, root, appRoot);
-      if (child) queue.push(child);
-      else if (required.includes(name)) throw new Error(`${record.name} requires missing installed package ${name}`);
-    }
+    const batch = queue.splice(0).filter(root => {
+      const key = resolve(root).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const next = await Promise.all(
+      batch.map(async root => {
+        const record = await installedRecord(root, appRoot);
+        records.push(record);
+        const required = Object.keys(record.manifest.dependencies ?? {});
+        const optional = Object.keys(record.manifest.optionalDependencies ?? {});
+        return Promise.all(
+          sorted(new Set([...required, ...optional])).map(async name => {
+            const child = await findInstalledPackageRoot(name, root, appRoot);
+            if (!child && required.includes(name))
+              throw new Error(`${record.name} requires missing installed package ${name}`);
+            return child;
+          }),
+        );
+      }),
+    );
+    queue.push(...next.flat().filter(Boolean));
   }
   return records.sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -263,6 +285,7 @@ export function dependencyNoticesPlugin(appRoot) {
   let expectedRecords = [];
   let report = '';
   let loaded;
+  let build = true;
   const inventoryPath = join(appRoot, BROWSER_INVENTORY);
   const updateInventory = process.env.SLOPESMITH_WRITE_NOTICE_INVENTORY === '1';
   const printInventory = process.env.SLOPESMITH_PRINT_NOTICE_INVENTORY === '1';
@@ -293,8 +316,13 @@ export function dependencyNoticesPlugin(appRoot) {
 
   return {
     name: 'slopesmith-dependency-notices',
+    configResolved(config) {
+      build = config.command === 'build';
+    },
     async buildStart() {
-      await loadInputs();
+      // Tiny dev fixtures need no legal bundle. Loading the virtual notice module still validates it;
+      // production builds always validate eagerly and verify the final bundle graph in generateBundle.
+      if (build) await loadInputs();
     },
     resolveId(id) {
       return id === VIRTUAL_NOTICE_ID ? RESOLVED_NOTICE_ID : null;

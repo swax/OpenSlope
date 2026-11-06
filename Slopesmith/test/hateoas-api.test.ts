@@ -30,6 +30,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fetchForTest, removeTestTree } from './http-test-support';
 import { check, failures } from './check';
+import { defaultMountain } from '../src/core/doc/mountain';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-hateoas-'));
 const plainRoot = mkdtempSync(join(tmpdir(), 'slopesmith-hateoas-plain-'));
@@ -286,10 +287,15 @@ try {
   );
 
   // ---- 4. creating a map from nothing -------------------------------------------------------------------
-  const created = await call('POST', '/api/projects', { key, body: {} });
+  const empty = await call('POST', '/api/projects', { key, body: {} });
+  check(
+    empty.status === 201 && empty.body.document?.vertices?.length === 0 && empty.body.document?.quads?.length === 0,
+    'POST /api/projects with an empty body creates a blank mountain with no terrain',
+  );
+  const created = await call('POST', '/api/projects', { key, body: { document: defaultMountain() } });
   check(
     created.status === 201 && (created.body?.document?.vertexIds?.length ?? 0) > 0,
-    'POST /api/projects with an empty body answers the default starter mountain, whole',
+    'POST /api/projects preserves an explicitly supplied generated mountain, whole',
   );
   const mine = created.body.project.id as string;
   const mineActions = actions(created.body);

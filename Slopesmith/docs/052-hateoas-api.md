@@ -130,9 +130,9 @@ Why this is the right agent write, in order of importance:
 buffer of a real mountain is megabytes an agent should fetch by choice (`?prefix=v/`, `?keys=…`,
 `?prefix=all`).
 
-One route change rides along: `POST /api/projects` with no document now creates the **default starter
-mountain** instead of refusing. The browser always composed `defaultMountain()` client-side; a remote
-agent cannot, and "give me a mountain to start editing" is the request it actually has.
+`POST /api/projects` with no document creates a **blank mountain** with an empty mesh and a straight guide
+run, matching the browser's default New map option. Supply a complete `document` to start with terrain;
+explicitly supplied documents are preserved.
 
 Two more came out of the first real agent build. `POST /api/projects` accepts an optional **`name`**,
 because every agent's first act after creating a map was renaming it — the name rides the same free-name
