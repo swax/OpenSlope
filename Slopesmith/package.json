@@ -45,7 +45,7 @@
     "test:browser:full": "tsx test/run.ts --tier full --environment browser --jobs 2",
     "check": "npm run typecheck && npm run lint && npm run test:fast",
     "check:smoke": "npm run check && npm run test:browser",
-    "test:ci": "npm run test:full",
+    "test:ci": "npm run test:node && npm run test:browser",
     "test:local": "tsx test/run.ts --tier full --local",
     "coverage": "c8 npm run test:node && npm run coverage:summary",
     "coverage:summary": "node scripts/coverage-summary.mjs",

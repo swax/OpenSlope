@@ -25,8 +25,11 @@ work does not request a complete repository verification run.
   the next action is a commit.
 - Run `npm run verify` for an explicit full-validation request, release
   preparation, or broad changes across components or shared contracts. Explain
-  what requires the full run before starting it. Node/DOM/API coverage and the
-  complete uninstrumented browser suite belong to that full run, not every local commit.
+  what requires the full run before starting it. The gate runs Node/DOM/API
+  coverage and the small browser smoke lane. The complete browser suite is an
+  on-demand diagnostic (`npm run diagnose:browser`), not a commit, push or
+  release prerequisite. Run it only for an explicit diagnostic request; prefer
+  `-- --only <filename-or-area>` when investigating one flow.
 - Preserve the existing pre-push hook and CI checks. Do not bypass mandatory
   audits or silently reduce their coverage.
 

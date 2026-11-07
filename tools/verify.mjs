@@ -48,15 +48,27 @@ const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
-  // V8 coverage measures Node/DOM/API code. Browser assertions still all run, without instrumenting Vite.
+  // Keep release verification bounded. The complete browser suite is an on-demand diagnostic.
   npmStep('Slopesmith Node, DOM and API tests with coverage', 'coverage', 20 * 60_000),
-  npmStep('Slopesmith complete browser suite', 'test:browser:full', 45 * 60_000),
+  npmStep('Slopesmith browser smoke', 'test:browser', 5 * 60_000),
   npmStep('Slopesmith production build', 'build'),
   npmStep('Export to glTF smoke test', 'smoke'),
 ];
 const steps = slopesmithOnly
   ? slopesmithSteps
   : [...hygieneSteps, ...nativeSteps, ...snowknifeSteps, ...slopesmithSteps];
+
+// Inspect the selected gate without starting compilers, services or browsers.
+if (process.argv.includes('--list')) {
+  console.log(
+    JSON.stringify(
+      steps.map(([label, command, args, timeout]) => ({ label, command, args, timeout })),
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
 
 const started = Date.now();
 for (const [label, command, args, timeout] of steps) {

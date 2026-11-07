@@ -127,22 +127,37 @@ The gate stops at the first failure and runs:
 2. Native C++ conformance — portable terrain/contact tests and the shared independent carving fixtures.
 3. `Snowknife.Tests` — synthetic .NET tests, including byte-format round trips and cross-repository contracts.
 4. Slopesmith's strict TypeScript check and its ESLint pass (`npm --prefix Slopesmith run lint`, zero findings).
-5. Slopesmith's deterministic full suite — every check under `Slopesmith/test/` is discovered, including those
-   outside the fast edit-time tier. Node/DOM/API checks produce informational V8 coverage; every real-browser
-   check then runs without Node instrumentation. The three that read extracted
-   `Maps/` data are excluded; `npm --prefix Slopesmith run test:local` adds them.
+5. Slopesmith's complete Node/DOM/API suite with informational V8 coverage, followed by the small
+   native-browser smoke lane. The slow, complete browser suite is an on-demand diagnostic.
 6. The Slopesmith client and server production build.
 7. The end-to-end authored-map export and real `snowknife gltf` smoke test.
 
 No retail ISO or extracted assets are needed. `verify` explicitly filters out Snowknife's `EndToEnd` category even
-on a machine that has the data, so the gate you run locally is the gate the nightly `Full Windows verification`
-workflow runs. The per-push `Verify` workflow runs a subset that fits the repository's GitHub Actions minute
+on a machine that has the data. It uses the same Slopesmith lanes as the nightly `Windows coverage verification`
+workflow. The per-push `Verify` workflow runs a subset that fits the repository's GitHub Actions minute
 budget: the hygiene gate, whichever fast suites the push touches, Slopesmith's type check, lint, browser smoke, and the
-production build. Node coverage, the complete browser lane and the export smoke test run nightly. A passing
+production build. Node coverage, browser smoke and the export smoke test run nightly. A passing
 per-push `Verify` result covers that fast subset; `npm run verify` provides the
 complete local result when full validation is needed. The complete gate does
 not launch Unity because CI would need a Unity license and a project installation. The importer
 integration test below covers the platform-neutral Unity code without requiring VRChat/UdonSharp.
+
+### On-demand browser diagnostics
+
+The complete browser suite is excluded from commit, push and release gates. Run it
+explicitly when investigating browser behavior, with an optional filename or area:
+
+```text
+npm run diagnose:browser
+npm run diagnose:browser -- --only folder-workspace.test.ts
+```
+
+The manual-only `Slopesmith browser diagnostics` GitHub Actions workflow accepts the
+same optional filter through its `only` input and uploads the results and per-test logs.
+Failures remain visible in that diagnostic run and do not hold up required verification.
+`npm --prefix Slopesmith run test:full` retains every discovered check; `test:local`
+also includes checks that need extracted `Maps/` data. Both are diagnostics, not release
+prerequisites. `npm run verify -- --list` lists the required gate without running it.
 
 ### Push-time gate
 
@@ -308,7 +323,9 @@ dotnet test Snowknife/Snowknife.Tests/Snowknife.Tests.csproj -c Debug --filter "
 npm --prefix Slopesmith run typecheck
 npm --prefix Slopesmith test                 # fast edit-time tier
 npm --prefix Slopesmith run test:integration
-npm --prefix Slopesmith run test:full        # required discovered gate
+npm --prefix Slopesmith run test:node        # complete Node/DOM/API lane
+npm --prefix Slopesmith run test:browser     # browser smoke
+npm run diagnose:browser -- --only maps-actions.test.ts # optional focused diagnostic
 npm --prefix Slopesmith run coverage
 npm --prefix Slopesmith run build
 npm --prefix Slopesmith run smoke

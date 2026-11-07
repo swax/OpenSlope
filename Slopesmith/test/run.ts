@@ -1,9 +1,9 @@
 /**
- * The Slopesmith test runner: a short edit-time tier and the complete discovered gate.
+ * The Slopesmith test runner: focused validation and complete on-demand diagnostics.
  *
  *   npx tsx test/run.ts --tier fast # short feedback loop used by `npm test`
  *   npx tsx test/run.ts --tier integration # server/browser/heavy checks without the fast tier
- *   npx tsx test/run.ts --tier full # everything a fresh clone can run — this is what CI runs
+ *   npx tsx test/run.ts --tier full # every discovered check, including slow browser diagnostics
  *   npx tsx test/run.ts --tier full --local # adds checks needing extracted Maps data on this machine
  *   npx tsx test/run.ts --only ride # substring filter, for iterating on one area
  *   npx tsx test/run.ts --jobs 1    # one at a time, for readable output when something is failing
@@ -14,7 +14,7 @@
  *
  * The suite is DISCOVERED, not listed. `test/*.test.ts` is the whole set (this runner is `run.ts`, so it
  * is not swept up by its own glob), so a new check joins the
- * gate by existing — there is no second place to remember to append to. That is deliberate: this file
+ * diagnostic by existing — there is no second place to remember to append to. That is deliberate: this file
  * replaced ~50 hand-written `test:*` npm scripts of which only five were reachable from `npm test`, which is
  * how four real regressions sat green in the tree (a room snapshot that silently dropped edits, a retopology
  * interface that swallowed the mountain rim, and two fixtures left behind by moves they should have followed).
@@ -75,8 +75,8 @@ const NEEDS_LOCAL_DATA = new Set([
 
 /**
  * A check declares its own tier. `// tier: fast` in its first lines puts it in the edit-time loop `npm test`
- * runs; no marker means the integration tier. The complete gate stays discovery-based — every `*.test.ts` runs
- * in the full tier whatever its head says — so a new check joins CI merely by existing, and it cannot make
+ * runs; no marker means the integration tier. Full diagnostics stay discovery-based — every `*.test.ts` runs
+ * in the full tier whatever its head says — so a new check joins diagnostics merely by existing, and it cannot make
  * `npm test` slower until someone writes the marker, which is the moment to know it is quick, deterministic
  * under load, and independent of a real service, browser, or external tool.
  *
@@ -360,7 +360,7 @@ if (listOnly) {
   for (const job of queue) console.log(job.label);
   if (skipped.length) console.log(`\nnot run without --local: ${skipped.join(', ')}`);
   if (tierOmitted.length) {
-    console.log(`\nnot run in the ${tier} tier (${tierOmitted.length}; use --tier full for the gate):`);
+    console.log(`\nnot run in the ${tier} tier (${tierOmitted.length}; use --tier full for all diagnostics):`);
     for (const label of tierOmitted) console.log(label);
   }
   process.exit(0);
@@ -552,7 +552,9 @@ if (skipped.length) {
   process.stdout.write(`\n  not run (needs extracted Maps data — use --local): ${skipped.join(', ')}\n`);
 }
 if (tierOmitted.length) {
-  process.stdout.write(`\n  ${tierOmitted.length} checks belong to the other tier; npm run test:full runs the gate\n`);
+  process.stdout.write(
+    `\n  ${tierOmitted.length} checks belong to the other tier; npm run test:full runs all diagnostics\n`,
+  );
 }
 const wall = (Date.now() - started) / 1000;
 const work = outcomes.reduce((sum, outcome) => sum + outcome.ms, 0) / 1000;

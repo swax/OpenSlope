@@ -36,6 +36,7 @@
     "format:java:check": "node tools/format-java.mjs --check",
     "verify:native": "node tools/native-tests.mjs",
     "verify:slopesmith": "node tools/verify.mjs --slopesmith",
+    "diagnose:browser": "npm --prefix Slopesmith run test:browser:full --",
     "hooks:install": "git config core.hooksPath .githooks",
     "hygiene": "python tools/hygiene.py",
     "hygiene:report": "python tools/hygiene/repo_hygiene.py report",

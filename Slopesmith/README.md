@@ -41,9 +41,10 @@ npm run test:dom          # UI/storage behavior in Node, without Vite or Chrome
 npm run test:api          # actual HTTP service checks without a browser
 npm run test:browser      # small native-browser smoke lane
 npm run test:node         # complete Node/DOM/API lane
-npm run test:browser:full # complete real-browser lane, without c8
-npm run test:full         # required gate: every check under test/
-npm run test:local        # full gate plus checks that read extracted Maps/ data
+npm run test:browser:full # on-demand browser diagnostics, without c8; accepts -- --only <file-or-area>
+npm run test:full         # on-demand diagnostics: every check under test/
+npm run test:local        # diagnostics plus checks that read extracted Maps/ data
+npm run test:ci           # complete Node/DOM/API lane and browser smoke
 npm run typecheck # strict TypeScript check
 npm run lint      # ESLint over src, test, scripts, and tools; the gate requires zero findings
 npm run check     # typecheck, lint, fast tests

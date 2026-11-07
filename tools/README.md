@@ -71,11 +71,24 @@ TypeScript stores incremental state and ESLint stores a content-based cache unde
 `Slopesmith/temp/`. Both commands still check the complete configured scope, and changed inputs
 invalidate their cached results. A clean checkout runs the same checks without warm caches.
 
-For broad component verification, `test:node` runs all Node/DOM/API tests, `coverage`
-adds V8 instrumentation to that lane, and `test:browser:full` runs every browser check
-without instrumentation. `test:full` still discovers and runs both lanes. The complete
-gate and nightly CI run coverage **and** the complete browser lane; browser assertions
-have not been removed from those gates.
+For broad component verification, `test:node` runs all Node/DOM/API tests and `coverage`
+adds V8 instrumentation to that lane. The release gate, `test:ci`, and nightly CI use
+the small browser smoke lane. The complete browser suite is an on-demand diagnostic;
+it does not block commits, pushes or releases. No assertions have been deleted.
+
+Run diagnostics explicitly from the repository root:
+
+```text
+npm run diagnose:browser
+npm run diagnose:browser -- --only folder-workspace.test.ts
+npm run diagnose:browser -- --list
+```
+
+`Slopesmith browser diagnostics` in GitHub Actions is manual-only and accepts the same
+optional filename or area in its `only` input. It keeps failed checks visibly failed
+and uploads incremental results and per-test logs; it is separate from required CI.
+`test:browser:full` remains the component-level equivalent. `test:full` and `test:local`
+are comprehensive diagnostics that also include the slow browser checks.
 
 Each runner invocation prints its `Slopesmith/temp/test-run-*` directory. `results.json`
 records completed, active and pending checks after each outcome; per-test logs update live.
@@ -88,7 +101,8 @@ new tests and previously passing tests are outside that selection.
 `npm run verify` retains the complete repository gate for release preparation,
 broad changes across components or shared contracts, and explicit full-validation
 requests. The existing pre-push hook and CI still run their mandatory checks;
-the nightly workflow runs Node coverage and the complete browser suite separately. A
+the nightly workflow runs Node coverage, browser smoke and the export smoke test. Use
+`npm run verify -- --list` to inspect the gate without executing its checks. A
 documentation-only change does not require a compiler or browser run.
 
 ## Formatting

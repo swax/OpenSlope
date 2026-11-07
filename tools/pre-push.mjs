@@ -7,7 +7,7 @@
 // same fast-suite selection CI makes. Hygiene and Native source audits always inspect an isolated checkout
 // of each pushed tip, so uncommitted fixes cannot conceal a failure in the commit being published.
 //
-// `npm run verify` remains the full gate, and the daily Full Windows workflow remains the coverage run.
+// `npm run verify` remains the release gate; nightly Windows coverage uses browser smoke, not full diagnostics.
 //
 //   npm run hooks:install                 point core.hooksPath at .githooks, once per clone
 //   node tools/pre-push.mjs --range A B   run it by hand for the commits between A and B

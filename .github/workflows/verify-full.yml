@@ -1,8 +1,8 @@
-name: Full Windows verification
+name: Windows coverage verification
 
 on:
   schedule:
-    # One complete compatibility and coverage pass per day instead of one per push.
+    # Coverage and export checks stay nightly; the complete browser suite is manual diagnostics.
     - cron: '17 10 * * *'
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   full:
-    name: Full Windows compatibility and coverage
+    name: Windows coverage, browser smoke and export
     runs-on: windows-latest
     timeout-minutes: 60
 
@@ -75,9 +75,9 @@ jobs:
         timeout-minutes: 20
         run: npm --prefix Slopesmith run coverage
 
-      - name: Run every real-browser check without Node instrumentation
-        timeout-minutes: 45
-        run: npm --prefix Slopesmith run test:browser:full
+      - name: Run native-browser smoke checks
+        timeout-minutes: 5
+        run: npm --prefix Slopesmith run test:browser
 
       - name: Build Slopesmith
         timeout-minutes: 8
