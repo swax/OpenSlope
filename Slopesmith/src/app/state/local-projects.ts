@@ -1,6 +1,9 @@
 import { migrateMountain, blankMountain } from '../../core/doc/mountain';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { ProjectBundle } from '../../core/project/transfer';
+import type { ImportedPropRecord } from '../../core/props/imported';
+import { sanitizePropBehaviour } from '../../core/props/defaults';
+import { bundleProps } from '../public/bundle-assets';
 import { sha256 } from '../../core/reference/asset-hash';
 import type { ClientProject } from './project-sync';
 import {
@@ -16,6 +19,7 @@ interface LocalProject {
   source?: string;
   sourceRevision?: number;
   isoAliases?: Record<string, string>;
+  nextPropId?: number;
 }
 
 /** Local projects have their own database and identities; a public source id is never a writable project. */
@@ -189,19 +193,107 @@ export async function openLocalProjects({ restoreActive = true }: { restoreActiv
   async function request(url: URL, init?: RequestInit): Promise<Response | null> {
     const path = url.pathname,
       method = init?.method?.toUpperCase() ?? 'GET';
+    if (path === '/api/custom-prop-import' && method === 'POST' && !url.searchParams.has('adopt')) {
+      const projectId = active?.project.id;
+      if (!projectId || (url.searchParams.has('project') && url.searchParams.get('project') !== projectId))
+        return Response.json({ error: 'Open a local mountain before importing props.' }, { status: 404 });
+      let record: ImportedPropRecord;
+      try {
+        const text = await new Response(init?.body).text();
+        if (text.length > 96 * 1024 ** 2) throw new Error('Model is too large.');
+        record = JSON.parse(text) as ImportedPropRecord;
+        if (
+          !record ||
+          typeof record.name !== 'string' ||
+          !Array.isArray(record.subs) ||
+          !record.subs.length ||
+          !Array.isArray(record.materials) ||
+          !Number.isFinite(record.tris) ||
+          record.tris < 1
+        )
+          throw new Error('Invalid model.');
+      } catch {
+        return Response.json({ error: 'Choose a valid imported prop.' }, { status: 400 });
+      }
+      // Reserve a number before hashing the record. Concurrent tabs cannot issue the same id, and an
+      // interrupted import spends its number rather than letting a later model inherit a placement.
+      const model = await new Promise<number | undefined>((resolve, reject) => {
+        const tx = db.transaction('projects', 'readwrite'),
+          store = tx.objectStore('projects');
+        const read = store.get(projectId);
+        let model: number | undefined;
+        read.onsuccess = () => {
+          const row = read.result as LocalProject | undefined;
+          if (!row) return;
+          model = Math.max(row.nextPropId ?? 0, ...bundleProps(row.bundle).models.map(model => model.id + 1));
+          row.nextPropId = model + 1;
+          store.put(row);
+        };
+        tx.oncomplete = () => resolve(model);
+        tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Browser storage is full or unavailable.'));
+      });
+      if (model === undefined) return Response.json({ error: 'This local mountain was deleted.' }, { status: 404 });
+      const { defaults: rawDefaults, ...rest } = record;
+      const defaults = sanitizePropBehaviour(rawDefaults);
+      const imported = { ...rest, ...(defaults ? { defaults } : {}), id: model };
+      const bytes = new TextEncoder().encode(JSON.stringify(imported));
+      const hash = await sha256(bytes);
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      const blob = btoa(binary);
+      const stem =
+        (url.searchParams.get('name') ?? '')
+          .replace(/\.(glb|gltf|json)$/i, '')
+          .replace(/[^a-z0-9_-]/gi, '')
+          .slice(0, 80) || 'prop';
+      const saved = await new Promise<LocalProject | undefined>((resolve, reject) => {
+        const tx = db.transaction('projects', 'readwrite'),
+          store = tx.objectStore('projects');
+        const read = store.get(projectId);
+        let saved: LocalProject | undefined;
+        read.onsuccess = () => {
+          const row = read.result as LocalProject | undefined;
+          if (!row) return;
+          const used = new Set(
+            row.bundle.assets.filter(asset => asset.kind === 'prop').map(asset => asset.name.toLowerCase()),
+          );
+          let name = `${stem}.json`,
+            suffix = 1;
+          while (used.has(name.toLowerCase())) name = `${stem}_${++suffix}.json`;
+          row.bundle.assets.push({ kind: 'prop', name, model, hash, size: bytes.length });
+          (row.bundle.blobs ??= {})[hash] = blob;
+          store.put(row);
+          saved = row;
+        };
+        tx.oncomplete = () => resolve(saved);
+        tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Browser storage is full or unavailable.'));
+      });
+      if (!saved) return Response.json({ error: 'This local mountain was deleted.' }, { status: 404 });
+      projects.set(projectId, saved);
+      if (active?.project.id === projectId) active = saved;
+      void queueMountainFolderSave(projectId, saved.bundle).catch(console.error);
+      return Response.json({ id: model, name: imported.name });
+    }
     if (path === '/api/texture-upload' && method === 'POST') {
       const id = active?.project.id;
       if (!id || (url.searchParams.get('project') && url.searchParams.get('project') !== id))
         return Response.json({ error: 'Open a local mountain before adding textures.' }, { status: 404 });
       const bytes = new Uint8Array(await new Response(init?.body).arrayBuffer());
-      if (bytes.length > 32 * 1024 ** 2 || bytes.length < 24 ||
-          [137, 80, 78, 71, 13, 10, 26, 10].some((value, index) => bytes[index] !== value))
+      if (
+        bytes.length > 32 * 1024 ** 2 ||
+        bytes.length < 24 ||
+        [137, 80, 78, 71, 13, 10, 26, 10].some((value, index) => bytes[index] !== value)
+      )
         return Response.json({ error: 'Choose a PNG image smaller than 32 MB.' }, { status: 400 });
       const hash = await sha256(bytes);
       let binary = '';
       for (const byte of bytes) binary += String.fromCharCode(byte);
       const blob = btoa(binary);
-      const stem = (url.searchParams.get('name') ?? '').replace(/\.png$/i, '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80) || 'texture';
+      const stem =
+        (url.searchParams.get('name') ?? '')
+          .replace(/\.png$/i, '')
+          .replace(/[^a-z0-9_-]/gi, '')
+          .slice(0, 80) || 'texture';
       const saved = await new Promise<{ row: LocalProject; name: string } | undefined>((resolve, reject) => {
         const tx = db.transaction('projects', 'readwrite');
         const store = tx.objectStore('projects');
@@ -211,8 +303,11 @@ export async function openLocalProjects({ restoreActive = true }: { restoreActiv
           const current = read.result as LocalProject | undefined;
           if (!current) return;
           const row = structuredClone(current);
-          const used = new Set(row.bundle.assets.filter(asset => asset.kind === 'texture').map(asset => asset.name.toLowerCase()));
-          let name = `${stem}.png`, suffix = 1;
+          const used = new Set(
+            row.bundle.assets.filter(asset => asset.kind === 'texture').map(asset => asset.name.toLowerCase()),
+          );
+          let name = `${stem}.png`,
+            suffix = 1;
           while (used.has(name.toLowerCase())) name = `${stem}_${++suffix}.png`;
           row.bundle.assets.push({ kind: 'texture', name, hash, size: bytes.length });
           (row.bundle.blobs ??= {})[hash] = blob;
