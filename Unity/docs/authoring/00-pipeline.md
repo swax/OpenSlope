@@ -37,8 +37,8 @@ Snowknife/Snowknife/bin/Debug/net10.0/snowknife.exe gltf Maps/<NAME> <name>
 ```
 
 Writes `Maps/<NAME>/gltf/{manifest.json, terrain.glb, props.glb}`. Success line:
-`Bundle written to …/gltf`. (The exe is also auto-invoked by Slopesmith's `EXPORT`; build Snowknife
-first if `bin/.../snowknife.exe` is missing.)
+`Bundle written to …/gltf`. Slopesmith exports the portable map data; run Snowknife separately
+to create the bundle. Build Snowknife first if `bin/.../snowknife.exe` is missing.
 
 ## 2. Bootstrap a fresh project (skip if the target is already an OpenSlope project)
 

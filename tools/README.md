@@ -139,7 +139,7 @@ They cover `Native/android/app/src/**/*.java`, `Native/tests/**/*.java` and
 `Native/tools/**/*.java`, excluding Android build output. The Native Prettier
 configuration sets four-space indentation, a 120-column print width and LF line
 endings. The check command does not write files. Neither command invokes Gradle
-or requires a JDK or Android SDK. See [Native formatting](../Native/README.md#formatting).
+or requires a JDK or Android SDK. See [Native formatting](../Native/docs/development.md#formatting).
 
 ## Supporting checks
 

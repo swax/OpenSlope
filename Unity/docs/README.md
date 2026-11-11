@@ -1,5 +1,14 @@
 # Unity documentation
 
+Start with the [Unity README](../README.md) for a first map import, or choose a guide:
+
+- [Project setup and menu reference](authoring/01-project-setup.md) — Unity 2022.3 and VRChat.
+- [Authored map to ride-ready scene](authoring/00-pipeline.md) — the complete authoring pipeline.
+- [Basis setup and status](basis/061-overview.md) — the experimental Unity 6/URP port.
+- [Development](development.md) — source layout, formatting, project sync and editor menu conventions.
+
+## About these docs
+
 Implementation notes for the Unity importer, platform-neutral markers, Basis realization, and VRChat/Udon
 runtime. These documents describe what this repository builds. Original-game behavior belongs to
 `Trailmap/specs` and is cited with location-independent tags such as `[Trailmap: 320-ground-contact]`.

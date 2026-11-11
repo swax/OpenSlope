@@ -221,6 +221,31 @@ Select an edge or edge run and press **X** to stage an extrusion. The placement 
   inside whatever the frames do; the panel names that bend (radius and reach) with a ⚠ note, and Commit
   stays available.
 
+### Subdivision cages
+
+In **Edit**, select a connected set of unlocked quad faces and choose **create subdivision cage**
+under **Topology**. The selected faces become an independent Catmull-Clark object. Move its cage
+points with **W**, rotate with **E**, or scale with **R**. Select edges and press **C** for fully sharp
+creases or **S** to smooth them. With points selected, **C** pins sharp corners to those cage points
+and **S** clears their corner marks independently of edge creases. Marked edges are orange with
+midpoint dots; marked corners use orange dots in place of pink. Yellow indicates selection.
+Open boundaries use the standard sharp boundary rule, so removing explicit creases does not close them.
+Click a cage edge, then **Shift-click** farther along the same loop to add every edge between them.
+**Ctrl-click** toggles individual edges; double-click selects the whole loop.
+
+The **Subdivision cage** panel controls levels 0–4, up to 4,096 terrain patches. Level 0 uses one
+curved Bézier patch per cage face; each higher level quadruples the patch count.
+New cages start at level 1. The **avg patch size** readout below the level shows the generated
+patches' average curved length × width in metres.
+Regular spans convert exactly to bicubic patches; patches near irregular
+vertices and crease transitions approximate the limit surface, improving at higher levels.
+Cages support save/load and undo/redo. Choose **bake subdivision cage** to retain the terrain and
+remove the cage controls before stitching or changing topology. Neighboring terrain does not follow
+an unbaked cage; bake and stitch its boundary when the shape is ready.
+Choose **revert cage to patches** to turn the coarse cage faces at their current positions back into
+editable patches instead. Append or change their topology, then create a new subdivision cage.
+Both conversions support undo.
+
 ## UI
 
 All ops live in the Edit tool as a "Surgery" group; each follows the placement-model conventions

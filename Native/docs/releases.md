@@ -74,7 +74,7 @@ no need to switch the currently installed test headset merely to prepare a relea
 
 ## Build locally
 
-Install the Windows C++ build prerequisites in Native/README.md. From the root:
+Install the [Windows C++ build prerequisites](building.md#windows). From the repository root:
 
 ```powershell
 ./Native/release.ps1 -Setup
@@ -185,7 +185,7 @@ Conformance, audio and package checks remain required on those hosts. The dummy 
 verifies audio delivery without requiring a CI speaker; physical audio, GPU/driver
 and desktop integration still need device tests.
 
-For local Unix packaging, first build and test as described in Native/README.md,
+For local Unix packaging, first build and test as described in the [build guide](building.md#linux-and-macos),
 then select the host platform:
 
 ```sh

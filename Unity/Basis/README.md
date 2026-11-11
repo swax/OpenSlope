@@ -1,45 +1,34 @@
 # OpenSlope on Basis
 
-**Basis-specific runtime and shader source for the OpenSlope port.** These files are copied into a local
-Basis Unity project alongside the shared [`Importer`](../Importer/).
+**Ride OpenSlope maps in an experimental Basis world.** This runtime uses the shared Unity
+importer to bring terrain, props, audio and course interactions into a Basis client.
+It uses Unity 6, URP and ordinary C# behaviours alongside `BasisNetworkBehaviour`.
 
-Basis uses Unity 6, URP, ordinary MonoBehaviours, and `BasisNetworkBehaviour`; the VRChat target uses
-Unity 2022.3, the built-in render pipeline, UdonSharp, and VRChat APIs. The shared importer emits
-platform-neutral geometry and `*Marker` components, then each platform's wiring pass realizes those
-markers as native behaviors.
+The port is partially verified. The [Basis overview](../docs/basis/061-overview.md) records
+setup requirements, implemented features and known gaps.
 
-## Start here
+## Try the port
 
-- [Basis port overview](../docs/basis/061-overview.md) — setup, current feature status, import flow, and roadmap.
-- [Basis porting notes](../docs/basis/062-porting-notes.md) — marker wiring, triggers, networking, URP, and Unity 6 differences.
-- [Shared OpenSlope documentation](../docs/README.md) — platform-neutral feature design.
+1. Follow the [local setup guide](../docs/basis/061-overview.md#local-dev-setup) to build a matching
+   Basis client and server from the same checkout.
+2. Copy this `Basis/` folder and the shared [`Importer/`](../Importer/) into the client project's `Assets/`.
+3. Build and stage a map with [Snowknife](../../Snowknife/README.md) under
+   `Assets/OpenSlope/Maps/MYMAP/`, as described in the [import pipeline](../docs/basis/061-overview.md).
+4. Choose **OpenSlope Basis → Load → Map…** and select that map folder to build the scene.
+   **OpenSlope Basis → Setup All** reruns finalization on an already imported map.
 
-For local development, follow the overview to build a matching Basis client/server checkout, copy this
-folder plus `Importer/` into the client project's `Assets/`, then use:
+Edit scripts and shaders in this repository, then copy them into the client project.
+Shared importer changes must continue to compile for both Unity targets.
 
-1. **OpenSlope Basis → Load → Map…** to select a staged `Assets/OpenSlope/Maps/<MAP>/` bundle and build the scene.
-2. **OpenSlope Basis → Setup All** to rerun Basis scene finalization on an already imported map.
+## Documentation
 
-## Source map
+- [Port overview and status](../docs/basis/061-overview.md) — setup, import flow and feature coverage.
+- [Porting notes](../docs/basis/062-porting-notes.md) — source layout, marker wiring, networking and Unity 6 differences.
+- [Unity documentation](../docs/README.md) — shared importer and runtime systems.
+- [Development guide](../docs/development.md) — formatting and keeping project copies in sync.
 
-| Path | Owns |
-|---|---|
-| `Editor/BasisImportAll.cs` | Shared importer entrypoint and Basis scene finalization |
-| `Editor/BasisWiring.cs` | Neutral marker-to-Basis behavior realization |
-| `Editor/BasisSetupAll.cs` | Post-import player, board, UI, and scene setup |
-| `Riding/` | Rideable board, rail, scoring, audio, and network synchronization |
-| `World/` | Gems, effects, course triggers, props, breakables, animation, culling, flight, and boards |
-| `Shaders/` | URP counterparts of the shared OpenSlope terrain, prop, particle, and effect shaders |
+## Content and license
 
-The port currently covers full world import, a rideable and networked board, rails, gems, course-flow
-triggers, physics props, breakables, animated textures, effects/audio placement, object culling, on-foot
-flight, and start-gate controls. The overview—not this README—is the authoritative status and roadmap.
-
-## Editing rule
-
-This folder is the source of truth. Edit Basis scripts and shaders here, then copy them into the Basis
-client checkout; do not maintain a project-only fork. Shared importer changes belong in
-[`Importer/`](../Importer/) and must continue to compile for both Unity targets.
-
-Basis is covered by the parent component's [Apache-2.0 license](../LICENSE) and
-[NOTICE](../NOTICE).
+Use authored or rights-cleared assets for shared worlds. Disc-derived projects remain local/private;
+follow the parent component's [content guidance](../README.md#content-and-license).
+Basis source is covered by the parent [Apache-2.0 license](../LICENSE) and [NOTICE](../NOTICE).

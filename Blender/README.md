@@ -1,31 +1,40 @@
 # Blender
 
-This directory contains the earliest exploratory tooling in OpenSlope. The
-reverse-engineering work began here: loading extracted levels into Blender,
-testing coordinate and geometry assumptions, understanding the game's bicubic
-terrain, and proving out editing round trips. Those experiments later informed
-Trailmap, Snowknife, Slopesmith, and Unity.
+**Inspect and model OpenSlope course assets in Blender.** These exploratory tools open
+Snowknife maps and glTF bundles, support sidecar-data round trips, and provide terrain and
+prop-modeling experiments. For a complete course-authoring workflow, start with
+[Slopesmith](../Slopesmith/README.md).
 
-The current tools cover:
+## Open a map
 
-- previewing extracted levels and glTF bundles in Blender;
-- importing and exporting bundle sidecar data;
-- experimenting with Bézier/NURBS terrain authoring; and
-- documenting Blender-to-Snowknife prop-remodeling workflows.
+Install Blender. The PowerShell launchers find it under `C:/Program Files/Blender Foundation/`
+or on `PATH`. Start with a portable `Maps/MYMAP/` folder from Slopesmith or
+[Snowknife](../Snowknife/README.md). Put Snowknife on `PATH`, then run from the OpenSlope repository root:
 
-Use [`open-level.ps1`](open-level.ps1) to inspect an extracted OBJ level or
-[`open-bundle.ps1`](open-bundle.ps1) to inspect a Snowknife glTF bundle.
+```powershell
+snowknife gltf Maps/MYMAP MYMAP
+./Blender/open-bundle.ps1 -BundleDir Maps/MYMAP/gltf
+```
+
+The launcher opens the bundle in Blender with its textures and baked lighting. For an imported
+map's OBJ props instead, use:
+
+```powershell
+./Blender/open-level.ps1 -LevelDir Maps/MYMAP
+```
+
+That launcher requires `Props.obj`; use the glTF bundle to view terrain. The supplied launchers
+are for Windows PowerShell. On other platforms, run the [Python bundle loader](open_bundle_in_blender.py)
+with `blender --python Blender/open_bundle_in_blender.py -- Maps/MYMAP/gltf`.
 
 ## Documentation
 
-Numbers are stable identifiers within this documentation tree; gaps, if introduced, do not imply that files
-are missing.
+- [Terrain authoring and trail carving](docs/001-nurbs-terrain-authoring.md) — Bézier/NURBS experiments.
+- [Prop remodel round trip](docs/002-prop-remodel-roundtrip.md) — take a prop through Blender and back into a map.
+- [Slopesmith Blender bridge](../Slopesmith/docs/046-blender-bridge.md) — edit a prop and bring it back into the editor.
+- [Snowknife bundle contract](../Snowknife/docs/034-bundle-pipeline.md) — input files and coordinate conventions.
 
-- [001 — NURBS terrain authoring and analytic trail carving](docs/001-nurbs-terrain-authoring.md)
-- [002 — Prop remodel round-trip](docs/002-prop-remodel-roundtrip.md)
+## Content and license
 
-## License
-
-The repository-authored software, documentation, and other material in this
-directory are licensed under the
-[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+Keep imported disc assets local/private; see [LEGAL.md](../LEGAL.md). Repository-authored material
+in this component is licensed under [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0).

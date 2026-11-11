@@ -1,499 +1,57 @@
 # Slopesmith
 
-**OpenSlope's collaborative browser space for authoring and riding original snowboard courses.**
+**Build and ride snowboard courses in your browser.** Slopesmith is OpenSlope's editor: shape
+terrain, paint surfaces, add props and rails, then test-ride in the same window. It works on
+desktop, mobile and standalone WebXR headsets, with shared editing and riding on a hosted server.
+Original course authoring needs no disc image or separate modeling tool.
 
-Shape a watertight bicubic Bézier-patch mountain, paint its surfaces, place props, lights, rails,
-pickups, and effects, then ride it in the same window. Run it locally or host a private server with
-accounts, roles, per-map permissions, live presence, optional voice chat, and a synchronized video
-Jukebox. The same site supports desktop, mobile touch and game controllers, and standalone WebXR
-headsets. Slopesmith requires no disc or DCC tool for original authoring.
+[Open Slopesmith](https://slopesmith.net) · [Documentation](docs/README.md)
 
-The map library's three-dot menus include **Export…** for loaded game courses and
-public, private and local mountains. Local map **Delete** and loaded course
-**Unload** actions share that menu. Authored mountains can download either an
-editable `.slopesmith.zip` or a `.snowknife.zip`; imported courses download their
-portable map files for Snowknife. This includes locally loaded
-[SSX Tricky GBA courses](../Snowknife/REPACK.md#gba-courses-exported-by-slopesmith).
+## Run locally
 
-```text
-Slopesmith ──┬──▶ Test mode: ride in the browser
-             └──▶ Maps/<NAME>/ ──┬──▶ Snowknife glTF ──▶ Unity
-                                  └──▶ Snowknife repack ──▶ PCSX2 / PS2
-```
-
-## Quick start
-
-Slopesmith requires Node.js 24:
+Install Node.js 24, then run these commands from the OpenSlope repository root:
 
 ```powershell
 cd Slopesmith
 npm ci
-npm run dev       # editor: http://localhost:5179; the API starts on a free port behind Vite's /api proxy
+npm run dev
 ```
 
-Useful commands:
+Open `http://localhost:5179`. Keep this development server on your own machine; it can read and
+write local projects and maps. For shared access, follow the [hosting guides](docs/README.md#hosting-and-collaboration).
 
-```powershell
-npm run serve     # API only, on http://127.0.0.1:5180
-npm test                  # fast edit-time checks
-npm run test:integration  # server, socket, browser, and CPU-heavy checks
-npm run test:dom          # UI/storage behavior in Node, without Vite or Chrome
-npm run test:api          # actual HTTP service checks without a browser
-npm run test:browser      # small native-browser smoke lane
-npm run test:node         # complete Node/DOM/API lane
-npm run test:browser:full # on-demand browser diagnostics, without c8; accepts -- --only <file-or-area>
-npm run test:full         # on-demand diagnostics: every check under test/
-npm run test:local        # diagnostics plus checks that read extracted Maps/ data
-npm run test:ci           # complete Node/DOM/API lane and browser smoke
-npm run typecheck # strict TypeScript check
-npm run lint      # ESLint over src, test, scripts, and tools; the gate requires zero findings
-npm run check     # typecheck, lint, fast tests
-npm run check:smoke # check plus the small browser lane
-npm run build     # production browser and server builds
-npm run smoke     # default mountain -> export -> real Snowknife glTF -> verify GLB
-```
+## Make your first course
 
-The editor and API bind to loopback by default. The API has owner-level access to local maps and
-projects, so Slopesmith refuses a bare network-facing `--host`. For an isolated trusted network,
-`npm run dev -- --host --unsafe-open-network` is the explicit escape hatch. For a real multi-user
-deployment, use accounts, TLS, and the [production deployment guide](docs/041-production-deployment.md).
+1. In the library, choose **New map**, name your mountain, and choose **Generated course** to start with terrain.
+2. Use **Edit** to reshape it, **Sculpt** for terrain brushes, **Paint** for surfaces, and **Props** for scenery and rails.
+3. Switch to **Test** and choose **Play** to ride. See the [riding guide](docs/016-ride.md) for controls and VR.
+4. Use **Save to folder…** or **File → Export… → Another Slopesmith instance** to keep an editable backup.
+5. To build a custom disc or mod, choose **File → Export… → Snowknife — Custom ISO** or
+   **Snowknife — Mod Manager**, then follow [Snowknife's repack guide](../Snowknife/REPACK.md).
 
-The same API is self-describing for programs: an AI agent (or curl) starts at `GET /api` with a personal
-access key and discovers everything by following links — creating maps, editing them register-by-register,
-uploading textures, sounds, skies, and avatars ([docs/052](docs/052-hateoas-api.md)). Open `/api/explorer`
-in a browser for the interactive reference over that same surface, and
-`npx tsx scripts/hateoas-demo.ts <url>` authors a complete demo mountain through it.
+Browser saves stay with this browser profile and site address. Server maps save on the server.
+The [library and offline guide](docs/073-map-library-and-offline.md) explains storage, backups,
+loading your own game images, sharing maps and offline use.
 
-### Extruding geometry
+## Go further
 
-In **Edit**, select an edge or patch and press **X**. The Move gizmo starts on the existing
-geometry; drag it to set the extrusion's direction and distance. **W / E / R** switch between
-Move, Rotate and Scale. **Enter** commits the preview and **Esc** cancels. **Path** mode follows
-a selected edge chain or custom path instead.
+| Task | Guide |
+|---|---|
+| Learn the editor | [Getting started](https://slopesmith.net/guides/getting-started/) and [editor tour](https://slopesmith.net/guides/editor-tour/) |
+| Build an original course | [Course authoring](docs/authoring/README.md) |
+| Inspect an imported map | [References and browser play](../Snowknife/docs/browser-play.md) |
+| Export to Unity or PS2 | [Export preflight](docs/011-export-target.md) and [portable map contract](docs/003-export-contract.md) |
+| Host a private server | [Production deployment](docs/041-production-deployment.md) and [packaged releases](docs/060-packaged-deployment.md) |
+| Develop or automate Slopesmith | [Local development](docs/074-development.md), [API](docs/052-hateoas-api.md) and [source layout](docs/024-source-layout.md) |
 
-### Subdivision cages
-
-In **Edit**, select a connected set of unlocked quad faces and choose **create subdivision cage**
-under **Topology**. The selected faces become an independent Catmull-Clark object. Move its cage
-points with **W**, rotate with **E**, or scale with **R**. Select edges and press **C** for fully sharp
-creases or **S** to smooth them. With points selected, **C** pins sharp corners to those cage points
-and **S** clears their corner marks independently of edge creases. Marked edges are orange with
-midpoint dots; marked corners use orange dots in place of pink. Yellow indicates selection.
-Open boundaries use the standard sharp boundary rule, so removing explicit creases does not close them.
-Click a cage edge, then **Shift-click** farther along the same loop to add every edge between them.
-**Ctrl-click** toggles individual edges; double-click selects the whole loop.
-
-The **Subdivision cage** panel controls levels 0–4, up to 4,096 terrain patches. Level 0 uses one
-curved Bézier patch per cage face; each higher level quadruples the patch count.
-New cages start at level 1. The **avg patch size** readout below the level shows the generated
-patches' average curved length × width in metres.
-Regular spans convert exactly to bicubic patches; patches near irregular
-vertices and crease transitions approximate the limit surface, improving at higher levels.
-Cages support save/load and undo/redo. Choose **bake subdivision cage** to retain the terrain and
-remove the cage controls before stitching or changing topology. Neighboring terrain does not follow
-an unbaked cage; bake and stitch its boundary when the shape is ready.
-Choose **revert cage to patches** to turn the coarse cage faces at their current positions back into
-editable patches instead. Append or change their topology, then create a new subdivision cage.
-Both conversions support undo.
-
-### Production shape
-
-The production package contains the frontend, Node API and Rust multiplayer relay, including their runtime
-dependencies. systemd supervises Node and Rust separately; a shared host Caddy serves HTTPS and static files
-and routes each socket to its service. Existing Apache deployments can retain their proxy during migration.
-The [packaged deployment guide](docs/060-packaged-deployment.md) covers signed releases, installation and
-automatic rollback. Immutable `/opt/slopesmith/releases/<commit>` directories are selected through an atomic
-`/opt/slopesmith/current` link; durable projects and maps stay under `/srv/slopesmith`. The
-[host operations guide](docs/041-production-deployment.md) covers capacity, backups and the existing Apache
-installation. Run exactly one API and one relay process; their in-memory rooms require additional
-coordination before either can use load-balanced replicas.
-
-Once the first administrator enrols, server management stays in the browser: invite members, assign roles,
-limit who may edit each mountain, inspect connected users, and install a guarded revision from the update
-signed release channel configured by the host operator—including a fork—or restart the supervised service from
-**Settings → Server**. The project files remain on storage you control.
-Voice is an optional, separate self-hosted LiveKit service; the Jukebox shares only public video identity,
-queue state, and timing through Slopesmith while each member keeps their video-bridge credentials in their
-own browser.
-
-### Quick Quest/mobile access through ngrok
-
-Use the account-enabled launcher when a standalone Quest, phone, or tablet needs to reach a Slopesmith instance
-running on this computer. Install and authenticate the [ngrok agent](https://ngrok.com/docs/start),
-copy `.env.example` to the gitignored `.env`, and give the editor endpoint an exact hostname:
-
-```powershell
-Copy-Item .env.example .env
-# Edit .env: SLOPESMITH_ALLOWED_HOSTS is a hostname; SLOPESMITH_LOCAL_SERVER_NGROK_URL is its https:// URL.
-npm run run:local-server
-# In a second terminal:
-npm run run:local-server:ngrok
-```
-
-`run:local-server` builds and starts Rust multiplayer alongside the account-enabled Node API and Vite,
-configuring their shared secret and relay routing automatically. Rust 1.99+ is required. The same ngrok
-tunnel carries multiplayer WebSockets; no second multiplayer tunnel is needed.
-
-Open `SLOPESMITH_LOCAL_SERVER_NGROK_URL` on the remote device. This launcher requires Slopesmith accounts and
-trusts ngrok's forwarded HTTPS metadata; do not expose the ordinary unauthenticated `npm run dev` process.
-Name only endpoints you control in `SLOPESMITH_ALLOWED_HOSTS` and stop the tunnel when the session is over.
-
-Reaching an optional local media server from a remote device needs a second, distinct endpoint of its own; the
-[Jukebox guide](docs/063-video-bridge.md#reaching-a-local-server-from-quest-or-mobile) covers that case.
-
-Most authoring features have no native dependencies. **QuadWild — native global solver** is an
-optional retopology strategy and is not bundled; install the locally patched checkout at
-`../quadwild-bimdf/` using the [QuadWild setup guide](tools/retopology/quadwild-patches/README.md). If it is not
-installed, the Retopology panel marks that strategy unavailable and requires an explicit choice of
-the built-in **Elevation loops — contour flow** strategy instead.
-
-Jukebox playback starts off and its panel starts collapsed. Turn it on in **Users → Jukebox** to join the server-wide
-video queue and plays through YouTube's official embedded player, which needs no setup. Public URLs, queue
-order, play/pause, seeking, and playback time are synchronized so members watch together; volume and mute
-remain local to each browser. Putting the movie onto authored course screens instead of the panel needs a
-frame Three.js is allowed to sample, which YouTube's iframe does not provide; the
-[Jukebox guide](docs/063-video-bridge.md) describes the optional local media server that covers that case.
-
-### Public homepage and guest riding
-
-**Users → Map permissions → share publicly** publishes the current editable mountain for guest riding.
-Its owner or a moderator can change publication. The separate **Public reference maps** dialog manages
-reference-map listings; its menu entry is currently hidden. Everything starts private.
-**Copy public link**, beside the sharing checkbox, opens that mountain directly in the guest player using
-its name, for example `/play/MyMountain`.
-Shared maps load immediately for visitors and members. No rider name or sign-in
-is required. Private or deleted links show an unavailable message. The sign-in page includes **Back to homepage**.
-The homepage `/` is the map library. Games in its sidebar share one place to browse, load, play and inspect courses.
-The sidebar offers **All maps**, **Public** and **Private**. Public contains published server maps and references;
-Private contains only custom maps saved in the browser, linked to folders or unpublished on the server.
-Game maps appear in **All maps** and their game views, and published references also appear in **Public**.
-The All maps, Public and Private sidebar rows show total map counts. Local/Server buttons filter the sources available
-in the chosen view.
-Use search and source filters to narrow the map list. Select a game and choose **Load PS2 image…**,
-**Load GameCube image…** or **Load GBA ROM…** beside its name
-to select a supported disc image or GBA ROM; the file and imported courses stay on this device.
-Games with a saved image or imported maps show a three-dot menu in that position for managing their local data.
-If only imported maps remain, the same Load action in that menu can restore the source image.
-Beside **New map**, **Load map** offers **Import from file** to create a Local or Server map from an editable ZIP,
-and **Link folder** to add an existing mountain folder to Private maps without leaving the library.
-Linked maps retain their folder connection across reloads; opening one checks for folder changes before editing.
-Folder and browser icons match the editor's save indicator. Private server maps and references use a cloud;
-public ones use a globe. Game maps with both copies stack their disc and server icons in separate boxes.
-The dropdown stays available in every library view.
-`/maps` and `/isos` forward to this library. The editor uses `/editor/<mapname>`.
-Each game's **Refresh image** rescans its saved image for current course names and inventory without
-re-extracting loaded courses. **Remove image…** forgets the source image while keeping imported courses
-playable. **Unload game…** removes that game's saved image and imported courses; other games and custom
-mountains stay in place. These controls ask before removing data.
-Signed-in members also see unpublished server mountains under **Private**. Those entries open the existing server
-mountain in the editor; published mountains appear under **Public**. Guests receive only the public server
-catalogue alongside their own local maps, and private mountains remain unavailable through public play links.
-Each custom map has **Edit**; ISO maps have **Inspect**, which opens the map as a read-only reference beside
-an empty editing workspace. Signed-in authors keep the server editor. Signed-out visitors edit locally:
-the published mountain is copied into browser storage, and references come from this device's loaded ISO maps.
-Editing, creating, importing, duplicating, and exporting mountains stay on the device. No server project is
-created or saved and no collaboration session connects. **Export… → Another Slopesmith instance** downloads an editable ZIP with
-the custom assets; **Load map → Import from file** on `/` restores one locally. Browser storage is separate from signed-in
-recovery and can be cleared by the browser. **Save to folder…** keeps `mountain.slopesmith.zip` in a folder you
-choose and updates it automatically after browser saves, including custom assets. The save icon distinguishes
-browser, folder, and server saves; click it for the location, last save time, and backup actions. Folder autosave
-requires a browser with the directory picker (such as desktop Chrome or Edge). If folder permission expires,
-choose **Resume folder autosave** from the save icon. The folder copy survives clearing site data; use
-**Load map → Link folder** on `/` to add it back to the library, then choose **Edit**. Other browsers can use **Export… → Another Slopesmith instance** and **Import from file**
-for file backups. **Export… → Snowknife — Custom ISO** or **Snowknife — Mod Manager** downloads a `.snowknife.zip` build input.
-The **Home** icon saves
-pending edits and returns to `/`. Its **Local maps** section lists browser-saved mountains, including
-imports, and **New map** starts a new local mountain. Guest edits of public maps create numbered copies such
-as `MyMountain_REV_1` and `MyMountain_REV_2`; reopening a local tile resumes that copy. **File → Rename mountain…**
-renames it without changing its identity or the public source. Local tiles have **Delete**, with a confirmation
-before removing that browser copy and its custom assets. Deleting a browser copy keeps folder copies and downloads.
-Local tiles stay local even for signed-in
-members; local copies are never uploaded automatically. Signed-in members keep their account menu in the local
-editor, including profile, settings and sign-out. Only signed-out local editors use the Home-only
-control. Sign in from the Library header to use the server editor.
-Its header uses the editor's logo and signed-in account menu. The **Editor** header link opens the editor;
-**File → Library** and **File → Exit editor** save pending changes and return home without signing out.
-GitHub, Discord and About live at the right of the library and player toolbar. On mobile, a taller header keeps
-Library and Editor visible beside chat and account icons; the chat icon carries a connection-status dot.
-The **⋯** menu contains Help, About, project links, offline information and **Return to [map]** for the last map.
-About describes using your own assets and links to the source and server setup guide.
-Map rows offer **Play**, with **Edit** for custom mountains and **Inspect** for references.
-Missing game assets link to the matching game's import view. **New map** starts an editable local mountain.
-In a game's library view, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
-Loaded courses also offer **Play** and **Inspect**. **Device storage** in the sidebar contains the control
-for clearing saved game files and imported courses from this browser.
-Primary buttons share the same highlighted style; secondary actions keep their own targets.
-**Play**, **Play in VR**, **View map**, and **Edit map** (custom mountains) or **Inspect map** (references)
-appear over the map preview.
-Click the map to choose a local start point; **Reset start** restores its default. **View map** shows the mouse
-movement legend for start placement, orbit, pan, and zoom. Hold **Alt + WASD** to move the camera.
-There is no separate map selection panel.
-Click the online-user count in the header to slide out the shared **Users** and **Chat** panel on Maps, ISO,
-or Play. Before joining, it shows the user list and nickname form. Choose **Join chat** (members choose
-**Join as** their account name) to reveal the Chat tab. Account names are reserved. Closing the panel keeps
-chat joined across public-page navigation. **Leave chat** returns to Users and lets guests edit their nickname
-before rejoining. Anonymous multiplayer continues independently of chat.
-The user list labels each map **ISO** or **Server map** and marks people in the **Same play room**.
-People on your map in another room show **Different play room**; map links preserve that room and map source.
-
-For an isolated Rust multiplayer service, run `npm run dev:multiplayer` with Rust 1.99+ installed.
-Guests use separate play connections and can invite friends into a room without occupying editor seats.
-See [the multiplayer setup guide](multiplayer/README.md) for contracts, tests, deployment, and current limits.
-Enter focuses connected chat while the panel is open; Escape closes the panel and returns control to the mountain.
-The header remembers the last public map so it can be reopened from Maps or ISO, with a labeled **Exit**
-button at the far right while playing.
-Public play hides editor bounds and fullscreen controls, with the score just below the header. **ISO** stays available
-alongside **Maps**, which returns to the catalogue. ISO availability and its load link live in the **Assets** menu.
-The lower-left ride legend follows board/on-foot and first/third-person changes; on narrow screens
-it folds into an expandable **Ride controls** tab.
-Editor Test rides keep the normal bottom-left editor chat and the Test tools panel. Press **Enter** during a
-ride to chat; sending a message or pressing **Escape** returns the keyboard to the ride.
-
-Retail courses require the visitor's own supported disc or ROM. The game sidebar includes SSX PS2 games,
-1080° Avalanche USA and Jonny Moseley Mad Trix USA PS2. Fresh Avalanche imports
-include 46 named music streams in the existing song picker, with full-track looping.
-They also preserve source terrain colours, projected baked shadows and separate
-scenery/rider light rigs. These are static layout settings; a moving sun or
-day/night cycle has not been established.
-Reload older cached courses to add these channels. See the
-[Avalanche importer limits](../Native/docs/avalanche-import.md).
-Choose an ISO or BIN for Mad Trix;
-the CUE is not needed. Its eleven courses have preliminary terrain with source baked colored lighting, sky, grind-strip,
-sign-panel, ski-audio and twelve-track music support. Sign timing, full-track music looping and surface/role mapping are approximate;
-missing riding sounds can use a Tricky map loaded in this browser.
-see the [Mad Trix importer limits](../Native/docs/madtrix-import.md).
-Original SSX courses have separate names such as
-**Snowdream (SSX)**, so both games can be loaded together. See the [SSX importer limits](../Native/docs/ssx-import.md).
-Custom mountains that borrow game assets
-are labelled **ISO optional** and remain playable without it: missing game textures render as plain
-surfaces and missing props are omitted. Custom textures, models and uploaded skies remain available, and a
-mountain whose only borrowing is the ring an uploaded sky is cut against for export carries no ISO label at
-all ([025](docs/025-skybox.md#export-contract)). Supplying an ISO
-restores its assets locally. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves
-the extracted maps in IndexedDB. The library's **All maps** and game views include local game maps, even when the server
-has never imported or published them. Local and server copies share one row, with icons for each available source.
-
-### Offline use in Chrome
-
-Open the production site once while connected, click the info icon, and wait for **Ready for offline use**
-in its panel. Offline preparation, update and error messages appear there too. You can then reopen
-the same site (or Chrome's installed app) without internet. **Maps** lists this browser's local mountains
-and loaded ISO maps; local mountains have **Play** for solo play and **Edit** for authoring. Direct local
-editor/player links work offline too, including after closing Chrome. ISO scanning and extraction also work
-offline after the app has finished preparing.
-
-For a mountain saved on the server, use **File → Save offline copy…** while connected. This opens an
-independent browser copy with its custom assets; subsequent edits stay on this device. Load any desired ISO
-donor maps on this device too. Existing local mountains, imported mountain ZIPs, and folder copies need no
-server. Use **Save to folder** or **Export… → Another Slopesmith instance** to keep a file backup; browser storage remains tied to
-this Chrome profile and site address and can be removed through Chrome's site-data settings.
-
-Production builds generate a versioned service worker with all app chunks, built-in riders and importer
-WASM. It caches static files only; account responses, server project APIs and retail files are never added
-to that cache. Project and ISO data stay in their existing IndexedDB databases. The site must use HTTPS
-(localhost also works); the development server deliberately does not register a worker. Updates prepare
-in the background. Once a complete release is ready, new visits and refreshes use it. Open tabs keep their
-existing assets and show **Reload to update**; this saves the current mountain and folder copy before
-reloading that tab. Finish open dialogs and unfinished drafts, and finish or cancel ISO loads, first.
-Other tabs keep running, and saved mountains and ISO data stay on the device. Multiplayer,
-chat and server tools require a connection. Live player status reconnects automatically when the connection
-returns. Reopen to switch back to a server workspace.
-
-The **ISO** and **Maps** tabs at the top switch between ISO management and the map browser. Both pages use
-compact map tiles. Under **ISO**, choose a disc to discover its maps, then use **Load**
-or **Unload** beside each map. Multiple ISO requirements share a **Requirements fulfilled** or
-**Requirements unfulfilled** badge; hover to see each donor map's loaded state. Requirements are derived
-from prop, texture and other game-asset references. Their ISO management
-link retains that map's name, lists its requirements, and offers **Load required maps** and a return link.
-You can load several maps: each tile shows its progress or **Queued** state, and imports run one at a time.
-Tiles reserve space for progress and messages, and update in place so loading never reshuffles the grid.
-Cancel a loading or queued map from its tile; other queued maps continue.
-Leaving the library during a scan or load asks for confirmation because it cancels the active load and queued maps.
-Selecting an ISO scans it without loading every map. **Clear** removes loaded ISO maps;
-browser storage may also evict them. Your ISO and extracted retail files are never uploaded.
-
-Collision sounds use the event lookup recovered from that ISO's boot executable. For courses cached by
-an older importer, choose the ISO once more when prompted: the scan repairs only the sound metadata and
-keeps the cached course assets. Local sky tiles clamp their texture edges and render outside course fog;
-the open top uses a fill derived from the upper tile edges.
-
-Guest riders share multiplayer poses, world interactions, and server chat with members on the same
-mountain or reference course. Guests cannot edit, browse private maps, or call member APIs. Public
-reference listings expose names and ISO course slots; the server still requires member authentication to
-stream retail terrain or art. Retail disc slots have shared riding rooms available to local ISO users.
-Unpublishing removes the server listing and closes guest sessions for unpublished custom/reference rooms;
-it does not remove a visitor's own local disc courses or their retail riding rooms.
-Reference exports that mix authored and retail files must be published through their editable mountain;
-their flattened model files cannot be safely separated back into authored and ISO content.
-Editable mountains containing imported retail effect graphs can be published; the public document omits
-those graphs so their terrain remains playable without distributing imported effect data.
-
-The checked-in browser importer runtime keeps ordinary builds independent of native tools. After changing
-the Native import code, install and activate Emscripten **6.0.12**, set `EMSDK`, and run
-`npm run build:iso-importer`. The build script copies JavaScript, WebAssembly, and dependency notices into
-`public/iso-importer/`. `test/public-home.test.ts` exercises publication, guest isolation, riding, chat,
-member multiplayer, and a synthetic ISO extraction/cache reload without retail data.
-
-### Load a reference in the editor
-
-Follow the [import-to-browser guide](../Snowknife/docs/browser-play.md) to build Snowknife and populate
-the repository's `Maps/` folder. Slopesmith reads that output directly; no glTF conversion is needed.
-In **Scene ▸ Reference**, choose the imported mountain and wait for it to load. Then enter **Test**,
-select **Reference** as the ride target, and click **Play**.
-
-## Formatting
-
-[`Slopesmith/.prettierrc.json`](.prettierrc.json) defines the source style: two spaces, single quotes,
-semicolons, and a 120-column wrapping target. Prettier is pinned in `devDependencies` and installed by
-`npm ci` in `Slopesmith/`; no global formatter is needed. Run from the repository root:
-
-```text
-npm run format:slopesmith        # apply formatting
-npm run format:slopesmith:check  # check without writing; exits nonzero on differences
-```
-
-Inside `Slopesmith/`, the equivalent commands are `npm run format` and `npm run format:check`.
-They cover hand-written TypeScript, JavaScript, CSS, and HTML in `src/`, `test/`, `scripts/`, `tools/`,
-and the top-level configuration and entry point, plus Rust sources in `multiplayer/` through `cargo fmt`.
-Rust formatting requires Cargo with the rustfmt component (`rustup component add rustfmt`) and uses
-rustfmt's default rules. Generated contracts, vendored code, upstream patches,
-build output, and local map/workspace data are excluded by [`.prettierignore`](.prettierignore).
-Line endings match [`.gitattributes`](../.gitattributes): LF for scripts and CRLF for CSS.
-Embedded languages in template strings are left intact. Prettier runs as an explicit local command;
-CI also checks Rust formatting with `cargo fmt --check`. ESLint and Clippy remain separate correctness checks.
-
-## Editing workflow
-
-Every mode edits or observes the same mountain document:
-
-| Mode | Purpose | Details |
-|---|---|---|
-| Info | Inspect the mountain, references, and scene settings | [Design](docs/001-design.md) |
-| Edit | Transform and restructure points, edges, patches, and Bézier controls | [Course model](docs/002-course-model.md), [topology surgery](docs/017-topology-surgery.md) |
-| Sculpt | Raise, lower, pull, push, smooth, flatten, grab, and nudge the surface | [Sculpt mode](docs/004-sculpt-mode.md) |
-| Paint | Assign ride surfaces and terrain textures | [Texture paint](docs/005-texture-paint.md) |
-| Props | Place models, lights, rails, groups, pickups, and imported glTF assets | [Scene authoring docs](docs/README.md#scene-content) |
-| Effects | Author and inspect portable effect graphs and prop attachments | [Effects editor](docs/026-effects-editor.md) |
-| Test | Ride the mountain or a loaded reference with keyboard, touch, controller, or WebXR | [Test ride](docs/016-ride.md) |
-
-The saved terrain is a general quad control mesh, not a heightfield or fixed ribbon. One required
-Catmull-Rom racing line supplies the start, respawn direction, exported path, and high-level channel
-shape; the mesh owns the actual terrain. Preview, ride contact, and export use the same Bézier data.
-
-## Mountains, references, and export
-
-Editable mountains live as revisioned projects under the API-owned, gitignored `workspace/` folder.
-Use **File → Settings → Server → Local storage** to choose the workspace and `Maps/` locations. See
-[Local Projects](docs/035-local-projects.md).
-
-**File → Export… → Another Slopesmith instance** downloads the current editable revision and its complete mountain-local asset library as
-`<NAME>-r<REVISION>-<UTC-TIMESTAMP>.slopesmith.zip`. **Load map → Import from file** asks for the new workspace mountain's name, then creates it from
-one of those archives; it never overwrites the source mountain or an existing name. **Duplicate mountain**
-asks for the copy's name and makes the same kind of fork inside one server without sending asset bytes through
-the browser. History checkpoints can be exported in the same portable
-mountain format from **File → History…**.
-
-The File menu keeps actions that affect the open project together under the mountain's actual name: History, Rename,
-Duplicate, Export Mountain, Export Map, and the admin-only Delete Mountain action. Delete removes the
-mountain's revisions, checkpoints, and local assets and retires its name; it does not silently reuse that name.
-
-The Reference panel can load an imported or previously exported map read-only for scale, terrain,
-props, effects, textures, audio, and course-line study. It does not convert a retail mountain into an
-editable project; **new mountain from this course** instead seeds a fresh document from its racing line.
-Scene’s launcher reads **Reference: `<name>`**, or **Reference: None** when nothing is loaded.
-Course, AI Paths, Sound, Lighting, Skybox, God Rays, and Camera use a **Mountain / Reference** split button;
-shared display and preview controls sit above it. Each section remembers its selected side. Effects/Test
-selectors retain the **Reference** role label.
-See [Custom Map References](docs/036-authored-map-references.md).
-
-In **Scene → AI Paths**, the reference map’s shared AI routes are selectable objects. Opening the category
-shows the path overlay; click a path in the viewport to highlight it and inspect its events.
-Paths use a green–orange–red rating scale; dashed routes are not respawnable. Selection keeps the rating
-colour with a dark outline for contrast on snow. Terrain-covered sections and their event markers remain
-faintly visible, matching the wireframe fade. One combined view uses each path's rating colour between event
-spans and shows event colours and symbols across the whole network, with a matching legend.
-Jumps use triangles, cruise speeds circles, reset
-regions diamonds, path reselection flags, unidentified events squares, and disabled slots crosses.
-The expanded **Events** list sits directly below the legend, with matching symbols before the event names.
-**Reference path** properties and **Geometry** follow it, showing line rating, respawn permission, initial grid
-slots, length, segment count and average segment length. Numbered markers and coloured ranges on the selected
-route match the event list, including point events. Event titles omit raw type IDs, which remain in the details.
-Event details
-retain raw values, decoded jump speeds and trick flags, and cruise-speed targets. Browser AI riders use full
-jump-event ranges for approach and charge release, preserving source order when ranges overlap. Type 300 is labelled
-**Reselect path**: browser riders reconsider their route when crossing its point or range, and may keep the
-current path. Labels describe observed SSX Tricky behavior rather than recovered original event names;
-meanings in other games remain unconfirmed. Reference paths remain read-only.
-
-On a custom mountain, choose **Test → AI settings → Record AI run** to launch the ride with recording active.
-Ride your line, then press **Esc** to stop and save it; Stop also saves. Recording automatically samples the route,
-keeps extra detail through turns and jumps, and creates overlapping sections with jump events.
-In **Scene → AI Paths → Mountain**, click a path in the viewport to inspect its events and geometry, rename it,
-adjust its rating or respawn permission, or delete it. Click a node on a recorded path and drag its gizmo to
-move it; event ranges follow their segments. Enable **Reselect path here** on a selected node to place a
-branch-choice flag, or disable it to remove the event. The AI reconsiders nearby routes at that point and
-may keep its current path. Recording, node edits and event placement support undo and save/reload.
-Selected nodes also offer **Insert node before**, **Insert node after**, and **Delete node**. Insertion selects
-a new midpoint to move with the gizmo. Deletion keeps at least two nodes, adjusts event ranges and removes
-the deleted node's reselect flag. At forks, different line ratings let rider moods favor different branches;
-equal ratings usually favor the closest route rather than splitting riders randomly.
-**Use auto-generated paths** controls whether course-derived routes appear, feed AI riders and export in AIP/SOP.
-Turn it off to use only recorded paths; with no recordings, there are no AI routes. Generated paths show
-read-only details and follow edits to the course.
-
-SSX Mod Manager loose-level ZIPs can be converted directly into that reference contract when Snowknife and a
-clean Tricky disc dump are available in the surrounding OpenSlope checkout:
-
-```powershell
-npm run import:mod-map -- "C:\Mods\My Course.zip" "C:\discs\ssx-tricky.iso" ALOHA MY_COURSE
-```
-
-The command infers the replaced course slot from `DATA/MODELS/<slot>.map`, rebuilds the native level archive
-inside a temporary copy of the ISO, and publishes the completed folder beneath the configured Maps root. It
-never writes to the supplied ISO and refuses to overwrite an existing map. Run
-`npm run import:mod-map -- help` for destination, override, environment-variable, and diagnostic-workspace
-options. Older mods are handled conservatively: missing optional MAP labels are repaired only in temporary
-data, dangling effect-node targets are audited and replaced with the SSF format's native null value so valid
-effects survive, structurally corrupt SSFs are reported and omitted as `Effects.json`, and a non-retail sky is
-kept as merged geometry even when it cannot provide editable ring metadata.
-
-**File → Export… → Snowknife — Custom ISO** or **Snowknife — Mod Manager** downloads `<NAME>.snowknife.zip`, containing the
-canonical map files, a provenance record, and a `Repack.md` with build commands. The dialog shows the selected
-destination's command and links to get Snowknife and SSX Mod Manager. Snowknife accepts this ZIP
-directly as the custom-map argument to `repack` for an ISO or, with `--mod-manager`, a mod-manager ZIP.
-All three export choices download ZIPs; **Save to folder…** remains a separate editable autosave destination. Apart from the explicit offline ZIP importer above, the editor does not bundle or
-invoke Snowknife: it produces one portable map, while the separately licensed [Snowknife](../Snowknife/README.md) handles glTF, Unity,
-and disc operations. The boundary is documented in the [export contract](docs/003-export-contract.md)
-and [export preflight guide](docs/011-export-target.md).
-
-Editor coordinates are metres, Y-up, and right-handed. Export converts to the original raw map space;
-the exact transform and round-trip rules live in the [export contract](docs/003-export-contract.md).
-
-## Documentation and source
-
-- [Slopesmith documentation index](docs/README.md) — design, editing, scene systems, export, operation, and experiments.
-- [Original-course authoring](docs/authoring/README.md) — vocabulary and the code-driven scored build loop.
-- [Agent layer](docs/029-agent-layer.md) — inspect and drive the WebGL editor through real browser UI interactions.
-- [`tools/`](tools/) — terrain studies, prop and texture recipes, conditioning, and offline generators.
-- [Source layout](docs/024-source-layout.md) — module ownership and dependency boundaries.
-
-Shared domain logic lives under `src/core/`; the browser under `src/app/`; the Node API under
-`src/server/`. `scripts/` holds dev, build and ops entry points, `test/` the deterministic suite that
-`npm run test:full` discovers, and `tools/` the offline authoring, analysis and diagnostic commands. Run
-the complete repository gate from the parent folder with `npm run verify`; use `npm test` while editing for
-the deliberately short, load-independent subset.
+The [documentation index](docs/README.md) covers terrain tools, scene content, audio, collaboration and implementation details.
 
 ## Content and license
 
-No game assets are included. Original authoring needs only this repository. Optional reference features
-read local `Maps/` data generated from a user-supplied disc image; users must determine whether making and
-using that image is permitted under applicable law and contractual terms. Those files and the workspace are
-gitignored and must not be redistributed.
+No game assets are included. Keep disc-derived maps and assets local/private; see
+[LEGAL.md](../LEGAL.md). Public Unity projects use authored or rights-cleared assets and
+`snowknife unity --public`.
 
-Every export records whether content is authored/procedural, user-supplied, retail-derived, or unknown.
-`snowknife unity --public` accepts only a distributable authored path, fails closed on retail-derived or
-unknown content, and requires an explicit rights confirmation for user-supplied files.
-
-Slopesmith is independent and unofficial, and is not affiliated with or endorsed by Electronic Arts.
-It is licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE) for scope and attribution. The
-[`quadwild-patches`](tools/retopology/quadwild-patches/README.md) subtree carries its own scoped licensing terms.
+Slopesmith is independent and unofficial. It is licensed under [Apache-2.0](LICENSE);
+see [NOTICE](NOTICE). The optional [QuadWild patches](tools/retopology/quadwild-patches/README.md)
+have their own scoped licensing terms.

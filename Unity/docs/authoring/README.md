@@ -2,6 +2,8 @@
 
 Unity-side workflows for turning authored map data into a rideable scene.
 
+- [Project setup and menu reference](01-project-setup.md) covers requirements, staging, first import,
+  Setup All and individual menu commands.
 - [Authored map → ride-ready Unity scene](00-pipeline.md) covers bundle creation, project bootstrap,
   staging, import, setup, and automation details.
 

@@ -131,3 +131,16 @@ editor headlessly: an **unfocused** editor throttles the main thread — editor 
 return black (render the game view with a positioned camera and a far clip past the ~2.7 km mountain instead), and a big
 recompile or a ~74 s level import triggers a domain reload / exceeds the plugin's main-thread wait, so a call can return a
 timeout while the work keeps running — confirm from the console log rather than re-running.
+
+## Source map
+
+Paths below are relative to `Unity/Basis/`.
+
+| Path | Owns |
+|---|---|
+| `Editor/BasisImportAll.cs` | Shared importer entrypoint and Basis scene finalization |
+| `Editor/BasisWiring.cs` | Neutral marker-to-Basis behavior realization |
+| `Editor/BasisSetupAll.cs` | Post-import player, board, UI, and scene setup |
+| `Riding/` | Rideable board, rail, scoring, audio, and network synchronization |
+| `World/` | Gems, effects, course triggers, props, breakables, animation, culling, flight, and boards |
+| `Shaders/` | URP counterparts of the shared OpenSlope terrain, prop, particle, and effect shaders |

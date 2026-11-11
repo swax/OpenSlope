@@ -1,7 +1,21 @@
 # Slopesmith documentation
 
-The top-level [Slopesmith README](../README.md) covers installation and the normal editor workflow.
-This index collects design decisions, implementation contracts, and specialist runbooks.
+The [Slopesmith README](../README.md) introduces the editor and gives a first-course walkthrough.
+This index collects user guides, design decisions, implementation contracts and specialist runbooks.
+
+## Start here
+
+- [Getting started](https://slopesmith.net/guides/getting-started/) and the
+  [editor tour](https://slopesmith.net/guides/editor-tour/) — learn the editor.
+- [073 — Map library, local saves and offline use](073-map-library-and-offline.md) — create, back up,
+  import, share and ride maps, with or without a server connection.
+- [016 — Test ride](016-ride.md) — riding controls, devices, VR and AI riders.
+- [Course authoring](authoring/README.md) — design and build an original course.
+- [074 — Local development](074-development.md) — commands, formatting, browser-importer builds
+  and access from Quest/mobile.
+
+## Documentation conventions
+
 Original SSX formats, behavior, measured constants, and presentation rules are
 defined only in Trailmap (`../../Trailmap/specs/README.md` in the local Trailmap workspace). A Slopesmith document
 may explain which chapter its code implements, but owns only editor data flow,
@@ -88,6 +102,8 @@ Start with the [authoring index](authoring/README.md) for the editor prerequisit
 
 - [038 — Hosted Servers](038-hosted-sessions.md) — one server per group, a member as username and password, the
   browser as the whole client.
+- [041 — Production Deployment](041-production-deployment.md) — server setup, storage and backups.
+- [060 — Packaged Deployment](060-packaged-deployment.md) — signed releases, installation and rollback.
 - [039 — Concurrent Editing](039-concurrent-editing.md) — the register as the unit of concurrency; last-writer-wins
   for everything but topology.
 - [040 — History and Recovery](040-history-and-recovery.md) — whole-document checkpoints, thinned with age, restored
@@ -103,7 +119,7 @@ Start with the [authoring index](authoring/README.md) for the editor prerequisit
   portable folder and only `snowknife` knows a disc.
 - [029 — Agent Layer](029-agent-layer.md)
 - [035 — Local Projects](035-local-projects.md)
-- [041 — Production Deployment](041-production-deployment.md)
+- [074 — Local Development](074-development.md)
 - [052 — HATEOAS API](052-hateoas-api.md) — the discoverable REST surface an AI agent authors a mountain through.
 - [`ideas/`](ideas/README.md) — staged proposals and superseded assessments that are not product contracts; its
   index says where each one stands.
