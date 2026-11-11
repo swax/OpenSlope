@@ -267,8 +267,10 @@ export function createSurfaceFromDrawnBoundary(
 export function stitchTouchingSurfaceBoundaries(doc: QuadMeshDoc, id: string): QuadMeshDoc {
   const source = doc.surfaces?.find(s => s.id === id);
   if (!source) throw new Error('Select an editable surface first.');
+  if (source.subdivision) throw new Error('Bake the subdivision cage before stitching.');
   const candidates = new Set<number>();
   for (const target of doc.surfaces ?? []) {
+    if (target.subdivision) continue;
     if (target.id === id) continue;
     for (const side of ['u0', 'u1', 'v0', 'v1'] as const)
       for (const p of surfaceSideControls(doc, target, side)) candidates.add(p.vertex);

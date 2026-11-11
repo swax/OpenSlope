@@ -9,6 +9,7 @@ import {
   type MeshAdjacency,
 } from '../topology';
 import { directedEdgeKey, liveQuadEdges, readVertex, undirectedEdgeKey } from '../primitives';
+import { assertSubdivisionTopology } from '../subdivision-topology';
 
 /**
  * The shared op contract every topology-surgery op routes through (docs/017 "The op contract"):
@@ -364,6 +365,7 @@ export function finishMeshRewrite(base: QuadMeshDoc, raw: MeshRewrite): { doc: Q
   assignMap(doc, 'quadLocked', compact.quadLocked);
   assignMap(doc, 'quadTwist', compact.quadTwist);
   assignMap(doc, 'quadLabels', compact.quadLabels);
+  assertSubdivisionTopology(doc);
   const survived = new Set([...compact.vertexIds, ...compact.quadIds]);
   retireMeshIds(
     doc,

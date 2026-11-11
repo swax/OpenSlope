@@ -913,6 +913,15 @@ function synchronizeStitchControls(doc: QuadMeshDoc): QuadMeshDoc {
 
 /** Evaluate a dependency graph first, then atomically install shared topology. No source controls are welded. */
 export function evaluateSurfaceStitches(doc: QuadMeshDoc): QuadMeshDoc {
+  // Subdivision cages have independent face charts and cannot participate until baked.
+  if (doc.surfaces?.some(s => s.subdivision)) {
+    const ordinary = { ...doc, surfaces: doc.surfaces.filter(s => !s.subdivision) };
+    const result = evaluateSurfaceStitches(ordinary);
+    return {
+      ...result,
+      surfaces: doc.surfaces.map(s => (s.subdivision ? s : result.surfaces!.find(next => next.id === s.id)!)),
+    };
+  }
   doc = synchronizeStitchControls(doc);
   const surfaces = doc.surfaces ?? [];
   if (!surfaces.length) return doc;
@@ -1255,6 +1264,15 @@ export function addSurfaceStitch(
 ): QuadMeshDoc {
   const owner = doc.surfaces?.find(s => s.id === surface);
   if (!owner) throw new Error('Select an editable surface boundary first.');
+  const forbidden = doc.surfaces?.filter(s => s.subdivision) ?? [];
+  const target = targetRef;
+  if (
+    owner.subdivision ||
+    ('surface' in target
+      ? forbidden.some(s => s.id === target.surface)
+      : forbidden.some(s => target.vertices.some(id => s.vertices.includes(id) || s.controls.flat().includes(id))))
+  )
+    throw new Error('Bake the subdivision cage before stitching.');
   const range = [...source.range].sort((a, b) => a - b) as [number, number];
   if (range[1] - range[0] < EPS || range.some(t => t < -EPS || t > 1 + EPS))
     throw new Error('Select a nonzero boundary span.');
@@ -1376,7 +1394,7 @@ export function selectedSurfaceBoundary(
   const indices = nameIndex(doc.vertexIds),
     requested = [...new Set(edges.flat())];
   for (const s of doc.surfaces ?? []) {
-    if (s.id === exclude) continue;
+    if (s.id === exclude || s.subdivision) continue;
     // A shared corner can be picked as a source point, a generated corner or an ordinary host
     // vertex. All of those identities describe the same boundary station; a span may mix them.
     const stations = new Map(sides.map(side => [side, new Map<string, number>()]));

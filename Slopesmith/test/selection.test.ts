@@ -15,6 +15,7 @@
  */
 import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { getVertex } from '../src/core/doc/doc-edit';
+import { createSubdivisionCage } from '../src/core/mesh/subdivision-object';
 import { tombstoned } from '../src/core/doc/ids';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import {
@@ -216,6 +217,65 @@ function editor(doc = freshGrid()) {
     log: noop,
   });
   return { store, session, viewport };
+}
+
+// ---- subdivision cage ranges use the source topology and keep the same selection modifier semantics -------
+{
+  const source = freshGrid(),
+    { doc, surface } = createSubdivisionCage(
+      source,
+      source.quads.map((_, i) => i),
+      1,
+    ),
+    { store, session } = editor(doc);
+  const point = (r: number, c: number) =>
+    surface.controls[0].find(id => {
+      const at = doc.vertexIds.indexOf(id) * 3;
+      return doc.vertices[at] === r * SPACING && doc.vertices[at + 2] === c * SPACING;
+    })!;
+  const named = (r: number): [string, string] => [point(r, 2), point(r + 1, 2)].sort() as [string, string];
+  const pick = (r: number, mode: 'replace' | 'range' | 'toggle') =>
+    session.viewportCallbacks.onSelectEdge?.(edgeIndex(store.mdoc, named(r))!, mode);
+  pick(0, 'replace');
+  const anchor = store.anchorEdge;
+  pick(3, 'range');
+  check(
+    store.edgeSel.length === 4 && [0, 1, 2, 3].every(r => store.edgeSel.some(e => e.join() === named(r).join())),
+    'subdivision: Shift-click selects both endpoints and every intermediate edge',
+  );
+  pick(4, 'range');
+  check(
+    store.edgeSel.length === 5 && store.anchorEdge === anchor,
+    'subdivision: repeated Shift-click extends from the original anchor',
+  );
+  pick(2, 'toggle');
+  check(
+    store.edgeSel.length === 4 && !store.edgeSel.some(e => e.join() === named(2).join()),
+    'subdivision: Ctrl-click still toggles one edge out of the range',
+  );
+  pick(4, 'replace');
+  pick(1, 'range');
+  check(
+    store.edgeSel.length === 4 && [1, 2, 3, 4].every(r => store.edgeSel.some(e => e.join() === named(r).join())),
+    'subdivision: Shift-click also selects a run in the reverse direction',
+  );
+  check(store.mdoc === doc, 'subdivision: range selection does not edit the cage document');
+  session.revertSubdivision(surface.id);
+  flushFrames();
+  check(
+    !store.mdoc.surfaces?.length && store.mdoc.quads.length === source.quads.length,
+    'subdivision: Revert returns the coarse cage to regular patches',
+  );
+  check(
+    store.cellSel.length === source.quads.length && !store.edgeSel.length && store.anchorCell === store.cellSel[0],
+    'subdivision: converted patches become the active selection for further editing',
+  );
+  session.createSubdivision();
+  flushFrames();
+  check(
+    store.mdoc.surfaces?.[0].subdivision?.faces.length === source.quads.length,
+    'subdivision: the restored patch selection can be subdivided again',
+  );
 }
 
 // ---- Create Patches fills multiple selected holes and selects their newly minted stable identities --------

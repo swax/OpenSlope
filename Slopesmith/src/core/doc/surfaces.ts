@@ -65,6 +65,42 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
         ))
     );
   };
+  const subdivisionHistory = (s: SurfaceObject) => {
+    const cage = s.subdivision!;
+    if (
+      s.guides ||
+      s.stitches?.length ||
+      s.controls.length !== 1 ||
+      !names(s.controls[0]) ||
+      s.controls[0].length < 4 ||
+      s.controls[0].length > 4096 ||
+      new Set(s.controls[0]).size !== s.controls[0].length ||
+      !Number.isInteger(cage.level) ||
+      cage.level < 1 ||
+      cage.level > 4 ||
+      !Array.isArray(cage.faces) ||
+      !cage.faces.length ||
+      cage.faces.length > 1024 ||
+      cage.faces.length * 4 ** cage.level > 4096 ||
+      !Array.isArray(cage.creases)
+    )
+      return false;
+    const controls = new Set(s.controls[0]),
+      edges = new Set<string>();
+    if (
+      cage.corners !== undefined &&
+      (!names(cage.corners) ||
+        new Set(cage.corners).size !== cage.corners.length ||
+        cage.corners.some(id => !controls.has(id)))
+    )
+      return false;
+    for (const face of cage.faces) {
+      if (!names(face) || face.length !== 4 || new Set(face).size !== 4 || face.some(id => !controls.has(id)))
+        return false;
+      face.forEach((a, i) => edges.add([a, face[(i + 1) % 4]].sort().join('>')));
+    }
+    return cage.creases.every(e => names(e) && e.length === 2 && edges.has([...e].sort().join('>')));
+  };
   const result = value.filter((raw): raw is SurfaceObject => {
     if (!raw || typeof raw !== 'object') return false;
     const s = raw as SurfaceObject;
@@ -80,14 +116,16 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
         (!Number.isFinite(s.fitToleranceM) || s.fitToleranceM <= 0 || s.fitToleranceM > s.patchSizeM)) ||
       !Array.isArray(s.controls) ||
       s.controls.length > 1024 ||
-      (s.guides
-        ? !guideHistory(s)
-        : s.controls.length < 4 ||
-          s.controls.some(row => !names(row) || row.length < 4 || row.length !== s.controls[0].length) ||
-          s.controls.length * s.controls[0].length > 4096 ||
-          new Set(s.controls.flat()).size !== s.controls.flat().length ||
-          !knotVector(s.knotsU, s.controls[0].length) ||
-          !knotVector(s.knotsV, s.controls.length)) ||
+      (s.subdivision
+        ? !subdivisionHistory(s)
+        : s.guides
+          ? !guideHistory(s)
+          : s.controls.length < 4 ||
+            s.controls.some(row => !names(row) || row.length < 4 || row.length !== s.controls[0].length) ||
+            s.controls.length * s.controls[0].length > 4096 ||
+            new Set(s.controls.flat()).size !== s.controls.flat().length ||
+            !knotVector(s.knotsU, s.controls[0].length) ||
+            !knotVector(s.knotsV, s.controls.length)) ||
       !names(s.vertices) ||
       (s.outputKeys !== undefined && (!names(s.outputKeys) || s.outputKeys.length !== s.vertices.length)) ||
       (s.fitted !== undefined &&

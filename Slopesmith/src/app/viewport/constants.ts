@@ -125,6 +125,8 @@ export const EDGE_PICK_PX = 14; // generous screen-space edge band; corners stil
  *  pulling the surface toward them without ever touching — drawn as circles, the prospective pull targets. */
 export const CTRL_NET_COLOR = 0x6e82b0; // the on-surface iso-grid (the real surface the cell produces) — a soft, low-saturation slate blue, the cool controlled-surface against the warm cage
 export const CTRL_CAGE_COLOR = 0xff5cc8; // the control CAGE (lattice + handle circles + corner dots): pink, matching the tangent-handle nubs a selected corner shows — the controlling cage against the cool iso-grid
+export const SUBDIVISION_SHARP_EDGE_COLOR = 0xff8c28;
+export const SUBDIVISION_SHARP_CORNER_COLOR = SUBDIVISION_SHARP_EDGE_COLOR;
 export const CTRL_NET_LINE_WIDTH = 1.0; // the iso-grid, fat-line px (thin — a subtle surface grid)
 export const CTRL_NET_PT_PX = 4; // each on-surface CORNER control-point dot, px
 export const CTRL_HANDLE_PX = 7; // each floating HANDLE control point, drawn as a circle (a prospective pull target), px

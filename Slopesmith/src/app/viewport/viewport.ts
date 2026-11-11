@@ -2973,6 +2973,9 @@ export class Viewport {
    * is not a reason to re-tessellate a mountain, and not running them would be a selection that never moves.
    */
   refreshMountainOverlays(doc: EditDoc, selected: number | null, selectedKnots: readonly number[]) {
+    // A sharpness mark can change without moving terrain (notably on an already sharp boundary).
+    this.meshDoc = doc;
+    this.cageLayer.updateSourceSharpness(doc, doc.vertices);
     // bigger handles: a mountain is viewed from much further away than a course
     this.syncKnots(
       doc.course.knots.map(k => k.pos),

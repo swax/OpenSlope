@@ -323,8 +323,10 @@ export interface SurfaceObject {
   id: string;
   name: string;
   origin: 'profiles' | 'boundary' | 'legacy';
-  /** Guide paths when guides is present; otherwise a legacy B-spline control net [V][U]. */
+  /** Guide paths, one row of subdivision cage vertices, or a legacy B-spline control net [V][U]. */
   controls: string[][];
+  /** Fixed cyclic quad topology for a Catmull-Clark cage. Controls contain one row of unique vertices. */
+  subdivision?: { faces: string[][]; creases: [string, string][]; corners?: string[]; level: number };
   /** Complete shape source: explicit cubic curves along axis. Reference is retired file history only. */
   guides?: { axis: 'U' | 'V'; at: number; knots: number[]; reference?: V3[][] }[];
   /** Retired rest-surface history, accepted when reading old files. Never a shape input. */
@@ -347,7 +349,7 @@ export interface SurfaceObject {
   fitted?: { domain: LoftDomain; controls: V3[] }[];
   /** Stable local identities for generated vertices, parallel with vertices. */
   outputKeys?: string[];
-  evaluated: { points: V3[][]; patchSizeM: number; fitToleranceM?: number };
+  evaluated: { points: V3[][]; patchSizeM: number; fitToleranceM?: number; subdivision?: string };
   error?: string;
 }
 

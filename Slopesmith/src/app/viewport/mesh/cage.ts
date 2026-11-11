@@ -36,6 +36,8 @@ import {
   CAGE_POINT_COLOR,
   CAGE_TEAR_COLOR,
   CTRL_CAGE_COLOR,
+  SUBDIVISION_SHARP_EDGE_COLOR,
+  SUBDIVISION_SHARP_CORNER_COLOR,
   FREE_POINT_AXIS_COLORS,
   FREE_POINT_AXIS_MAX_M,
   FREE_POINT_AXIS_SHARE,
@@ -67,9 +69,18 @@ function appendPatchInteriorLattice(out: number[], cp: readonly (readonly number
   for (let col = 1; col <= 2; col++) for (let row = 0; row < 3; row++) segment(row * 4 + col, (row + 1) * 4 + col);
 }
 
+function writeGeometryAttribute(geometry: THREE.BufferGeometry | null, name: 'position' | 'color', values: number[]) {
+  if (!geometry) return;
+  const attribute = geometry.getAttribute(name);
+  if (attribute instanceof THREE.BufferAttribute && attribute.array.length === values.length) {
+    attribute.array.set(values);
+    attribute.needsUpdate = true;
+  } else geometry.setAttribute(name, new THREE.BufferAttribute(new Float32Array(values), 3));
+}
+
 function setGeometryPositions(geometry: THREE.BufferGeometry | null, positions: number[]) {
   if (!geometry) return;
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  writeGeometryAttribute(geometry, 'position', positions);
   geometry.boundingBox = null;
   geometry.boundingSphere = null;
 }
@@ -148,6 +159,9 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   let sourcePointVertices: number[] = [];
   let sourceLineGeometries: THREE.BufferGeometry[] = [];
   let sourceEdges: [number, number][] = [];
+  let sourceSharpEdgeGeometry: THREE.BufferGeometry | null = null;
+  let sourceSharpEdges: [number, number][] = [];
+  let sourceSharpnessStamp: string | undefined;
   let authoredPole3Geometry: THREE.BufferGeometry | null = null;
   let authoredPole3Vertices: number[] = [];
   let authoredPole5Geometry: THREE.BufferGeometry | null = null;
@@ -228,6 +242,9 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     sourcePointVertices = [];
     sourceLineGeometries = [];
     sourceEdges = [];
+    sourceSharpEdgeGeometry = null;
+    sourceSharpEdges = [];
+    sourceSharpnessStamp = undefined;
     authoredPole3Geometry = null;
     authoredPole3Vertices = [];
     authoredPole5Geometry = null;
@@ -374,6 +391,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
       );
       const pointPositions = sourcePointVertices.flatMap(v => [corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]]);
       const sourceGeometry = new THREE.BufferGeometry();
+      sourceGeometry.name = 'source-cage-points';
       sourcePointGeometry = sourceGeometry;
       sourceGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointPositions), 3));
       const sourceSegments = (doc.freeEdges ?? []).flatMap(([a, b]) => {
@@ -393,8 +411,17 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         addCageLines(cageGroup, sourceSegments, CTRL_CAGE_COLOR, 0.9, false, 12),
         addCageLinesBehind(cageGroup, sourceSegments, CTRL_CAGE_COLOR, 0.9, 12),
       ].filter((g): g is THREE.BufferGeometry => !!g);
+      sourceLineGeometries.forEach(g => {
+        g.name = 'source-cage-edges';
+      });
       addCagePoints(cageGroup, sourceGeometry, CTRL_CAGE_COLOR, PINNED_CAGE_POINT_PX, false, 12);
       addCagePointsBehind(cageGroup, sourceGeometry, CTRL_CAGE_COLOR, PINNED_CAGE_POINT_PX, 12);
+      sourceSharpEdgeGeometry = new THREE.BufferGeometry();
+      sourceSharpEdgeGeometry.name = 'subdivision-sharp-edges';
+      setGeometryPositions(sourceSharpEdgeGeometry, []);
+      addCagePoints(cageGroup, sourceSharpEdgeGeometry, SUBDIVISION_SHARP_EDGE_COLOR, 5, false, 12);
+      addCagePointsBehind(cageGroup, sourceSharpEdgeGeometry, SUBDIVISION_SHARP_EDGE_COLOR, 5, 12);
+      updateSourceSharpness(doc, corners);
     }
     if (doc && eh) addFreePointAxes(doc, corners, adj, eh, ghost);
     // Only explicitly pinned edge / patch cages are batched here. Their full cage gets a normal depth-tested
@@ -705,6 +732,47 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     lineAttr.needsUpdate = true;
   }
 
+  /** Source colors follow explicit authoring marks, independently of seam angle, locks and selection. */
+  function updateSourceSharpness(doc: QuadMeshDoc, positions: readonly number[]) {
+    if (!sourcePointGeometry) return;
+    const cages = (doc.surfaces ?? []).flatMap(s => (s.subdivision ? [s.subdivision] : []));
+    const stamp = JSON.stringify(cages.map(s => [s.corners, s.creases]));
+    const namedKey = (a: string, b: string) => [a, b].sort().join('>');
+    if (stamp !== sourceSharpnessStamp) {
+      const corners = new Set(cages.flatMap(s => s.corners ?? []));
+      const edges = new Set(cages.flatMap(s => s.creases.map(([a, b]) => namedKey(a, b))));
+      const normal = new THREE.Color(CTRL_CAGE_COLOR),
+        sharpCorner = new THREE.Color(SUBDIVISION_SHARP_CORNER_COLOR),
+        sharpEdge = new THREE.Color(SUBDIVISION_SHARP_EDGE_COLOR);
+      writeGeometryAttribute(
+        sourcePointGeometry,
+        'color',
+        sourcePointVertices.flatMap(v => (corners.has(doc.vertexIds[v]) ? sharpCorner : normal).toArray()),
+      );
+      const lineColors = sourceEdges.flatMap(([a, b]) =>
+        Array.from({ length: CAGE_EDGE_SEG * 2 }, () =>
+          (edges.has(namedKey(doc.vertexIds[a], doc.vertexIds[b])) ? sharpEdge : normal).toArray(),
+        ).flat(),
+      );
+      for (const geometry of sourceLineGeometries) writeGeometryAttribute(geometry, 'color', lineColors);
+      sourceSharpEdges = sourceEdges.filter(([a, b]) => edges.has(namedKey(doc.vertexIds[a], doc.vertexIds[b])));
+      for (const child of cageGroup.children)
+        if (
+          (child instanceof THREE.Points || child instanceof THREE.LineSegments) &&
+          (child.geometry === sourcePointGeometry || sourceLineGeometries.includes(child.geometry))
+        ) {
+          child.material.color.setHex(0xffffff);
+          child.material.vertexColors = true;
+          child.material.needsUpdate = true;
+        }
+      sourceSharpnessStamp = stamp;
+    }
+    setGeometryPositions(
+      sourceSharpEdgeGeometry,
+      sourceSharpEdges.flatMap(([a, b]) => [0, 1, 2].map(d => (positions[a * 3 + d] + positions[b * 3 + d]) / 2)),
+    );
+  }
+
   /** Keep ordinary corners and extraordinary 3/5-pole dots under the moving surface. The much heavier curved
    * cage-wire rebuild waits for release, but these retained point clouds are cheap to stream each drag frame. */
   function streamCornerDots(vertices: readonly number[]) {
@@ -727,6 +795,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     stream(authoredPole5Geometry, authoredPole5Vertices);
     stream(sourcePointGeometry, sourcePointVertices);
     const doc = mesh.meshDoc();
+    if (doc) updateSourceSharpness(doc, vertices);
     if (doc)
       for (const vertex of sourcePointVertices) {
         const cp = authoredControlPointByKey.get(controlPointKey({ kind: 'vertex', vertex: doc.vertexIds[vertex] }));
@@ -1021,6 +1090,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     authoredEdgeCageVisible,
     setCage,
     rebuildCage,
+    updateSourceSharpness,
     updateAuthoredControlPointCache,
     streamCornerDots,
     showAllWires,

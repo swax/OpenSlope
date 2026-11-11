@@ -1,5 +1,5 @@
 import { fmtArea, fmtM, type ToolsContext } from './widgets';
-import { actionPair, detail, errorBanner, liveDetail, tip } from '../components/gui';
+import { actionPair, detail, errorBanner, liveDetail, note, tip } from '../components/gui';
 import { surfaceEditState } from '../../state/surface-edit';
 import { surfaceBoundaryLoop, surfaceRowRemoval } from '../../../core/mesh/surface-object';
 import { edgeIndices } from '../../state/mesh-names';
@@ -9,6 +9,7 @@ import { measureSurfaceObject } from '../../../core/mesh/surface-measure';
 import { selectedSurfaceBoundary } from '../../../core/mesh/surface-stitch';
 import { inferSurfaceCorners } from '../../../core/mesh/surface-corners';
 import { getVertex } from '../../../core/doc/doc-edit';
+import { SUBDIVISION_SHARP_EDGE_COLOR, SUBDIVISION_SHARP_CORNER_COLOR } from '../../viewport/constants';
 
 /** The object panel replaces mesh surgery: its source net is the only editable shape. */
 export function buildSurfaceTools(ctx: ToolsContext): boolean {
@@ -53,6 +54,85 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
     )
       continue;
     shown = true;
+    if (surface.subdivision) {
+      const group = editSection('surface-' + surface.id, 'Subdivision cage');
+      const values = { name: surface.name, level: surface.subdivision.level };
+      group
+        .add(values, 'name')
+        .name('name')
+        .onFinishChange((name: string) => edit.updateSurface(surface.id, { name }));
+      tip(
+        group
+          .add(
+            values,
+            'level',
+            1,
+            Math.min(4, Math.floor(Math.log(4096 / surface.subdivision.faces.length) / Math.log(4))),
+            1,
+          )
+          .name('subdivision level')
+          .onFinishChange((level: number) => edit.updateSubdivision(surface.id, level)),
+        'Each level creates four patches per cage face. Regular spans are exact; higher levels improve the approximation near irregular vertices and creases. Limit: 4,096 terrain patches.',
+      );
+      detail(
+        group,
+        `${surface.controls[0].length} points · ${surface.subdivision.faces.length} cage faces · ${surface.patches.length} terrain patches`,
+      );
+      const sharpCorners = surface.subdivision.corners?.length ?? 0,
+        sharpEdges = surface.subdivision.creases.length;
+      detail(
+        group,
+        `${sharpCorners} sharp corner${sharpCorners === 1 ? '' : 's'} · ${sharpEdges} sharp edge${sharpEdges === 1 ? '' : 's'}`,
+      );
+      const legend = note(group, '');
+      for (const [color, label] of [
+        [SUBDIVISION_SHARP_EDGE_COLOR, '━ Sharp edges'],
+        [SUBDIVISION_SHARP_CORNER_COLOR, '● Sharp corners'],
+      ] as const) {
+        const span = document.createElement('span');
+        span.textContent = label;
+        span.style.color = '#' + color.toString(16).padStart(6, '0');
+        span.style.marginRight = '10px';
+        legend.append(span);
+      }
+      legend.title =
+        'Pink controls are unmarked. Sharp corners use orange dots; sharp edges are orange with midpoint dots. Yellow indicates selection.';
+      detail(group, 'W move · E rotate · R scale');
+      detail(group, 'Select points or edges · C sharp · S smooth');
+      detail(group, 'Convert to patches before changing topology');
+      if (surface.error) errorBanner(group, surface.error);
+      const selected = [
+        ...new Set([
+          ...store.regionSel,
+          ...store.edgeSel.flat(),
+          ...(store.selectedCorner ? [store.selectedCorner] : []),
+          ...store.controlSel.flatMap(p => (p.kind === 'vertex' ? [p.vertex] : [])),
+        ]),
+      ];
+      if (selected.length) {
+        const edges = store.edgeSel.length > 0;
+        actionPair(
+          group
+            .add({ sharp: () => edit.creaseVertices(selected) }, 'sharp')
+            .name(edges ? 'sharp edges (C)' : 'sharp corners (C)'),
+          group
+            .add({ smooth: () => edit.smoothVertices(selected) }, 'smooth')
+            .name(edges ? 'smooth edges (S)' : 'smooth corners (S)'),
+        );
+      }
+      group.add({ select: () => edit.selectSurfaceControls(surface.id) }, 'select').name('select all cage points');
+      tip(
+        group.add({ revert: () => edit.revertSubdivision(surface.id) }, 'revert').name('revert cage to patches'),
+        'Return the coarse cage faces at their current positions to editable patches. Append geometry and create a new subdivision cage when ready. Undo restores the live cage.',
+      );
+      tip(
+        group.add({ bake: () => edit.bakeSurface(surface.id) }, 'bake').name('bake subdivision cage'),
+        'Keep the smoothed result as editable terrain patches and remove the source cage.',
+      );
+      group.add({ remove: () => edit.deleteSurface(surface.id) }, 'remove').name('delete subdivision cage');
+      group.add({ done: edit.deselectEdit }, 'done').name('deselect (Esc)');
+      continue;
+    }
     if (placement?.id === surface.id) {
       const group = editSection(
         'surface-guide-placement',

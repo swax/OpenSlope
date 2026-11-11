@@ -218,6 +218,11 @@ export function createMeshSelectTools(
             ]
           : [];
       const topology = store.edgeSel.length || store.cellSel.length ? editSection('topology', 'Topology') : null;
+      if (store.cellSel.length && !store.modelEditId)
+        tip(
+          topology!.add({ cage: edit.createSubdivision }, 'cage').name('create subdivision cage'),
+          'Convert connected unlocked quad faces into an independent Catmull-Clark cage. Bake to stitch it back to neighboring terrain or edit topology.',
+        );
       const shape = shapeVertices.length && canEditCurvature() ? editSection('shape', 'Shape') : null;
       if (store.edgeSel.length || store.cellSel.length || store.refEdgeSel.length || store.refCellSel.length)
         addSelectionVisibility();

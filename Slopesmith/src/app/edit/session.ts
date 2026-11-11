@@ -2,6 +2,9 @@ import type { LabelDefinition, QuadMeshDoc, V3 } from '../../core/doc/types';
 import { deleteSurfaceControls, refreshSurfaces } from '../../core/mesh/surface-object';
 import { surfaceEdgeSelection, surfaceGuideForEdge, surfacePointRange } from '../../core/mesh/surface-selection';
 import { surfaceOwnership } from '../../core/mesh/surface-ownership';
+import { creaseSubdivisionSelection } from '../../core/mesh/subdivision-object';
+import { SUBDIVISION_BAKE_REASON } from '../../core/mesh/subdivision-topology';
+import { subdivisionEdgeSelection } from '../../core/mesh/subdivision-selection';
 import { nameIndex } from '../../core/doc/ids';
 import { nextLabelColor, nextLabelId } from '../../core/doc/labels';
 import { writePropRotation } from '../../core/props/pose';
@@ -1822,6 +1825,7 @@ export function createEditSession(deps: EditSessionDeps) {
     const { mesh, adj } = meshContext(doc);
     const result =
       surfaceEdgeSelection(doc, store.edgeSel, store.anchorEdge, named, mode) ??
+      subdivisionEdgeSelection(doc, store.edgeSel, store.anchorEdge, named, mode) ??
       resolveEdgeSelection(store.edgeSel, store.anchorEdge, named, mode, mesh, adj, vertexNaming(doc));
     const hidden = hiddenMesh();
     const edges = result.edges.filter(candidate => {
@@ -1910,18 +1914,35 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function creaseVertices(vertices: readonly VertexName[]) {
     if (!canEditCurvature()) return;
-    meshCreaseVertices(mdoc(), vertexIndices(mdoc(), vertices));
+    const next = creaseSubdivisionSelection(mdoc(), vertices, store.edgeSel, true);
+    if (next) commitEditMesh(store, next);
+    const cage = surfaceOwnership(mdoc()).cage;
+    meshCreaseVertices(
+      mdoc(),
+      vertexIndices(
+        mdoc(),
+        vertices.filter(id => !cage.has(id)),
+      ),
+    );
     refreshHandles();
     scheduleRebuild();
+    if (next) rebuildTools();
   }
 
   function smoothVertices(vertices: readonly VertexName[]) {
     if (!canEditCurvature()) return;
-    const ids = vertexIndices(mdoc(), vertices);
+    const next = creaseSubdivisionSelection(mdoc(), vertices, store.edgeSel, false);
+    if (next) commitEditMesh(store, next);
+    const cage = surfaceOwnership(mdoc()).cage;
+    const ids = vertexIndices(
+      mdoc(),
+      vertices.filter(id => !cage.has(id)),
+    );
     meshSmoothVertices(mdoc(), ids);
     fairPoles(ids);
     refreshHandles();
     scheduleRebuild();
+    if (next) rebuildTools();
   }
 
   const topology = createTopologyTools({
@@ -2355,6 +2376,8 @@ export function createEditSession(deps: EditSessionDeps) {
   function meshLockReason(verb: 'delete' | 'dissolve'): string | null {
     const doc = mdoc();
     const named = new Set([...selectedAuthoredVertexIds(), ...store.edgeSel.flat()]);
+    if (doc.surfaces?.some(s => s.subdivision && s.controls.flat().some(id => named.has(id))))
+      return SUBDIVISION_BAKE_REASON;
     if (doc.surfaces?.some(s => s.controls.flat().some(id => named.has(id))))
       return 'Use the Surface control curve tools to add or remove curves. Bake the surface before mesh topology edits.';
     const input =
@@ -2392,6 +2415,11 @@ export function createEditSession(deps: EditSessionDeps) {
     const selectedLights = store.modelEditId ? [] : selectedEditLights();
     const hasMesh = selectedAuthoredVertexIds().length > 0 || store.edgeSel.length > 0 || store.cellSel.length > 0;
     if (!hasMesh && !selectedProps.length && !selectedLights.length) return;
+    const namedCageSelection = new Set([...selectedAuthoredVertexIds(), ...store.edgeSel.flat()]);
+    if (mdoc().surfaces?.some(s => s.subdivision && s.controls.flat().some(id => namedCageSelection.has(id)))) {
+      toast(SUBDIVISION_BAKE_REASON, 'err');
+      return;
+    }
     const sourceControls = surfaceOwnership(mdoc()).controls,
       selectedPoints = selectedAuthoredVertexIds(),
       hasSource =

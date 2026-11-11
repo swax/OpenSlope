@@ -15,9 +15,9 @@ import {
 import { installSurfaceCharts, type Patch } from './loft-surface';
 import { fitSurface, surfaceFitTolerance } from './surface-fit';
 import { materializeSurfaceShape } from './surface-source';
-import { meshFromDoc, quadControlPoints } from './topology';
-import { finishMeshRewrite } from './ops/contract';
-import { readVertex } from './primitives';
+import { bilinearTwist, buildQuadMesh, meshFromDoc, quadControlPoints } from './topology';
+import { createQuadSurfaceMaps, finishMeshRewrite, inheritQuadSurface } from './ops/contract';
+import { liveQuadEdges, readVertex } from './primitives';
 import {
   addGuide,
   detachGuide,
@@ -37,6 +37,8 @@ import {
   type GuideCurve,
 } from './surface-guides';
 import { splitCubic } from '../math/bezier';
+import { rebuildSubdivision, subdivisionSource } from './subdivision-object';
+import { assertSubdivisionTopology } from './subdivision-topology';
 import { inferSurfaceCorners } from './surface-corners';
 import {
   evaluateSurfaceStitches,
@@ -152,6 +154,7 @@ export function rebuildSurface(
   options: SurfaceEvaluation = {},
 ): SurfaceResult {
   try {
+    if (surface.subdivision) return { ok: true, ...rebuildSubdivision(doc, surface) };
     if (surface.controls.flat().length > 4096) throw new Error('A surface can have at most 4,096 source controls.');
     if (surface.guides) surface = sourceGuideSurface(surface);
     if (!Number.isFinite(surface.patchSizeM) || surface.patchSizeM < 0.5)
@@ -880,6 +883,56 @@ function unusedSurfaceConstruction(doc: QuadMeshDoc, surface: SurfaceObject, rem
   return removable;
 }
 
+/** Return the current coarse cage to ordinary patches, replacing its generated terrain and source wires. */
+export function revertSubdivisionCage(doc: QuadMeshDoc, id: string) {
+  try {
+    const surface = doc.surfaces?.find(s => s.id === id);
+    if (!surface?.subdivision) throw new Error('That subdivision cage no longer exists.');
+    const source = subdivisionSource(doc, surface),
+      deleted = deleteSurfaceObject(doc, id);
+    if (!deleted.ok) return deleted;
+    const kept = deleted.doc,
+      first = kept.quads.length,
+      start = kept.vertexIds.length,
+      maps = createQuadSurfaceMaps(kept, true),
+      oldQuads = nameIndex(doc.quadIds);
+    if (doc.quadPaint) maps.quadPaint ??= {};
+    if (doc.quadTex) maps.quadTex ??= {};
+    if (doc.quadOrient) maps.quadOrient ??= {};
+    if (doc.quadLabels) maps.quadLabels ??= {};
+    source.faces.forEach((_, i) => {
+      const patch = surface.patches.find(p => p.key === `${i}` || p.key?.startsWith(`${i}/`)),
+        old = patch && oldQuads.get(patch.quad);
+      if (old !== undefined) inheritQuadSurface(doc, maps, old, first + i);
+      delete maps.quadLocked?.[first + i];
+    });
+    const { doc: out } = finishMeshRewrite(kept, {
+      ...kept,
+      ...maps,
+      vertices: [...kept.vertices, ...source.points.flat()],
+      quads: [...kept.quads, ...source.faces.map(([a, b, c, d]) => [a, b, d, c].map(v => start + v))],
+      edgeHandles: { ...kept.edgeHandles },
+      quadTwist: { ...kept.quadTwist },
+      keepVertices: kept.vertexIds.map((_, i) => i),
+    });
+    const quads = source.faces.map((_, i) => first + i),
+      mesh = buildQuadMesh(out.vertices, out.quads),
+      handles = (out.edgeHandles ??= {}),
+      twists = (out.quadTwist ??= {});
+    for (const q of quads) {
+      twists[q] = bilinearTwist(mesh, q);
+      for (const [a, b] of liveQuadEdges(out.quads[q])) {
+        const offset = mul(sub(readVertex(out.vertices, b), readVertex(out.vertices, a)), 1 / 3);
+        handles[`${a}>${b}`] = offset;
+        handles[`${b}>${a}`] = mul(offset, -1);
+      }
+    }
+    return { ok: true as const, doc: out, quads };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export function bakeSurface(doc: QuadMeshDoc, id: string): QuadMeshDoc {
   doc = bakeSurfaceStitchLinks(doc, id);
   const surface = doc.surfaces?.find(s => s.id === id);
@@ -975,6 +1028,24 @@ export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {
     const surface = out.surfaces?.find(s => s.id === previous.id);
     if (!surface) continue;
     try {
+      if (surface.subdivision) {
+        assertSubdivisionTopology(out);
+        const points = [subdivisionSource(out, surface).points];
+        const ids = nameIndex(out.quadIds);
+        const valid = surface.patches.every(p => {
+          const q = ids.get(p.quad);
+          return q !== undefined && out.quads[q].every((v, i) => out.vertexIds[v] === p.corners[i]);
+        });
+        if (
+          valid &&
+          !surface.error &&
+          sameSourcePoints(points, surface.evaluated.points) &&
+          surface.evaluated.subdivision === JSON.stringify(surface.subdivision)
+        )
+          continue;
+        out = rebuildSubdivision(out, surface).doc;
+        continue;
+      }
       if (!surface.guides) {
         const charts = splineCharts(surfaceNet(out, surface));
         const u0 = surface.knotsU[0],

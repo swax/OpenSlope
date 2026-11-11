@@ -36,10 +36,12 @@ import {
   insertSurfaceRow,
   deleteSurfaceRow,
   bakeSurface as bakeSurfaceObject,
+  revertSubdivisionCage,
   deleteSurfaceObject,
   type SurfaceResult,
 } from '../../core/mesh/surface-object';
 import type { SurfaceAxis } from '../../core/math/spline-surface';
+import { createSubdivisionCage, rebuildSubdivision } from '../../core/mesh/subdivision-object';
 import { surfaceEditState } from '../state/surface-edit';
 import {
   guideRows,
@@ -69,6 +71,7 @@ import {
   namedEdges,
   namedSurfaceCutPath,
   quadNames,
+  quadIndices,
   surfaceCutPathIndices,
   vertexIndex,
   vertexIndices,
@@ -629,6 +632,27 @@ export function createTopologyTools(deps: TopologyToolDeps) {
       );
     }
   }
+  function createSubdivision() {
+    try {
+      if (store.modelEditId) throw new Error('Create subdivision cages in terrain Edit mode.');
+      finishSurface({ ok: true, ...createSubdivisionCage(mdoc(), quadIndices(mdoc(), store.cellSel)) });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
+  function updateSubdivision(id: string, level: number) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (!surface?.subdivision) return;
+    try {
+      finishSurface({
+        ok: true,
+        ...rebuildSubdivision(mdoc(), { ...surface, subdivision: { ...surface.subdivision, level } }),
+      });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+      rebuildTools();
+    }
+  }
   function selectSurfaceRow(id: string, axis: SurfaceAxis, row: number) {
     selectSurfaceControls(id, axis, row);
   }
@@ -789,6 +813,26 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   }
   function createBoundarySurface(corners?: number[]) {
     finishSurface(createSurfaceFromBoundary(mdoc(), edgeIndices(mdoc(), store.edgeSel), corners, store.bridgePatchM));
+  }
+  function revertSubdivision(id: string) {
+    const result = revertSubdivisionCage(mdoc(), id);
+    if (!result.ok) {
+      toast(result.error, 'err');
+      return;
+    }
+    deps.commitHistory?.();
+    commitEditMesh(store, result.doc);
+    clearCellSelection();
+    dropCornerSelection();
+    clearEdgeSelection();
+    exitRegion();
+    store.cellSel = quadNames(mdoc(), result.quads);
+    store.anchorCell = store.cellSel[0] ?? null;
+    resetGizmoMode();
+    scheduleRebuild();
+    refreshCreatedCellSelection();
+    deps.commitHistory?.();
+    toast('Cage reverted to editable patches. Append geometry, then create a new subdivision cage.', 'ok');
   }
   function bakeSurface(id: string) {
     deps.commitHistory?.();
@@ -1704,6 +1748,8 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     cancelSurfaceGuidePlacement,
     surfaceGuidePlacement: () => guidePlacement,
     updateSurface,
+    createSubdivision,
+    updateSubdivision,
     selectSurfaceControls,
     selectSurfaceRow,
     addSurfaceRow,
@@ -1713,6 +1759,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     deleteSurfaceControlPoint,
     createBoundarySurface,
     bakeSurface,
+    revertSubdivision,
     deleteSurface,
     bridgeCandidate,
     startBridge,

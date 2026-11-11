@@ -15,6 +15,8 @@ import {
   CAGE_EXTRA3_COLOR,
   CAGE_EXTRA5_COLOR,
   CAGE_POINT_COLOR,
+  SUBDIVISION_SHARP_EDGE_COLOR,
+  SUBDIVISION_SHARP_CORNER_COLOR,
 } from '../constants';
 import { BACKFACE_TINT_RGB } from '../mesh/backface-tint';
 import {
@@ -76,11 +78,17 @@ export function createLegends(container: HTMLElement) {
       [CAGE_TEAR_COLOR, 'Tear (bright = exposed · dim = watertight)'],
       [CAGE_LOCKED_COLOR, 'Locked patch edge'],
       [CAGE_CREASE_COLOR, `Crease (patches meet over ${CREASE_DEGREES}°)`],
+      [SUBDIVISION_SHARP_EDGE_COLOR, 'Subdivision · marked sharp edge'],
       [FRAME_GLYPH_COLOR, 'Patch frame F (with the F overlay on)'],
     ] as [number, string][]
   ).map(([c, label]) => [hex(c), label, 'width:16px;height:3px']);
   // extraordinary poles draw as dots (over the reference cage), so swatch them round, not as line strokes
   cageRows.push(
+    [
+      hex(SUBDIVISION_SHARP_CORNER_COLOR),
+      'Subdivision · marked sharp corner',
+      'width:10px;height:10px;border-radius:50%',
+    ],
     [hex(CAGE_EXTRA3_COLOR), 'Pole · valence 3', 'width:8px;height:8px;border-radius:50%'],
     [hex(CAGE_EXTRA5_COLOR), 'Pole · valence 5', 'width:8px;height:8px;border-radius:50%'],
     [hex(CAGE_INTERIOR_COLOR), 'Edge loops (click a vertex in Edit)', 'width:16px;height:5px'],
