@@ -216,7 +216,7 @@ export const MAX_SUBDIVISION_PATCHES = 4096;
  * approximation refined by level. Shared edges read identical samples, so the quilt stays watertight. */
 export function subdivisionPatches(cage: SubdivisionMesh, level: number) {
   validateSubdivisionMesh(cage);
-  if (!Number.isInteger(level) || level < 1 || level > 4) throw new Error('Subdivision level must be between 1 and 4.');
+  if (!Number.isInteger(level) || level < 0 || level > 4) throw new Error('Subdivision level must be between 0 and 4.');
   if (cage.faces.length * 4 ** level > MAX_SUBDIVISION_PATCHES)
     throw new Error('This cage exceeds 4,096 terrain patches. Use a lower subdivision level or a smaller cage.');
   let mesh = cage;

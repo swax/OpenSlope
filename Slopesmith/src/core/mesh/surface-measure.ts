@@ -11,13 +11,8 @@ function cubicLength(cp: V3[], steps = 64) {
   return length;
 }
 
-/** Source area and guide lengths stay independent of output density. Average patch dimensions measure the
- * fitted output's curved centre lines in U and V. Read once per inspector rebuild, never every drag frame. */
-export function measureSurfaceObject(doc: QuadMeshDoc, surface: SurfaceObject) {
-  const charts = surface.guides
-    ? guideCharts(doc, surface)
-    : surface.patches.map(p => ({ domain: p.domain, controls: p.base }));
-  const area = charts.reduce((sum, p) => sum + cellMetrics(p.controls).area, 0);
+/** Average curved U/V spans of generated patches, without the cost of integrating their surface area. */
+export function averageSurfacePatchSize(surface: Pick<SurfaceObject, 'patches'>) {
   let length = 0,
     width = 0;
   for (const { base: cp } of surface.patches) {
@@ -25,11 +20,21 @@ export function measureSurfaceObject(doc: QuadMeshDoc, surface: SurfaceObject) {
     length += dimensions.length;
     width += dimensions.width;
   }
+  return surface.patches.length
+    ? { length: length / surface.patches.length, width: width / surface.patches.length }
+    : null;
+}
+
+/** Source area and guide lengths stay independent of output density. Average patch dimensions measure the
+ * fitted output's curved centre lines in U and V. Read once per inspector rebuild, never every drag frame. */
+export function measureSurfaceObject(doc: QuadMeshDoc, surface: SurfaceObject) {
+  const charts = surface.guides
+    ? guideCharts(doc, surface)
+    : surface.patches.map(p => ({ domain: p.domain, controls: p.base }));
+  const area = charts.reduce((sum, p) => sum + cellMetrics(p.controls).area, 0);
   return {
     area,
-    averagePatchSize: surface.patches.length
-      ? { length: length / surface.patches.length, width: width / surface.patches.length }
-      : null,
+    averagePatchSize: averageSurfacePatchSize(surface),
     curveLength(index: number) {
       const guide = surface.guides?.[index];
       if (!guide) return 0;

@@ -2,6 +2,9 @@ import { retopologyEnabled } from '../../state/retopology';
 import { steps } from '../components/gui';
 import type { ToolsContext } from './widgets';
 
+// The overlap-selection entry points used by this retopology recipe are currently hidden.
+const TRAIL_INTEGRATION_GUIDE_VISIBLE = false;
+
 /**
  * The recipe for the part no single tool owns: a trail is its own ribbon lying ON the mountain, and making it part
  * of the mountain is a sequence across three others (overlap select, Weld Loops, retopology). The order is the
@@ -13,11 +16,11 @@ import type { ToolsContext } from './widgets';
  * so the two panels cannot drift into describing the same workflow differently. Collapsed by default in both:
  * it is wanted once per trail, not on every pass through the panel.
  *
- * Shown only while the server offers retopology (SLOPESMITH_RETOPOLOGY=1): the recipe ends in it, and a guide whose
- * last step names a tool that is not there leads nowhere.
+ * Hidden with the overlap-selection tools. If re-enabled, it also requires server retopology
+ * (SLOPESMITH_RETOPOLOGY=1), since the recipe depends on both tools being available.
  */
 export function buildTrailIntegrationGuide(editSection: ToolsContext['editSection']) {
-  if (!retopologyEnabled()) return;
+  if (!TRAIL_INTEGRATION_GUIDE_VISIBLE || !retopologyEnabled()) return;
   const guide = editSection('trail-integration', 'Guide · Integrate Trail With Terrain', false);
   steps(guide, [
     [

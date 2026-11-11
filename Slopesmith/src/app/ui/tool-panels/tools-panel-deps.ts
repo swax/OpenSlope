@@ -51,7 +51,6 @@ export type ToolsPanelDeps = {
     | 'selectedFreePoint'
     | 'setGizmoMode'
     | 'selectConnected'
-    | 'selectOverlappingVertices'
     | 'deleteSelectedMesh'
     | 'dissolveSelectedMesh'
     | 'flipSelectedMesh'

@@ -58,7 +58,6 @@ export function createMeshSelectTools(
     lockSelection,
     unlockSelection,
     selectConnected,
-    selectOverlappingVertices,
     deleteSelectedMesh,
     dissolveSelectedMesh,
     flipSelectedMesh,
@@ -304,12 +303,6 @@ export function createMeshSelectTools(
             'Rebuild this connected patch region plus optional influence rings. Locked patches and everything outside the solve remain exact.',
           );
         }
-        tip(
-          topology!.add({ overlap: selectOverlappingVertices }, 'overlap').name('select overlapping vertices'),
-          'Swap the selection for every other editable vertex under the selected patches in this view.',
-          'The current viewport is the mask: selection passes through depth and excludes the selected ' +
-            'patches’ own corners. Press Delete afterward to remove the incident mountain patches.',
-        );
         if (shape)
           tip(
             shape.add({ reset: () => resetCellShape(store.cellSel) }, 'reset').name('reset shape'),

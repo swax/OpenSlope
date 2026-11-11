@@ -83,8 +83,11 @@ Open boundaries use the standard sharp boundary rule, so removing explicit creas
 Click a cage edge, then **Shift-click** farther along the same loop to add every edge between them.
 **Ctrl-click** toggles individual edges; double-click selects the whole loop.
 
-The **Subdivision cage** panel controls levels 1–4, up to 4,096 terrain patches. Every level
-quadruples the patch count. Regular spans convert exactly to bicubic patches; patches near irregular
+The **Subdivision cage** panel controls levels 0–4, up to 4,096 terrain patches. Level 0 uses one
+curved Bézier patch per cage face; each higher level quadruples the patch count.
+New cages start at level 1. The **avg patch size** readout below the level shows the generated
+patches' average curved length × width in metres.
+Regular spans convert exactly to bicubic patches; patches near irregular
 vertices and crease transitions approximate the limit surface, improving at higher levels.
 Cages support save/load and undo/redo. Choose **bake subdivision cage** to retain the terrain and
 remove the cage controls before stitching or changing topology. Neighboring terrain does not follow

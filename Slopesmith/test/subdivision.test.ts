@@ -145,6 +145,16 @@ const cube: SubdivisionMesh = {
   };
   const smooth = subdivisionPatches(cube, 1),
     hard = subdivisionPatches(sharp, 1);
+  const zero = subdivisionPatches(cube, 0);
+  assert.equal(zero.faces.length, cube.faces.length, 'Level 0 uses one bicubic patch per source face');
+  assert.equal(zero.points.length, cube.points.length);
+  assert(zero.controls.every(cp => cp.length === 16 && cp.flat().every(Number.isFinite)));
+  assert(
+    zero.points.every(p => p.every(n => Math.abs(n) < 1)),
+    'Level 0 still evaluates the curved limit surface',
+  );
+  near(subdivisionPatches({ ...cube, corners: [0] }, 0).points[0], cube.points[0]);
+  subdivisionPatches(sharp, 0).points.forEach((p, i) => near(p, cube.points[i]));
   const pinned = subdivisionPatches({ ...cube, corners: [0] }, 1);
   near(pinned.points[0], cube.points[0]);
   near(subdivisionLimitPoints(subdivideCage({ ...cube, corners: [0] }))[0], cube.points[0]);
@@ -155,30 +165,33 @@ const cube: SubdivisionMesh = {
   const limits = subdivisionLimitPoints(dart),
     refined = subdivisionLimitPoints(subdivideCage(dart));
   limits.forEach((p, i) => near(p, refined[i], 1e-12));
-  for (const shape of [cube, sharp, dart]) {
-    const generated = subdivisionPatches(shape, 1);
-    generated.faces.forEach((face, i) =>
-      face.forEach((v, j) => near(generated.controls[i][[0, 3, 12, 15][j]], generated.points[v])),
-    );
-    const edges = new Map<string, V3[]>();
-    generated.faces.forEach(([a, b, c, d], i) => {
-      const cp = generated.controls[i];
-      for (const [A, B, slots] of [
-        [a, b, [0, 1, 2, 3]],
-        [b, d, [3, 7, 11, 15]],
-        [d, c, [15, 14, 13, 12]],
-        [c, a, [12, 8, 4, 0]],
-      ] as [number, number, number[]][]) {
-        const k = [A, B].sort((x, y) => x - y).join(','),
-          curve = slots.map(j => cp[j]);
-        if (A > B) curve.reverse();
-        const previous = edges.get(k);
-        if (previous) curve.forEach((p, j) => near(p, previous[j]));
-        else edges.set(k, curve);
-      }
-    });
-  }
+  for (const shape of [cube, sharp, dart])
+    for (const level of [0, 1]) {
+      const generated = subdivisionPatches(shape, level);
+      generated.faces.forEach((face, i) =>
+        face.forEach((v, j) => near(generated.controls[i][[0, 3, 12, 15][j]], generated.points[v])),
+      );
+      const edges = new Map<string, V3[]>();
+      generated.faces.forEach(([a, b, c, d], i) => {
+        const cp = generated.controls[i];
+        for (const [A, B, slots] of [
+          [a, b, [0, 1, 2, 3]],
+          [b, d, [3, 7, 11, 15]],
+          [d, c, [15, 14, 13, 12]],
+          [c, a, [12, 8, 4, 0]],
+        ] as [number, number, number[]][]) {
+          const k = [A, B].sort((x, y) => x - y).join(','),
+            curve = slots.map(j => cp[j]);
+          if (A > B) curve.reverse();
+          const previous = edges.get(k);
+          if (previous) curve.forEach((p, j) => near(p, previous[j]));
+          else edges.set(k, curve);
+        }
+      });
+    }
   assert.throws(() => subdivisionPatches(cube, 5), /level/);
+  assert.throws(() => subdivisionPatches(cube, -1), /level/);
+  assert.throws(() => subdivisionPatches(cube, 0.5), /level/);
   assert.throws(() => subdivisionPatches({ ...cube, faces: Array(1024).fill(cube.faces[0]) }, 4), /manifold|Orient/);
 }
 {
@@ -188,13 +201,16 @@ const cube: SubdivisionMesh = {
       faces: doc.quads.map(([a, b, c, d]) => [a, b, d, c]),
       creases: [],
     };
-  const coarse = subdivisionPatches(cage, 1),
+  const zero = subdivisionPatches(cage, 0),
+    coarse = subdivisionPatches(cage, 1),
     fine = subdivisionPatches(cage, 2);
   assert.throws(() => subdivisionPatches(cage, 4), /4,096/);
   const parent = 12 * 4;
   for (const u of [0, 0.2, 0.7, 1])
-    for (const v of [0, 0.3, 0.8, 1])
+    for (const v of [0, 0.3, 0.8, 1]) {
+      near(patchPoint(zero.controls[12], u / 2, v / 2), patchPoint(coarse.controls[parent], u, v));
       near(patchPoint(coarse.controls[parent], u / 2, v / 2), patchPoint(fine.controls[parent * 4], u, v));
+    }
   // Every output edge is one identical cubic even when two face charts have different orientations.
   const edges = new Map<string, V3[]>();
   fine.faces.forEach(([a, b, c, d], i) => {
@@ -222,13 +238,32 @@ const cube: SubdivisionMesh = {
   original.quadPaint = { 0: 2 };
   original.quadTex = { 0: 'test/snow' };
   Object.assign(before, { quadPaint: { 0: 2 }, quadTex: { 0: 'test/snow' } });
-  const created = createSubdivisionCage(original, [0, 1, 2, 3], 1);
+  const created = createSubdivisionCage(original, [0, 1, 2, 3]);
   assert.deepEqual(before, original, 'creation does not mutate its input');
   let { doc, surface } = created;
+  assert.equal(surface.subdivision!.level, 1, 'New cages default to subdivision level 1');
   assert.equal(surface.patches.length, 16);
   assert.equal(doc.quadPaint?.[0], 2);
   assert.equal(doc.quadTex?.[0], 'test/snow');
   assert.equal(refreshSurfaces(doc), doc, 'an unchanged cage does not regenerate');
+  const zero = rebuildSubdivision(doc, { ...surface, subdivision: { ...surface.subdivision!, level: 0 } });
+  assert.equal(zero.surface.patches.length, 4);
+  assert.deepEqual(zero.surface.controls, surface.controls, 'Lowering the level retains the original source cage');
+  assert.equal(refreshSurfaces(zero.doc), zero.doc, 'An unchanged level-0 cage does not regenerate');
+  const savedZero = migrateMountain(JSON.parse(JSON.stringify(serializeMountain(zero.doc))));
+  assert.equal(savedZero.surfaces![0].subdivision!.level, 0);
+  assert.equal(canonicalJson(savedZero), canonicalJson(zero.doc), 'Level 0 survives save and load');
+  const restoredLevel = rebuildSubdivision(zero.doc, {
+    ...zero.surface,
+    subdivision: { ...zero.surface.subdivision!, level: 1 },
+  });
+  assert.equal(restoredLevel.surface.patches.length, 16);
+  assert.deepEqual(restoredLevel.surface.controls, surface.controls);
+  assert.equal(
+    createSubdivisionCage(original, [0, 1, 2, 3], 0).surface.patches.length,
+    4,
+    'Cages can also be created directly at level 0',
+  );
   const saved = migrateMountain(JSON.parse(JSON.stringify(serializeMountain(doc))));
   assert.equal(canonicalJson(saved), canonicalJson(doc), 'cage and terrain round-trip through saved documents');
   assert(
@@ -393,6 +428,7 @@ const cube: SubdivisionMesh = {
   assert(records.every(p => p.Points.length === 16 && p.Points.flat().every(Number.isFinite)));
   for (const [start, end] of [
     [original, created.doc],
+    [doc, zero.doc],
     [doc, higher.doc],
     [doc, baked],
     [doc, reverted.doc],

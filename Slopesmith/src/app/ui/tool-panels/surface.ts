@@ -5,7 +5,7 @@ import { surfaceBoundaryLoop, surfaceRowRemoval } from '../../../core/mesh/surfa
 import { edgeIndices } from '../../state/mesh-names';
 import { guideRows, isSurfaceBoundaryGuide } from '../../../core/mesh/surface-guides';
 import { surfaceFitTolerance } from '../../../core/mesh/surface-fit';
-import { measureSurfaceObject } from '../../../core/mesh/surface-measure';
+import { averageSurfacePatchSize, measureSurfaceObject } from '../../../core/mesh/surface-measure';
 import { selectedSurfaceBoundary } from '../../../core/mesh/surface-stitch';
 import { inferSurfaceCorners } from '../../../core/mesh/surface-corners';
 import { getVertex } from '../../../core/doc/doc-edit';
@@ -66,13 +66,18 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
           .add(
             values,
             'level',
-            1,
+            0,
             Math.min(4, Math.floor(Math.log(4096 / surface.subdivision.faces.length) / Math.log(4))),
             1,
           )
           .name('subdivision level')
           .onFinishChange((level: number) => edit.updateSubdivision(surface.id, level)),
-        'Each level creates four patches per cage face. Regular spans are exact; higher levels improve the approximation near irregular vertices and creases. Limit: 4,096 terrain patches.',
+        'Level 0 uses one curved Bézier patch per cage face. Each higher level quadruples the patch count. Regular spans are exact; higher levels improve the approximation near irregular vertices and creases. Limit: 4,096 terrain patches.',
+      );
+      const average = averageSurfacePatchSize(surface);
+      tip(
+        detail(group, average ? `${average.length.toFixed(1)} × ${average.width.toFixed(1)} m` : '—', 'avg patch size'),
+        'Average generated patch length × width along the curved U and V centre lines, in metres.',
       );
       detail(
         group,

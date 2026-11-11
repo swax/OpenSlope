@@ -516,8 +516,8 @@ in place, the others are cut fresh. The selected paths stay selected as their pi
 keeps the point picked, so a drag pulls it away; dropped back on a point, it joins again), **⫽ split path here** (a
 point a path runs on through, `splitPathsAt`: every path running through it is cut there into pieces that still meet
 at the point, in a two-arm joint, keeping their shape — nothing comes apart, and each piece can then be set on its
-own, its tiles above all; the pieces stay selected and the point picked), **✕ delete this point**, **select the whole network**, **select
-overlapping vertices**, **⇥ dissolve network into patches** and **✕ delete path**. Every setting re-cuts as it
+own, its tiles above all; the pieces stay selected and the point picked), **✕ delete this point**, **select the whole network**,
+**⇥ dissolve network into patches** and **✕ delete path**. Every setting re-cuts as it
 changes, applies to every selected path — the panel shows the clicked path's values — and becomes the next new
 path's starting value. Deleting a point takes it out of every path through it, each then running straight past it,
 and a path left with one point goes. Deleting a path takes its patches and the points only it used; the paths it met
@@ -743,7 +743,8 @@ with branches hung off it — come forward on load (`core/doc/trails.ts`): the t
 path through the knots it left and rejoined, with a copy of the trail's settings, laid out in the order the old trail
 cut its runs and junctions so its names divide up as before and its next cut lands on the same patches.
 
-A patch selection also exposes **Select overlapping vertices**. It projects the selected patches' tessellated
+The overlap-selection helper is retained for retopology development; its toolbox buttons and integration guide
+are currently hidden. It projects the selected patches' tessellated
 curved surfaces through the current camera, excludes their own corners, and replaces the patch selection with
 every other authored vertex inside that screen-space mask. The query selects through depth intentionally: from
 a top view it finds mountain points beneath an overlay trail, which can then be inspected and deleted with the

@@ -129,9 +129,8 @@ export function rebuildSubdivision(doc: QuadMeshDoc, surface: SurfaceObject) {
   return { doc: out, surface: next };
 }
 
-export function createSubdivisionCage(doc: QuadMeshDoc, selection: readonly number[], level?: number) {
+export function createSubdivisionCage(doc: QuadMeshDoc, selection: readonly number[], level = 1) {
   const cells = [...new Set(selection)];
-  level ??= cells.length > 256 ? 1 : 2;
   if (!cells.length || cells.some(q => !doc.quads[q] || doc.quadLocked?.[q]))
     throw new Error('Select unlocked quad faces to create a subdivision cage.');
   const original = [...new Set(cells.flatMap(q => doc.quads[q]))],

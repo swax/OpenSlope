@@ -97,7 +97,6 @@ export function createCreateTools(ctx: ToolsContext) {
     splitSelectedPoint,
     deleteSelectedTrail,
     dissolveSelectedTrail,
-    selectOverlappingVertices,
     deselectEdit,
     trailTileSets,
     addTrailTileSet,
@@ -1338,12 +1337,6 @@ export function createCreateTools(ctx: ToolsContext) {
       );
     if (status && !status.draft) pathHandleActions(ctx, actions);
     if (!drawing && status) {
-      tip(
-        actions.add({ overlap: selectOverlappingVertices }, 'overlap').name('select overlapping vertices'),
-        'Swap the selection for every other editable vertex under the trail in this view.',
-        'The current viewport is the mask: selection passes through depth and excludes the trail’s own corners. ' +
-          'Press Delete afterward to remove the mountain patches beneath it (see the guide below).',
-      );
       tip(
         actions.add({ dissolve: dissolveSelectedTrail }, 'dissolve').name('⇥ dissolve network into patches'),
         'Keep every patch of this trail network exactly where it is as ordinary mesh, and forget its paths.',

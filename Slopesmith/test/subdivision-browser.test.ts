@@ -10,6 +10,7 @@ import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { blankMountain } from '../src/core/doc/mountain';
 import { appendMeshIds } from '../src/core/doc/ids';
 import { createSubdivisionCage } from '../src/core/mesh/subdivision-object';
+import { averageSurfacePatchSize } from '../src/core/mesh/surface-measure';
 import type { QuadMeshDoc } from '../src/core/doc/types';
 import type { Viewport } from '../src/app/viewport/viewport';
 import { Color, type BufferGeometry, type Object3D } from 'three';
@@ -188,15 +189,62 @@ try {
   await button('create subdivision cage').click();
   await button('bake subdivision cage').waitFor();
   let current = await read();
-  assert.equal(current.surfaces![0].subdivision!.level, 2);
-  assert.equal(current.surfaces![0].patches.length, 16);
+  assert.equal(current.surfaces![0].subdivision!.level, 1);
+  assert.equal(current.surfaces![0].patches.length, 4);
+  const sizeText = (d: QuadMeshDoc) => {
+    const size = averageSurfacePatchSize(d.surfaces![0])!;
+    return `${size.length.toFixed(1)} × ${size.width.toFixed(1)} m`;
+  };
+  const initialSize = sizeText(current);
+  const waitSize = (expected: string) =>
+    page!.waitForFunction(
+      expected =>
+        [...document.querySelectorAll<HTMLInputElement>('#dock-right input')].some(input => input.value === expected),
+      expected,
+    );
+  await waitSize(initialSize);
+  assert.equal(await field('avg patch size').inputValue(), initialSize);
+  assert(await field('avg patch size').evaluate(input => (input as HTMLInputElement).readOnly));
+  assert.equal(
+    await field('subdivision level').evaluate(
+      input => input.closest('.lil-controller')?.nextElementSibling?.querySelector('.lil-name')?.textContent,
+    ),
+    'avg patch size',
+    'Generated size appears directly below the subdivision level',
+  );
   assert.equal(await button('stitch selected edges…').count(), 0);
   const sources = current.surfaces![0].controls[0],
     source = sources[0];
+  await field('subdivision level').fill('0');
+  await field('subdivision level').press('Tab');
+  await page.waitForFunction(
+    () => (window as unknown as Observation).slopesmith.doc().surfaces![0].patches.length === 1,
+  );
+  const zero = await read(),
+    zeroSurface = zero.surfaces![0];
+  assert.equal(zeroSurface.subdivision!.level, 0);
+  await waitSize(sizeText(zero));
+  assert.equal(await field('avg patch size').inputValue(), sizeText(zero));
+  assert.notEqual(sizeText(zero), initialSize, 'The readout updates when generated patches get coarser');
+  assert.deepEqual(zeroSurface.controls[0], sources);
+  assert(
+    zeroSurface.patches[0].corners.every(id => {
+      const at = zero.vertexIds.indexOf(id) * 3;
+      return zero.vertices[at] > 0 && zero.vertices[at] < 40 && zero.vertices[at + 2] > 0 && zero.vertices[at + 2] < 40;
+    }),
+    'Level 0 keeps the smoothed boundary rather than returning the flat cage faces',
+  );
+  await page.screenshot({ path: join(root, 'subdivision-level-zero.png') });
   await field('subdivision level').fill('1');
   await field('subdivision level').press('Tab');
   await page.waitForFunction(
     () => (window as unknown as Observation).slopesmith.doc().surfaces![0].patches.length === 4,
+  );
+  await waitSize(initialSize);
+  assert.equal(
+    await field('avg patch size').inputValue(),
+    initialSize,
+    'Returning to level 1 restores its generated size',
   );
   await button('sharp corners (C)').click();
   await page.waitForFunction(

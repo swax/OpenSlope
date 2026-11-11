@@ -76,7 +76,7 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
       s.controls[0].length > 4096 ||
       new Set(s.controls[0]).size !== s.controls[0].length ||
       !Number.isInteger(cage.level) ||
-      cage.level < 1 ||
+      cage.level < 0 ||
       cage.level > 4 ||
       !Array.isArray(cage.faces) ||
       !cage.faces.length ||
