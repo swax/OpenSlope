@@ -38,7 +38,6 @@ export type CommandSheetDeps = {
   canEditCurvature: () => boolean;
   edgeExtrusionStaged: () => boolean;
   edgeExtrusionPathMode?: () => boolean;
-  edgeExtrusionFanMode: () => boolean;
   edgeExtrusionSideFlippable: () => boolean;
   paletteSurfaceView: () => boolean;
   desktopRiding: () => boolean;
@@ -61,7 +60,6 @@ export function createCommandSheet(deps: CommandSheetDeps) {
     selectedControlCagesVisible,
     canEditCurvature,
     edgeExtrusionStaged,
-    edgeExtrusionFanMode,
     edgeExtrusionSideFlippable,
     paletteSurfaceView,
     desktopRiding,
@@ -340,14 +338,13 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                         ['Enter', 'commit extrusion'],
                         ['Esc', 'cancel extrusion'],
                       ])
-                    : edgeExtrusionFanMode()
-                      ? helpPanel('Edit Mode — extrude', [
-                          ['distance handle', 'set extrusion depth'],
-                          ...(edgeExtrusionSideFlippable() ? [['F', 'flip interior side'] as [string, string]] : []),
-                          ['W', 'full move gizmo'],
-                          ['E / R', 'rotate / scale'],
-                        ])
-                      : helpPanel('Edit Mode — extrude', [['W / E / R', 'move / rotate / scale']])
+                    : helpPanel('Edit Mode — extrude', [
+                        ['drag gizmo', 'set extrusion direction and distance'],
+                        ['W / E / R', 'move / rotate / scale'],
+                        ...(edgeExtrusionSideFlippable() ? [['F', 'flip interior side'] as [string, string]] : []),
+                        ['Enter', 'commit extrusion'],
+                        ['Esc', 'cancel extrusion'],
+                      ])
                   : store.currentMode === 'edit' && pastePlacing()
                     ? helpPanel('Edit Mode — paste', [
                         ['move', 'position on terrain or space'],

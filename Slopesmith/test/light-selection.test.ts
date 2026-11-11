@@ -74,7 +74,6 @@ const transform = createTransformLayer(
     selectedScreenAttached: () => false,
     placedProp: index => store.mdoc.props?.[index],
     extrusionStaged: () => false,
-    extrusionFanMode: () => false,
   },
   {
     cornerMarker: anchor,
@@ -83,7 +82,7 @@ const transform = createTransformLayer(
     cageHandleAnchor: anchor,
     propsHandleLast: props.multiHandleLast,
   },
-  { releaseCageHandle() {}, enableExtrusionTransform() {}, controlPointsMoved() {} },
+  { releaseCageHandle() {}, controlPointsMoved() {} },
 );
 const sourceLights = (): AuthoredLight[] =>
   [-2, 2, 8].map((x, index) => ({

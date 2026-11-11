@@ -64,6 +64,13 @@ uploading textures, sounds, skies, and avatars ([docs/052](docs/052-hateoas-api.
 in a browser for the interactive reference over that same surface, and
 `npx tsx scripts/hateoas-demo.ts <url>` authors a complete demo mountain through it.
 
+### Extruding geometry
+
+In **Edit**, select an edge or patch and press **X**. The Move gizmo starts on the existing
+geometry; drag it to set the extrusion's direction and distance. **W / E / R** switch between
+Move, Rotate and Scale. **Enter** commits the preview and **Esc** cancels. **Path** mode follows
+a selected edge chain or custom path instead.
+
 ### Production shape
 
 The production package contains the frontend, Node API and Rust multiplayer relay, including their runtime

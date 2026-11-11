@@ -248,7 +248,7 @@ export function createMeshSelectTools(
         tip(
           topology!.add({ extrude: beginEdgeExtrusion }, 'extrude').name('▰ extrude (X)'),
           'Stage a new patch strip from the selected edge.',
-          'An interior run lifts perpendicular to the surface, uses the side you clicked, and closes with ' +
+          'Drag the gizmo to set direction and distance. An interior run uses the side you clicked and closes with ' +
             'triangular end caps; F flips sides.',
         );
         tip(

@@ -107,7 +107,6 @@ export interface TransformSelectionAccess {
   selectedScreenAttached(): boolean;
   placedProp(index: number): PlacedProp | undefined;
   extrusionStaged(): boolean;
-  extrusionFanMode(): boolean;
 }
 
 /** The persistent scene-root gizmo anchors (Z negated by hand, so the gizmo never sees a mirrored parent).
@@ -125,11 +124,10 @@ export interface TransformAnchors {
 }
 
 /** Host work a transform triggers: handing a cage-handle gizmo back to the selection centroid before Rotate /
- *  Scale show their handles, waking the staged extrusion's transform handles, and folding rotated / scaled
+ *  Scale show their handles, and folding rotated / scaled
  *  control-point targets back into the live selection highlight (positions + region marks). */
 export interface TransformHostHooks {
   releaseCageHandle(): void;
-  enableExtrusionTransform(): void;
   controlPointsMoved(targets: { id: MeshControlPointId; pos: V3 }[]): void;
 }
 
@@ -320,7 +318,6 @@ export function createTransformLayer(
    *  translating even if a stale caller asks for Rotate or Scale; the toolbox gates both to groups / props. */
   function setGizmoMode(mode: GizmoMode) {
     if (stage.gizmo.dragging) return; // never change the transform contract underneath a live pointer gesture
-    if (stage.gizmoKind === 'edgeextrusion' && sel.extrusionFanMode()) host.enableExtrusionTransform();
     gizmoMode = mode;
     // A cell / edge control point may currently own the shared gizmo. Rotate / Scale belong to the selected
     // geometry, so hand it back to that geometry's centroid before showing their handles.
@@ -388,14 +385,6 @@ export function createTransformLayer(
     stage.gizmo.showX = true;
     stage.gizmo.showY = true;
     stage.gizmo.showZ = true;
-    if (stage.gizmoKind === 'edgeextrusion' && sel.extrusionFanMode()) {
-      stage.gizmoRestrict = false;
-      stage.gizmo.setMode('translate');
-      stage.gizmo.setSpace('local');
-      stage.gizmo.showY = false;
-      stage.gizmo.showZ = false;
-      return;
-    }
     if (stage.gizmoKind === 'grid' && stage.gizmo.object?.userData.gridHinge) {
       // A Create Grid draft drawn off an edge swings on it (viewport/tools/create-grid.ts). Its anchor is framed with
       // X along that edge and Z across to the far side, so Rotate keeps only the ring about the edge, and Scale the

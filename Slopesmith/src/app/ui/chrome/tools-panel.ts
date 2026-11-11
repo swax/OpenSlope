@@ -196,7 +196,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       },
       { value: 'scale', label: 'Scale', title: 'Scale around the selected item’s origin or the group centroid (R).' },
     ],
-    () => (viewport.edgeExtrusionFanMode ? null : store.gizmoMode),
+    () => store.gizmoMode,
     v => {
       store.gizmoMode = v;
       viewport.setGizmoMode(v);
@@ -347,7 +347,6 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     canEditCurvature: edit.canEditCurvature,
     edgeExtrusionStaged: () => viewport.edgeExtrusionStaged,
     edgeExtrusionPathMode: () => viewport.edgeExtrusionMode === 'path',
-    edgeExtrusionFanMode: () => viewport.edgeExtrusionFanMode,
     edgeExtrusionSideFlippable: () => viewport.edgeExtrusionSideFlippable,
     paletteSurfaceView: () => palette.surfaceView,
     desktopRiding: () => viewport.riding && !viewport.xrPlaying,

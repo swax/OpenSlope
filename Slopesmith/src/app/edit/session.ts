@@ -3105,7 +3105,8 @@ export function createEditSession(deps: EditSessionDeps) {
       updateCmdSheet();
       return true;
     },
-    onExtrudeStageChange(_active) {
+    onExtrudeStageChange(active) {
+      if (active) resetGizmoMode();
       rebuildTools();
       updateCmdSheet();
     },

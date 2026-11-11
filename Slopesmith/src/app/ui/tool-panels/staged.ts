@@ -14,7 +14,7 @@ import type { ToolsContext } from './widgets';
  * source-vs-target flows, and Surface from profiles's ordered profile list with its live dry-run.
  */
 
-/** The staged-extrusion placement panel: position the ghost geometry (Move / Rotate / Scale or its distance handle),
+/** The staged-extrusion placement panel: position the ghost geometry with Move / Rotate / Scale,
  *  then commit the teal preview or discard it. */
 export function buildExtrudePlacementTools(ctx: ToolsContext) {
   const { viewport, editSection, edit, store } = ctx;
@@ -85,13 +85,7 @@ export function buildExtrudePlacementTools(ctx: ToolsContext) {
     }
     if (viewport.edgeExtrusionError) note(placement, viewport.edgeExtrusionError);
     else if (viewport.edgeExtrusionWarning) note(placement, `⚠ ${viewport.edgeExtrusionWarning}`);
-  } else
-    detail(
-      placement,
-      viewport.edgeExtrusionFanMode
-        ? 'drag the single distance handle · choose Move for the full direction gizmo'
-        : 'position the staged extrusion with Move / Rotate / Scale',
-    );
+  } else detail(placement, 'drag the gizmo to set direction and distance');
   if (!pathMode || viewport.edgeExtrusionPath)
     tip(
       placement
@@ -117,7 +111,7 @@ export function buildExtrudePlacementTools(ctx: ToolsContext) {
   if (viewport.edgeExtrusionSideFlippable)
     tip(
       placement.add({ flip: edit.flipEdgeExtrusionSide }, 'flip').name('⇄ flip side (F)'),
-      'Move the interior-edge extrusion to the other adjacent patch strip and reset its constrained placement.',
+      'Choose the other adjacent patch strip while keeping the pull direction.',
     );
   const actions = editSection('tool-actions', 'Actions');
   const commit = tip(

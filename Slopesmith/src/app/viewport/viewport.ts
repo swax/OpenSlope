@@ -1531,7 +1531,6 @@ export class Viewport {
         selectedScreenAttached: () => this.screens.selectedAttached,
         placedProp: index => this.props.lastPlacedProps[index],
         extrusionStaged: () => this.edgeExtrusion.staged,
-        extrusionFanMode: () => this.edgeExtrusion.fanMode,
       },
       {
         cornerMarker: this.selection.cornerMarker,
@@ -1542,7 +1541,6 @@ export class Viewport {
       },
       {
         releaseCageHandle: () => this.selection.releaseCageHandle(),
-        enableExtrusionTransform: () => this.edgeExtrusion.enableTransform(),
         controlPointsMoved: targets => this.selection.controlPointsMoved(targets),
       },
     );
@@ -4058,9 +4056,6 @@ export class Viewport {
 
   get edgeExtrusionStaged(): boolean {
     return this.edgeExtrusion.staged;
-  }
-  get edgeExtrusionFanMode(): boolean {
-    return this.edgeExtrusion.fanMode;
   }
   get edgeExtrusionSideFlippable(): boolean {
     return this.edgeExtrusion.sideFlippable;

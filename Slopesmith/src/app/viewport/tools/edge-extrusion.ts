@@ -8,7 +8,7 @@ import {
   edgeExtrusionSegmentCount,
   planEdgeExtrusion,
   planPatchExtrusion,
-  tangentEdgeExtrusionPlacement,
+  translatedEdgeExtrusionPlacement,
   type EdgeExtrusionPlacement,
   type EdgeExtrusionPlan,
 } from '../../../core/mesh/ops';
@@ -87,11 +87,6 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     names: VertexName[];
     center: THREE.Vector3;
     sourceCenter: THREE.Vector3;
-    moveAxis: THREE.Vector3;
-    distance: number;
-    tangentMove: boolean;
-    fanMode: boolean;
-    frame: THREE.Quaternion;
     base: EdgeExtrusionPlacement;
   } | null = null;
   const anchor = new THREE.Object3D();
@@ -99,6 +94,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   stage.scene.add(anchor);
 
   const group = new THREE.Group();
+  group.name = 'edge-extrusion-preview';
   const fill = new THREE.Mesh(
     new THREE.BufferGeometry(),
     new THREE.MeshBasicMaterial({
@@ -252,9 +248,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     anchor.updateMatrixWorld(true);
     const vertices: Record<number, V3> = {},
       handles: Record<string, V3> = {};
-    // The initial fan handle uses a local X axis rotated onto the average continuation direction. Its resting
-    // quaternion is display orientation, not an authored rotation, so remove it before transforming geometry.
-    const q = anchor.quaternion.clone().multiply(staged.frame.clone().invert()).normalize(),
+    const q = anchor.quaternion,
       scale = anchor.scale;
     for (const vertex of staged.plan.vertices) {
       const base = staged.base.vertices[vertex];
@@ -293,6 +287,13 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     const placed = placement();
     if (mode === 'path') pathSegments = placed?.stations?.length ?? 0;
     if (!staged || !source || !placed) {
+      group.visible = false;
+      deps.suppressSourceQuads([]);
+      deps.restoreOtherPreview();
+      return;
+    }
+    // Start on the source rim: no degenerate preview or hidden source faces until the user pulls it away.
+    if (!placementMoved(source, staged.plan, placed)) {
       group.visible = false;
       deps.suppressSourceQuads([]);
       deps.restoreOtherPreview();
@@ -341,14 +342,13 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
       return;
     }
     drag.delta = delta;
-    // The drag magnitude advances each boundary point along its own outward surface tangent. Free edges have
-    // no source surface and retain the literal translation fallback.
+    // Direct pull gestures use the same literal direction as the Move gizmo.
     const next = makeStage(drag.edges, drag.plan, drag.names, delta);
     if (!next) return;
     const saved = staged;
     staged = next;
     anchor.position.copy(next.center);
-    anchor.quaternion.copy(next.frame);
+    anchor.quaternion.identity();
     anchor.scale.setScalar(1);
     rebuild();
     staged = saved;
@@ -377,30 +377,14 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     const source = deps.meshDoc(),
       origin = sourceCenter(plan);
     if (!source || !origin || !planIntact(source, plan, names)) return null;
-    const distance = Math.hypot(delta[0], delta[1], delta[2]);
-    const base = tangentEdgeExtrusionPlacement(source, plan, delta);
+    const base = translatedEdgeExtrusionPlacement(source, plan, delta);
     const center = placementCenter(plan, base);
-    const moveAxis = center
-      .clone()
-      .sub(origin)
-      .multiplyScalar(1 / Math.max(distance, 1e-8));
-    // A surface continuation has one meaningful fan distance. A free edge has no tangent field, so it keeps
-    // the ordinary rigid Move gizmo and can be positioned in any direction.
-    const tangentMove = distance > 1e-8 && moveAxis.lengthSq() > 1e-8 && plan.edges.every(edge => !!edge.continuation);
-    const frame = tangentMove
-      ? new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), moveAxis.clone().normalize())
-      : new THREE.Quaternion();
     return {
       edges,
       plan,
       names,
       center,
       sourceCenter: origin,
-      moveAxis,
-      distance,
-      tangentMove,
-      fanMode: tangentMove,
-      frame,
       base,
     };
   }
@@ -410,7 +394,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (!next) return;
     staged = next;
     anchor.position.copy(next.center);
-    anchor.quaternion.copy(next.frame);
+    anchor.quaternion.identity();
     anchor.scale.setScalar(1);
     anchor.visible = true;
     rebuild();
@@ -418,58 +402,30 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     stage.cb.onExtrudeStageChange?.(true);
   }
 
-  /** The initial single handle controls one shared continuation distance, rebuilding each outer endpoint on its
-   * own frozen tangent so fan-in/fan-out survives. Choosing a transform tool exits this constrained state. */
+  /** The source is frozen; the moving rim follows the gizmo's full translation / rotation / scale. */
   function onGizmoChange() {
     if (!staged || mode === 'path') return;
-    if (!staged.fanMode || !staged.tangentMove) {
-      rebuild();
-      return;
-    }
-    const axisLen2 = staged.moveAxis.lengthSq();
-    if (axisLen2 < 1e-8) {
-      staged.tangentMove = false;
-      rebuild();
-      return;
-    }
-    let distance = anchor.position.clone().sub(staged.sourceCenter).dot(staged.moveAxis) / axisLen2;
-    const snap = deps.snap();
-    if (snap.enabled) distance = Math.round(distance / snap.step) * snap.step;
-    // An edge only continues outward. A patch region may cross its source plane: positive raises a mesa,
-    // negative pushes a canyon, both using the same normal-aligned handle.
-    if (staged.plan.kind === 'edge') distance = Math.max(1e-3, distance);
-    else if (Math.abs(distance) < 1e-3) distance = distance < 0 ? -1e-3 : 1e-3;
-    const source = deps.meshDoc();
-    if (!source) return;
-    staged.distance = distance;
-    staged.base = tangentEdgeExtrusionPlacement(source, staged.plan, [distance, 0, 0]);
-    staged.center = placementCenter(staged.plan, staged.base);
-    anchor.position.copy(staged.center);
-    anchor.quaternion.copy(staged.frame);
-    anchor.scale.setScalar(1);
     rebuild();
   }
 
-  /** Move / Rotate / Scale was explicitly chosen. Preserve the fan-shaped placement, then replace the one-axis
-   * continuation handle with the ordinary world gizmo for unrestricted rigid transforms. */
-  function enableTransform() {
-    if (!staged?.fanMode) return;
-    staged.fanMode = false;
-    staged.tangentMove = false;
-    staged.frame.identity();
-    anchor.position.copy(staged.center);
-    anchor.quaternion.identity();
-    anchor.scale.setScalar(1);
-    rebuild();
+  function placementMoved(source: QuadMeshDoc, plan: EdgeExtrusionPlan, placed: EdgeExtrusionPlacement): boolean {
+    return (placed.stations ?? [placed]).some(ring =>
+      plan.vertices.some(v => {
+        const p = ring.vertices[v],
+          i = v * 3;
+        return (
+          Math.hypot(p[0] - source.vertices[i], p[1] - source.vertices[i + 1], p[2] - source.vertices[i + 2]) >= 1e-4
+        );
+      }),
+    );
   }
 
-  /** Toolbox entry: stage a visible one-step extrusion that can then be transformed. */
+  /** Toolbox entry: place the gizmo on the existing edge / face without creating an initial offset. */
   function beginStage(): boolean {
     if (staged || drag) return false;
     const ready = planSelection();
     if (!ready) return false;
-    const step = deps.snap().enabled ? deps.snap().step : 10;
-    stagePlacement(ready.edges, ready.plan, ready.names, [step, 0, 0]);
+    stagePlacement(ready.edges, ready.plan, ready.names, [0, 0, 0]);
     return true;
   }
 
@@ -532,6 +488,10 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
       stage.cb.onExtrudeEdgesInvalid?.(pathError || 'Choose a path before committing the extrusion.');
       return;
     }
+    if (!placementMoved(source, staged.plan, placed)) {
+      stage.cb.onExtrudeEdgesInvalid?.('Drag the extrusion gizmo away from the source before committing.');
+      return;
+    }
     if (placed && stage.cb.onCommitExtrudeEdges?.(staged.plan, placed) !== false) clearStage();
   }
 
@@ -539,12 +499,16 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (mode === 'path') return pathSegments;
     const source = deps.meshDoc(),
       placed = placement();
-    return staged && source && placed && planIntact(source, staged.plan, staged.names)
+    return staged &&
+      source &&
+      placed &&
+      placementMoved(source, staged.plan, placed) &&
+      planIntact(source, staged.plan, staged.names)
       ? edgeExtrusionSegmentCount(source, staged.plan, placed)
-      : 1;
+      : 0;
   }
 
-  /** Flip an interior-edge extrusion to the opposite incident strip and restart its constrained placement. */
+  /** Flip an interior-edge extrusion's incident strip while retaining the direction already pulled. */
   function flipSide(): boolean {
     const source = deps.meshDoc();
     if (!staged?.plan.sideQuads?.length || !source || !staged.edges.length) return false;
@@ -565,7 +529,8 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     sideHint = quadName(source, opposite);
     const names = vertexNames(source, planned.plan.vertices);
     if (names.length !== planned.plan.vertices.length) return false;
-    stagePlacement(staged.edges, planned.plan, names, [Math.max(1e-3, staged.distance), 0, 0]);
+    const delta = sceneToData(anchor.position.clone().sub(staged.sourceCenter));
+    stagePlacement(staged.edges, planned.plan, names, delta);
     return true;
   }
 
@@ -600,7 +565,6 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     update,
     finish,
     onGizmoChange,
-    enableTransform,
     flipSide,
     setMode,
     setSegmentLength,
@@ -637,9 +601,6 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     },
     get staged() {
       return !!staged;
-    },
-    get fanMode() {
-      return mode === 'pull' && !!staged?.fanMode;
     },
     get sideFlippable() {
       return mode === 'pull' && !!staged?.plan.sideQuads?.length;

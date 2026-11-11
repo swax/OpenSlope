@@ -14,6 +14,7 @@ import {
   pathEdgeExtrusionPlacement,
   planEdgeExtrusion,
   translatedEdgeExtrusionPlacement,
+  type EdgeExtrusionPlacement,
 } from '../src/core/mesh/ops';
 import { meshFromDoc, meshAdjacency, quadControlPoints } from '../src/core/mesh/topology';
 import { cubicPoint, patchNormal } from '../src/core/math/bezier';
@@ -314,6 +315,8 @@ assert(!pathEdgeExtrusionPlacement(source, { ...plan, segmentLength: 0.001 }, pa
 // Drive the actual staged layer: Pull defaults, settings update preview, mesh picks supply the path, cancel is pure.
 let selection: NamedEdge[] = [[source.vertexIds[1], source.vertexIds[3]]];
 let currentDoc = source;
+let extrusionAnchor: THREE.Object3D;
+let committedPlacement: EdgeExtrusionPlacement | undefined;
 let committed = 0,
   lastError = '';
 const stageMock = {
@@ -321,7 +324,8 @@ const stageMock = {
   worldRoot: new THREE.Group(),
   gizmoKind: null as string | null,
   container: { clientWidth: 800, clientHeight: 600 },
-  attachGizmo(_anchor: THREE.Object3D, kind: string) {
+  attachGizmo(anchor: THREE.Object3D, kind: string) {
+    extrusionAnchor = anchor;
     this.gizmoKind = kind;
   },
   detachGizmo() {
@@ -339,6 +343,7 @@ const stageMock = {
       const applied = applyPlannedEdgeExtrusion(source, p, placement);
       assert(applied.ok, applied.ok ? '' : applied.error);
       committed++;
+      committedPlacement = placement;
       selection = applied.outerEdges.map(([a, b]) => [applied.doc.vertexIds[a], applied.doc.vertexIds[b]]);
     },
   },
@@ -442,6 +447,22 @@ function guideClick(edge: [number, number], ctrlKey = false, pointerType = 'mous
 }
 assert(layer.beginStage());
 assert.equal(layer.mode, 'pull');
+assert.deepEqual(
+  extrusionAnchor!.position.toArray(),
+  [
+    (source.vertices[3] + source.vertices[9]) / 2,
+    (source.vertices[4] + source.vertices[10]) / 2,
+    -(source.vertices[5] + source.vertices[11]) / 2,
+  ],
+  'The gizmo starts at the existing edge centre without an automatic offset',
+);
+assert.equal(layer.segments, 0);
+layer.commitStage();
+assert.match(lastError, /Drag the extrusion gizmo/);
+assert(layer.staged, 'An unpulled extrusion stays staged instead of committing overlapping geometry');
+assert.equal(committed, 0);
+extrusionAnchor!.position.z -= 10;
+layer.onGizmoChange();
 layer.setSegmentLength(2);
 assert.equal(layer.segmentLength, 2);
 assert.equal(layer.segments, 5);
@@ -529,6 +550,92 @@ layer.commitStage();
 assert.equal(layer.staged, false);
 assert.equal(committed, 2, 'A stale source never commits');
 assert.deepEqual(source, before);
+
+// Pull follows all three signed gizmo axes literally, independent of the source surface's continuation.
+currentDoc = source;
+selection = [[source.vertexIds[1], source.vertexIds[3]]];
+assert(layer.beginStage());
+extrusionAnchor!.position.add(new THREE.Vector3(-12, 6, -9));
+layer.onGizmoChange();
+assert.equal(layer.segments, Math.ceil(Math.hypot(12, 6, 9) / 2));
+layer.commitStage();
+assert(!layer.staged);
+assert(committedPlacement);
+for (const vertex of [1, 3])
+  assert.deepEqual(
+    committedPlacement.vertices[vertex],
+    [source.vertices[vertex * 3] - 12, source.vertices[vertex * 3 + 1] + 6, source.vertices[vertex * 3 + 2] + 9],
+    'The moving edge follows the exact drag vector, including scene-to-document Z conversion',
+  );
+assert.deepEqual(source, before, 'Staging and committing never mutate the captured source document');
+
+// Flipping an interior strip chooses the other side without changing a signed pull or hiding the source at rest.
+{
+  const interior = meshFromNet(
+    {
+      rows: 2,
+      cols: 3,
+      spacing: 10,
+      corners: [0, 0, 0, 10, 0, 0, 20, 0, 0, 0, 0, 10, 10, 0, 10, 20, 0, 10],
+      paint: {},
+    },
+    { name: 'INTERIOR_PULL', course: starterCourse(), baseSurface: 1 },
+  );
+  const original = structuredClone(interior);
+  let masked: number[] = [];
+  let accepted = false;
+  const interiorStage = {
+    ...stageMock,
+    cb: {
+      ...stageMock.cb,
+      onCommitExtrudeEdges(p: typeof plan, placement: EdgeExtrusionPlacement) {
+        assert.equal(p.edges[0].sideQuad, 1, 'F switches to the other incident patch');
+        for (const vertex of [1, 4])
+          assert.deepEqual(placement.vertices[vertex], [
+            interior.vertices[vertex * 3] - 3,
+            -7,
+            interior.vertices[vertex * 3 + 2] + 11,
+          ]);
+        const result = applyPlannedEdgeExtrusion(interior, p, placement);
+        assert(result.ok, result.ok ? '' : result.error);
+        accepted = true;
+      },
+    },
+  };
+  const pull = createEdgeExtrusionLayer(interiorStage as unknown as Stage, {
+    canBegin: () => true,
+    selectedEdges: () => [[interior.vertexIds[1], interior.vertexIds[4]]],
+    selectedQuads: () => [],
+    meshDoc: () => interior,
+    cornerPos: vertex => interior.vertices.slice(vertex * 3, vertex * 3 + 3) as V3,
+    snap: () => ({ enabled: false, step: 1 }),
+    hideOtherPreview() {},
+    restoreOtherPreview() {},
+    suppressSourceQuads(quads) {
+      masked = [...quads];
+    },
+  });
+  pull.setSideHint(0);
+  assert(pull.beginStage());
+  assert.deepEqual(masked, [], 'An unpulled extrusion keeps its existing faces visible');
+  const origin = extrusionAnchor!.position.clone();
+  extrusionAnchor!.position.add(new THREE.Vector3(-3, -7, -11));
+  pull.onGizmoChange();
+  assert.deepEqual(masked, [0]);
+  extrusionAnchor!.position.copy(origin);
+  pull.onGizmoChange();
+  assert.equal(pull.segments, 0, 'Dragging back onto the source clears the preview');
+  assert.deepEqual(masked, []);
+  extrusionAnchor!.position.add(new THREE.Vector3(-3, -7, -11));
+  pull.onGizmoChange();
+  const position = extrusionAnchor!.position.toArray();
+  assert(pull.flipSide());
+  assert.deepEqual(extrusionAnchor!.position.toArray(), position, 'Side flipping retains the current pull');
+  assert.deepEqual(masked, [1]);
+  pull.commitStage();
+  assert(accepted);
+  assert.deepEqual(interior, original);
+}
 
 // ---- a guide that bends a long way sweeps as several bands, and a steep guide doesn't spin the profile ------------
 {

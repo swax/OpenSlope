@@ -189,8 +189,10 @@ band. With [019](ideas/019-rips.md)'s stitch this is the constructive half of op
 Select an edge or edge run and press **X** to stage an extrusion. The placement panel offers **Pull**
 (the default) and **Path**, with a shared preview and **Enter** to commit or **Esc** to cancel.
 
-- **Pull** keeps the distance handle and Move / Rotate / Scale placement. **Segment length (m)** controls
-  the automatic wall spacing, initially based on the shortest source edge. Changing it updates the preview;
+- **Pull** starts the full Move gizmo on the existing edge, with no initial offset. Drag in any direction to
+  set direction and distance; **W / E / R** select Move / Rotate / Scale. Pull away from the source before
+  committing. **Segment length (m)** controls the automatic wall spacing, initially based on the shortest
+  source edge. Changing it updates the preview;
   the chosen length is remembered for subsequent extrusions in the session. Up to 512 segments are generated.
 - **Path → Selected mesh edges** captures the source edges in blue and clears the live selection. Click the
   first guide edge, then Ctrl-click or Shift-click to select a yellow connected open chain starting at any
