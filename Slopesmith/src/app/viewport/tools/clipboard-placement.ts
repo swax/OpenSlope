@@ -33,6 +33,7 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
   let translation: V3 | null = null;
 
   const group = new THREE.Group();
+  group.name = 'mesh-clipboard-preview';
   const fill = new THREE.Mesh(
     new THREE.BufferGeometry(),
     new THREE.MeshBasicMaterial({
@@ -143,6 +144,13 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
     if (translation) group.position.set(translation[0], translation[1], translation[2]);
   }
 
+  /** A gizmo-driven copy uses the same faithful ghost without following the pointer's placement ray. */
+  function setTranslation(offset: V3) {
+    translation = offset;
+    group.visible = !!clip;
+    group.position.set(...offset);
+  }
+
   function onHover(event: PointerEvent): boolean {
     if (!clip) return false;
     stage.castAt(event);
@@ -157,6 +165,7 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
 
   return {
     setClip,
+    setTranslation,
     onHover,
     onCommit,
     refresh: update,

@@ -24,7 +24,10 @@ export function reconcileSyncContext(store: Store, before: EditDoc, mesh: EditDo
   const oldRail = store.selectedRail === null ? undefined : before.rails?.[store.selectedRail];
   store.selectedRail = remap(store.selectedRail, before.rails, after.rails);
   const rail = store.selectedRail === null ? undefined : after.rails?.[store.selectedRail];
-  if (!rail || JSON.stringify(oldRail?.nodes) !== JSON.stringify(rail.nodes)) store.selectedNode = null;
+  if (!rail || JSON.stringify(oldRail?.nodes) !== JSON.stringify(rail.nodes)) {
+    store.selectedNode = null;
+    store.selectedRailNodes = [];
+  }
   if (!rail) store.railDrawing = false;
   const exists = (id: string | null, items: readonly { id?: string }[] = []) =>
     id !== null && items.some(item => item.id === id) ? id : null;

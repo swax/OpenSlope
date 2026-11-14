@@ -42,7 +42,10 @@ export type MeshClipboardDeps = {
   updateCmdSheet: () => void;
   deleteSelectedMesh: () => void;
   refreshMixedSelection?: () => void;
+  commitHistory?: () => void;
 };
+
+type ClipboardSelection = { points: number[]; edges: [number, number][]; patches: boolean; mixed: boolean };
 
 /** Session-local topology-aware mesh clipboard and one-shot placement workflow. */
 export function createMeshClipboardSession(deps: MeshClipboardDeps) {
@@ -67,9 +70,13 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
   let clipboard: MeshVertexClipboard | null = null;
   let clipboardProps: PropClipboard | null = null;
   let clipboardSkippedProps = 0;
-  let clipboardSelection: { points: number[]; edges: [number, number][]; patches: boolean; mixed: boolean } | null =
-    null;
+  let clipboardSelection: ClipboardSelection | null = null;
   let pasteArmed = false;
+  let duplicate: {
+    source: ReturnType<typeof mdoc>;
+    clip: MeshVertexClipboard;
+    selection: ClipboardSelection;
+  } | null = null;
 
   /** All selected authored components share one vertex table in the clipboard. */
   function selectedCopyVertices(): VertexName[] {
@@ -101,7 +108,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     );
   }
 
-  function captureSelectedVertices(): { source: 'authored' | 'reference'; clip: MeshVertexClipboard } | null {
+  function captureSelectedVertices(remember = true) {
     if (!canCopyVertices()) return null;
     const selectedVertices = selectedCopyVertices();
     const referenceSelected = !selectedVertices.length && view().referenceCopyVertexCount() > 0;
@@ -132,7 +139,6 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
       toast('nothing copied — select at least one vertex', 'warn');
       return null;
     }
-    clipboard = clip;
     const props = store.modelEditId
       ? []
       : store.multiSel.length
@@ -141,7 +147,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
           ? [store.selectedProp]
           : [];
     const lights = store.modelEditId ? [] : selectedPlacementLights(store);
-    clipboardSelection = null;
+    let selection: ClipboardSelection | null = null;
     if (!referenceSelected) {
       const doc = mdoc();
       const ordered = [...new Set(vertexIndices(doc, selectedVertices))].sort((a, b) => a - b);
@@ -159,7 +165,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
         return from !== undefined && to !== undefined ? [[from, to] as [number, number]] : [];
       });
       const patches = store.cellSel.length > 0;
-      clipboardSelection = {
+      selection = {
         points,
         edges,
         patches,
@@ -171,17 +177,112 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
           1,
       };
     }
-    clipboardSkippedProps = props.filter(index => isEffectTriggerProp(store.mdoc.props?.[index])).length;
-    clipboardProps = props.length || lights.length ? copyPlacements(store.mdoc, props, undefined, lights) : null;
-    if (clipboardProps) {
+    const skippedProps = props.filter(index => isEffectTriggerProp(store.mdoc.props?.[index])).length;
+    const propsClip = props.length || lights.length ? copyPlacements(store.mdoc, props, undefined, lights) : null;
+    if (propsClip) {
       // The mesh ghost supplies the shared placement delta. Keep prop origins in that same frame.
       const count = clip.vertices.length / 3;
-      clipboardProps.anchor = [0, 1, 2].map(
+      propsClip.anchor = [0, 1, 2].map(
         axis => clip.vertices.reduce((sum, value, index) => (index % 3 === axis ? sum + value : sum), 0) / count,
       ) as V3;
     }
-    store.clipboardKind = clipboardProps ? 'mixed' : 'mesh';
-    return { source: referenceSelected ? 'reference' : 'authored', clip };
+    if (remember) {
+      clipboard = clip;
+      clipboardSelection = selection;
+      clipboardProps = propsClip;
+      clipboardSkippedProps = skippedProps;
+      store.clipboardKind = propsClip ? 'mixed' : 'mesh';
+    }
+    return { source: referenceSelected ? ('reference' as const) : ('authored' as const), clip, selection };
+  }
+
+  function canDuplicateSelection(): boolean {
+    return (
+      canCopyVertices() &&
+      selectedCopyVertices().length > 0 &&
+      !store.duplicatePending &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      !view().pastePlacing &&
+      !view().edgeExtrusionStaged &&
+      !store.controlSel.some(point => point.kind !== 'vertex') &&
+      store.selectedProp === null &&
+      !store.multiSel.length &&
+      store.selectedLight === null &&
+      !selectedPlacementLights(store).length
+    );
+  }
+
+  function beginDuplicateSelection() {
+    if (!canDuplicateSelection()) return;
+    const captured = captureSelectedVertices(false);
+    if (!captured?.selection) return;
+    deps.commitHistory?.();
+    resetGizmoMode();
+    if (!view().beginDuplicateTool?.(captured.clip)) return;
+    duplicate = { source: mdoc(), clip: captured.clip, selection: captured.selection };
+    store.duplicatePending = true;
+    rebuildTools();
+    updateCmdSheet();
+    toast('Duplicate ready — drag the gizmo to create a copy · Esc cancels', 'info');
+  }
+
+  function cancelDuplicateSelection(refresh = true) {
+    if (!duplicate && !store.duplicatePending) return;
+    duplicate = null;
+    store.duplicatePending = false;
+    view().cancelDuplicateTool?.();
+    if (refresh) {
+      restoreDuplicateSelection();
+      rebuildTools();
+      updateCmdSheet();
+    }
+  }
+
+  function restoreDuplicateSelection() {
+    if (store.selectedCorner !== null) {
+      refreshHandles();
+      view().refreshSyncedCorner?.();
+    } else refreshMixedSelection?.();
+  }
+
+  function commitDuplicatedVertices(translation: V3) {
+    const pending = duplicate;
+    if (!pending) return;
+    cancelDuplicateSelection(false);
+    if (mdoc() !== pending.source || !translation.every(Number.isFinite) || Math.hypot(...translation) < 1e-6) {
+      restoreDuplicateSelection();
+      rebuildTools();
+      updateCmdSheet();
+      return;
+    }
+    const pasted = pasteMeshVertices(pending.source, pending.clip, translation);
+    commitEditMesh(store, pasted.doc);
+    const doc = mdoc(),
+      selected = pending.selection;
+    const points = vertexNames(
+      doc,
+      selected.points.map(local => pasted.vertices[local]),
+    );
+    store.selectedCorner = null;
+    store.regionSel = points;
+    store.controlSel = points.map(vertex => ({ kind: 'vertex', vertex }));
+    store.edgeSel = namedEdges(
+      doc,
+      selected.edges.map(([a, b]) => [pasted.vertices[a], pasted.vertices[b]]),
+    );
+    store.cellSel = selected.patches ? quadNames(doc, pasted.quads) : [];
+    store.anchorCorner = points[0] ?? null;
+    store.anchorControl = store.controlSel[0] ?? null;
+    store.anchorEdge = store.edgeSel[0] ?? null;
+    store.anchorCell = store.cellSel[0] ?? null;
+    store.cellLoopSeed = null;
+    scheduleRebuild();
+    requestAnimationFrame(() => refreshMixedSelection?.());
+    deps.commitHistory?.();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   function clipboardSummary(clip: MeshVertexClipboard): string {
@@ -291,6 +392,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
   }
 
   function cancelPastePlacement(refresh = true) {
+    cancelDuplicateSelection(refresh);
     if (!pasteArmed && !view().pastePlacing) return;
     pasteArmed = false;
     view().setPasteTool(null);
@@ -378,6 +480,10 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
   }
 
   return {
+    canDuplicateSelection,
+    beginDuplicateSelection,
+    cancelDuplicateSelection,
+    commitDuplicatedVertices,
     copySelectedVertices,
     cutSelectedVertices,
     copySelectionVertexCount,

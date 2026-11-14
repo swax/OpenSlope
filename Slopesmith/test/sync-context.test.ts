@@ -38,6 +38,7 @@ store.selectedProp = 1;
 store.multiSel = [0, 1];
 store.selectedRail = 1;
 store.selectedNode = 1;
+store.selectedRailNodes = [0, 1];
 store.surgeryTool = 'loopcut';
 store.selected = 0;
 const removed = applyMeshDelete(before, { quads: [0] });
@@ -53,6 +54,7 @@ assert.equal(store.selectedProp, 0);
 assert.deepEqual(store.multiSel, [0]);
 assert.equal(store.selectedRail, 0);
 assert.equal(store.selectedNode, 1);
+assert.deepEqual(store.selectedRailNodes, [0, 1], 'a rail point group follows the rail identity across index changes');
 assert.equal(store.selected, 0);
 assert.equal(store.surgeryTool, 'loopcut');
 assert.equal(store.currentMode, 'edit');
@@ -65,6 +67,7 @@ assert.equal(store.selectedProp, null);
 assert.deepEqual(store.multiSel, []);
 assert.equal(store.selectedRail, null);
 assert.equal(store.selectedNode, null);
+assert.deepEqual(store.selectedRailNodes, [], 'deleting the rail clears its selected points');
 assert.equal(store.selected, null);
 
 // Repeated snapshots schedule one render, without manufacturing a local save/history commit. A real edit

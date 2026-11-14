@@ -35,6 +35,11 @@ type Visuals = {
   pointColors: number[][];
   edgeColors: number[][];
   cornerPositions: number[][];
+  selectedEdges: number;
+  edgeHighlightAligned: boolean;
+  edgeDragSamples: boolean[];
+  gizmoScreen: number[];
+  gizmoAxis: string | null;
 };
 type Observation = {
   slopesmith: { doc(): QuadMeshDoc; errors(): unknown[]; settled(): Promise<unknown> };
@@ -79,6 +84,7 @@ try {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript('globalThis.__name = value => value');
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
@@ -113,7 +119,37 @@ try {
           Object.defineProperty(prototype, 'mode', mode);
           mode.set!.call(this, value);
           const viewport = this as Viewport;
+          const edgeDragSamples: boolean[] = [];
+          const edgeHighlightAligned = (doc: QuadMeshDoc) => {
+            const line = viewport.selection.fatLineGroups[0].children[0] as Object3D & {
+              geometry?: BufferGeometry;
+            };
+            const points: number[][] = [];
+            for (const name of ['instanceStart', 'instanceEnd']) {
+              const attribute = line?.geometry?.getAttribute(name);
+              if (attribute)
+                for (let i = 0; i < attribute.count; i++)
+                  points.push([attribute.getX(i), attribute.getY(i), attribute.getZ(i)]);
+            }
+            return viewport.sel.edgeSel.every(edge =>
+              edge.every(id => {
+                const index = doc.vertexIds.indexOf(id);
+                return points.some(point =>
+                  point.every((value, axis) => Math.abs(value - doc.vertices[index * 3 + axis]) < 1e-4),
+                );
+              }),
+            );
+          };
+          // Sample the actual highlight before a worker can replace the streamed source geometry.
+          const streamControls = viewport.streamMeshControls.bind(viewport);
+          viewport.streamMeshControls = (doc, change) => {
+            streamControls(doc, change);
+            if (viewport.stage.gizmo.dragging && viewport.sel.edgeSel.length)
+              edgeDragSamples.push(edgeHighlightAligned(doc));
+          };
           (window as unknown as Observation).subdivisionVisuals = () => {
+            const anchor = viewport.stage.gizmo.object?.position.clone().project(viewport.stage.camera),
+              bounds = viewport.stage.renderer.domElement.getBoundingClientRect();
             const result: Visuals = {
               sharpCorners: 0,
               cornerOverlays: 0,
@@ -121,6 +157,13 @@ try {
               pointColors: [],
               edgeColors: [],
               cornerPositions: [],
+              selectedEdges: viewport.sel.edgeSel.length,
+              edgeHighlightAligned: edgeHighlightAligned((window as unknown as Observation).slopesmith.doc()),
+              edgeDragSamples: [...edgeDragSamples],
+              gizmoScreen: anchor
+                ? [bounds.x + ((anchor.x + 1) * bounds.width) / 2, bounds.y + ((1 - anchor.y) * bounds.height) / 2]
+                : [],
+              gizmoAxis: viewport.stage.gizmo.axis,
             };
             const seen = new Set<BufferGeometry>();
             viewport.stage.worldRoot.traverse(object => {
@@ -416,6 +459,42 @@ try {
     await button('smooth edges (S)').click();
     await waitMarks(0, 0);
   }
+  // A double-clicked source edge loop must keep its highlight attached during every live drag sample.
+  await page.keyboard.press('Escape');
+  const loopPoint = rangePoint(20);
+  await page.mouse.dblclick(loopPoint.x, loopPoint.y);
+  await page.waitForFunction(() => (window as unknown as Observation).subdivisionVisuals!().selectedEdges === 4);
+  await page.keyboard.press('w');
+  await button('World').click();
+  await button('World').blur();
+  const loopBefore = await read(),
+    pivotScreen = (await visuals()).gizmoScreen;
+  let dragX = pivotScreen[0];
+  for (const offset of [25, 35, 45, 55, 65]) {
+    dragX = pivotScreen[0] + offset;
+    await page.mouse.move(dragX, pivotScreen[1]);
+    if ((await visuals()).gizmoAxis === 'X') break;
+  }
+  assert.equal((await visuals()).gizmoAxis, 'X', 'the loop move handle is pickable');
+  await page.mouse.down();
+  await page.mouse.move(dragX + 50, pivotScreen[1], { steps: 10 });
+  const duringDrag = await visuals(),
+    loopMoved = await read();
+  await page.mouse.up();
+  assert(loopMoved.vertices[loopMoved.vertexIds.indexOf(track[2]) * 3] > 41, 'the native drag moves the selected loop');
+  assert(duringDrag.edgeDragSamples.length > 1, 'the drag streams several live cage samples');
+  assert(duringDrag.edgeDragSamples.every(Boolean), 'selected edge highlights follow every streamed cage move');
+  assert(duringDrag.edgeHighlightAligned, 'the highlight stays on the selected loop while the mouse is down');
+  await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
+  assert((await visuals()).edgeHighlightAligned, 'the highlight remains aligned after release');
+  await page.keyboard.press('Control+z');
+  await page.waitForFunction(
+    ({ id, x }) => {
+      const doc = (window as unknown as Observation).slopesmith.doc();
+      return doc.vertices[doc.vertexIds.indexOf(id) * 3] === x;
+    },
+    { id: track[2], x: loopBefore.vertices[loopBefore.vertexIds.indexOf(track[2]) * 3] },
+  );
   await button('revert cage to patches').click();
   await page.waitForFunction(() => !(window as unknown as Observation).slopesmith.doc().surfaces?.length);
   const reverted = await read();
@@ -460,7 +539,7 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(await page.evaluate(() => (window as unknown as Observation).slopesmith.errors()), []);
   console.log(
-    '✓ browser cage creation, sharpness, native drag, save/reload, bake/revert, undo/redo, Shift-click ranges and appending reverted patches; screenshot: ' +
+    '✓ browser cage creation, sharpness, native drag and live edge-loop highlights, save/reload, bake/revert, undo/redo, Shift-click ranges and appending reverted patches; screenshot: ' +
       root,
   );
 } catch (error) {

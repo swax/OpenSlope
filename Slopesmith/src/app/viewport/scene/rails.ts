@@ -75,13 +75,15 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   let rails: Rail[] = [];
   let selectedRail: number | null = null;
   let selectedNode: number | null = null;
+  let selectedNodes: number[] = [];
+  const handleLast = new THREE.Vector3(); // data-space baseline for a group move
   let railArmed = false; // the Rails tool is drawing: a props-mode ground click adds a node
 
   let visible = true; // the Tricks view filter (coordinated with the gems by the shell)
   let motionPathsVisible = false; // Effects-only guide layer; never controlled by Tricks
   let effectRailsVisible = false; // Effects mode: show every grind rail's curve, not just its tube
   let shade: ShadeMode = 'textured'; // the tube + posts follow the shade view, like the props they bake with
-  const railMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected rail node
+  const railMoveHandle = new THREE.Object3D(); // scene-root anchor for one rail point or the selected group centroid
   const railMatMetal = new THREE.MeshLambertMaterial({ color: 0x93a9c4, emissive: 0x1a2330 });
   const railMatWood = new THREE.MeshLambertMaterial({ color: 0xb0824e, emissive: 0x2a1c0e });
   const railMatPost = new THREE.MeshLambertMaterial({ color: 0x9b9b9b, emissive: 0x1e1e1e }); // untextured grey, like the baked posts
@@ -169,7 +171,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   function setEffectRails(on: boolean) {
     if (effectRailsVisible === on) return;
     effectRailsVisible = on;
-    setRails(rails, selectedRail, selectedNode);
+    setRails(rails, selectedRail, selectedNode, selectedNodes);
   }
 
   /**
@@ -231,31 +233,42 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   /** Rebuild the rail tubes + node pick bulbs from the doc, and keep the selected node's gizmo in sync. A tube
    *  is drawn for every rail with ≥2 nodes; node bulbs are drawn only for the selected rail (so idle courses
    *  stay clean). Parallels setPlacedProps / setFreeLights. */
-  function setRails(newRails: Rail[], selRail: number | null, selNode: number | null) {
+  function setRails(
+    newRails: Rail[],
+    selRail: number | null,
+    selNode: number | null,
+    nodes: readonly number[] = selNode === null ? [] : [selNode],
+  ) {
     for (const group of [grindGroup, motionPathGroup]) {
       for (const c of group.children) disposeRailObject(c);
       group.clear();
     }
     rails = newRails;
     selectedRail = selRail;
-    selectedNode = selNode;
+    selectedNodes = [...new Set(nodes)]
+      .filter(n => Number.isInteger(n) && !!rails[selRail ?? -1]?.nodes[n])
+      .sort((a, b) => a - b);
+    selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
     grindGroup.visible = visible;
     motionPathGroup.visible = motionPathsVisible;
     for (let i = 0; i < rails.length; i++) {
       const rail = rails[i];
       (isMotionPath(rail) ? motionPathGroup : grindGroup).add(
-        buildRailObject(rail, i, i === selRail ? selNode : null, i === selRail),
+        buildRailObject(rail, i, i === selRail ? selectedNodes : [], i === selRail),
       );
     }
-    if (selRail !== null && selNode !== null && rails[selRail]?.nodes[selNode]) {
+    // Picks can arrive before the next rendered frame, including directly under a newly seated gizmo.
+    railGroup.updateWorldMatrix(true, true);
+    if (selRail !== null && selectedNodes.length) {
       if (!(stage.gizmoKind === 'railnode' && stage.gizmo.dragging)) {
-        placeRailHandle(selRail, selNode);
+        placeRailHandle();
         railMoveHandle.visible = true;
-        if (stage.gizmoKind !== 'railnode') stage.attachGizmo(railMoveHandle, 'railnode', selNode);
+        if (stage.gizmoKind !== 'railnode') stage.attachGizmo(railMoveHandle, 'railnode', selectedNode ?? -1);
         else stage.reframeGizmo(); // a Surface frame re-reads the slope the point now stands on
       }
     } else if (stage.gizmoKind === 'railnode') {
-      clearSelection();
+      railMoveHandle.visible = false;
+      stage.detachGizmo();
     }
   }
 
@@ -264,7 +277,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
    *  colour for the textured sweep, the exact tube the export bakes into Props.obj. */
   function setSkins(next: RailSkins) {
     skins = next;
-    setRails(rails, selectedRail, selectedNode);
+    setRails(rails, selectedRail, selectedNode, selectedNodes);
   }
 
   /** The default texture per material, as last registered — what an unpicked tube wears. */
@@ -284,15 +297,29 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     return mat;
   }
 
-  /** Select rail `r` node `n`: seat the translate gizmo on its handle and tell the host (which shows the rail's
-   *  tools). The shell has already cleared the other scene-object selections before calling this. */
-  function seatNode(r: number, n: number) {
+  /** Seat a point or group at its centroid and tell the host. Other scene-object selections are already clear. */
+  function seatNodes(r: number, nodes: readonly number[]) {
     selectedRail = r;
-    selectedNode = n;
-    placeRailHandle(r, n);
+    selectedNodes = [...new Set(nodes)].filter(n => !!rails[r]?.nodes[n]).sort((a, b) => a - b);
+    selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+    if (!selectedNodes.length) {
+      clearSelection();
+      stage.cb.onSelectRailNode?.(null, null, []);
+      return;
+    }
+    placeRailHandle();
     railMoveHandle.visible = true;
-    stage.attachGizmo(railMoveHandle, 'railnode', n);
-    stage.cb.onSelectRailNode?.(r, n);
+    stage.attachGizmo(railMoveHandle, 'railnode', selectedNode ?? -1);
+    stage.cb.onSelectRailNode?.(r, selectedNode, [...selectedNodes]);
+  }
+
+  function seatNode(r: number, n: number, additive = false) {
+    const current = additive && selectedRail === r ? selectedNodes : [];
+    seatNodes(r, current.includes(n) ? current.filter(i => i !== n) : [...current, n]);
+  }
+
+  function seatAll(r: number) {
+    seatNodes(r, rails[r]?.nodes.map((_, i) => i) ?? []);
   }
 
   /** Select a rail with NO node: its pick bulbs come up and the host hears about it, but no gizmo is seated.
@@ -301,6 +328,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   function seatRail(r: number) {
     selectedRail = r;
     selectedNode = null;
+    selectedNodes = [];
     railMoveHandle.visible = false;
     if (stage.gizmoKind === 'railnode') stage.detachGizmo();
     stage.cb.onSelectRailNode?.(r, null);
@@ -311,11 +339,14 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
    *  tint with neither), wearing whatever the shade view asks for — plus, for the selected rail, an amber edge
    *  outline over that geometry and a pick bulb at each node (the selected node white + larger). Built in data
    *  coords under railGroup. */
-  function buildRailObject(rail: Rail, index: number, selNode: number | null, showNodes: boolean): THREE.Group {
+  function buildRailObject(rail: Rail, index: number, nodes: readonly number[], showNodes: boolean): THREE.Group {
     const g = new THREE.Group();
     const motionPath = isMotionPath(rail);
     const startsOff = railStartsOff(rail);
     const tube = railHasTube(rail);
+    const selected = new Set(nodes);
+    const wholeSelected =
+      showNodes && (selected.size > 1 || (selected.size === 0 && (effectRailsVisible || railArmed)));
     // The surface-coloured centreline belongs to Effects mode, exactly as the reference level's does: it is that mode
     // that binds toggles and movers to curves, and a mountain wearing its whole grind network at all times is
     // clutter in every other mode. The one exception is the SELECTED rail, which is the thing the author
@@ -339,7 +370,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
         const palette = effectRailPalette(railStyle(rail));
         const fat = new Line2(
           geo,
-          showNodes ? (startsOff ? palette.selectedOff : palette.selected) : startsOff ? palette.off : palette.on,
+          wholeSelected ? (startsOff ? palette.selectedOff : palette.selected) : startsOff ? palette.off : palette.on,
         );
         fat.computeLineDistances(); // dashes are measured along the curve, not the segment list
         line = fat;
@@ -363,7 +394,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
       tube.userData.railIndex = index; // a raycast hit resolves the rail straight off the tube (nearest node picked)
       shadeRailGeometry(tube, rail.solid === true);
       g.add(tube);
-      if (showNodes) outlineRailGeometry(g, geo);
+      if (wholeSelected) outlineRailGeometry(g, geo);
     }
     if (tube && rail.supports) {
       // the same post geometry the export bakes (core/rails/rail-mesh) - the posts you see are the posts that ship
@@ -377,7 +408,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
         mesh.userData.railIndex = index; // clicking a post selects its rail, like the tube
         shadeRailGeometry(mesh, true); // posts pack always solid, like the shipped levels' rail supports
         g.add(mesh);
-        if (showNodes) outlineRailGeometry(g, geo);
+        if (wholeSelected) outlineRailGeometry(g, geo);
       }
     }
     if (showNodes) {
@@ -385,7 +416,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
         const p = rail.nodes[n];
         const bulb = new THREE.Mesh(
           RAIL_NODE_GEO,
-          n === selNode
+          selected.has(n)
             ? railNodeSelMat
             : motionPath
               ? motionPathNodeMat
@@ -393,7 +424,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
                 ? effectRailPalette(railStyle(rail)).node
                 : railNodeMat,
         );
-        bulb.scale.setScalar(n === selNode ? 1.7 : 1);
+        bulb.scale.setScalar(selected.has(n) ? 1.7 : 1);
         bulb.position.set(p[0], p[1], p[2]);
         if (motionPath || effectsPalette) bulb.renderOrder = 91;
         bulb.userData.railIndex = index;
@@ -416,11 +447,24 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     });
   }
 
-  /** Seat the scene-root gizmo handle on rail `r` node `n` (data pos, Z negated onto the flipped scene). */
-  function placeRailHandle(r: number, n: number) {
-    const p = rails[r]?.nodes[n];
-    if (!p) return;
-    railMoveHandle.position.set(p[0], p[1], -p[2]);
+  /** Seat the gizmo at the selected points' data-space centroid, with Z flipped onto the scene. */
+  function placeRailHandle() {
+    handleLast.set(0, 0, 0);
+    const rail = rails[selectedRail ?? -1];
+    if (!rail || !selectedNodes.length) return;
+    for (const n of selectedNodes) handleLast.add(new THREE.Vector3(...rail.nodes[n]));
+    handleLast.multiplyScalar(1 / selectedNodes.length);
+    railMoveHandle.position.set(handleLast.x, handleLast.y, -handleLast.z);
+  }
+
+  function moveSelectedNodes(pos: V3) {
+    if (selectedRail === null || !selectedNodes.length) return;
+    if (selectedNode !== null) stage.cb.onMoveRailNode?.(selectedRail, selectedNode, pos);
+    else {
+      const delta: V3 = [pos[0] - handleLast.x, pos[1] - handleLast.y, pos[2] - handleLast.z];
+      handleLast.set(...pos);
+      if (delta.some(n => n !== 0)) stage.cb.onMoveRailNodes?.(selectedRail, [...selectedNodes], delta);
+    }
   }
 
   /** The node of rail `r` nearest a data-space point — so clicking a rail's tube grabs the closest node. */
@@ -443,6 +487,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     if (selectedRail === null && stage.gizmoKind !== 'railnode') return;
     selectedRail = null;
     selectedNode = null;
+    selectedNodes = [];
     railMoveHandle.visible = false;
     if (stage.gizmoKind === 'railnode') stage.detachGizmo();
   }
@@ -463,6 +508,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     },
     get selectedNode() {
       return selectedNode;
+    },
+    get selectedNodes(): readonly number[] {
+      return selectedNodes;
     },
     get railArmed() {
       return railArmed;
@@ -485,7 +533,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     setSkins,
     getSkins,
     seatNode,
+    seatAll,
     seatRail,
+    moveSelectedNodes,
     nearestNodeOnRail,
     clearSelection,
   };

@@ -12,6 +12,7 @@ import { createXrContext } from './xr-context';
  *  (terrain corner / course knot / tangent handle / reference / placed prop / free light / rail node / gem)
  *  routes through the one gizmo, and the kind tells the shell where a drag report should go. */
 export type GizmoKind =
+  | 'duplicate'
   | 'corner'
   | 'corners'
   | 'controlpoints'
@@ -37,7 +38,8 @@ export type GizmoKind =
   | 'propdeform'
   | 'gridcorner'
   | 'surfacepoint'
-  | 'grid';
+  | 'grid'
+  | 'box';
 
 /**
  * The shared 3D substrate every viewport layer draws into: the renderer, scene, the active camera pair, the

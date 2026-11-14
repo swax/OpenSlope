@@ -207,6 +207,7 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     propOps.deselectPropOrLight(); // …and the ghost replaces whatever inspector was open
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.selectedGem = null;
     viewport.setPropArmed({
       level: ghost[0]?.level ?? '',

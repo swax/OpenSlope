@@ -27,6 +27,8 @@ import type { TrailKnotSettings, TrailSettings, TrailTileRow, TrailTileSet } fro
 import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
 import { MAX_TRAIL_LANES } from '../../../core/mesh/trail';
 import { gridHinge, gridLengthFixed, gridWidthFixed, MAX_GRID_DIVISIONS } from '../../../core/mesh/ops/grid';
+import type { BoxAxis } from '../../../core/mesh/ops/box';
+import { len } from '../../../core/math/vec';
 import {
   findTrailTileSet,
   isBuiltInTrailTileSet,
@@ -126,11 +128,13 @@ export function createCreateTools(ctx: ToolsContext) {
   let createTubePatchesRow: ReturnType<typeof detail> | null = null;
   let createGridStepRow: ReturnType<typeof detail> | null = null;
   let createGridSideRow: ReturnType<typeof detail> | null = null;
+  let createGridSelectionRow: ReturnType<typeof detail> | null = null;
   let createGridCellsRow: ReturnType<typeof detail> | null = null;
   let createGridCellSizeRow: ReturnType<typeof detail> | null = null;
   let createGridCounts: { updateDisplay(): void; enable(on?: boolean): void }[] = [];
   let createGridSizes: { updateDisplay(): void }[] = [];
   let createGridErrorBanner: HTMLElement | null = null;
+  let refreshBox: (() => void) | null = null;
   let createTrailPointsRow: ReturnType<typeof detail> | null = null;
   let createTrailNextRow: ReturnType<typeof detail> | null = null;
   let createTrailSpansRow: ReturnType<typeof detail> | null = null;
@@ -153,11 +157,13 @@ export function createCreateTools(ctx: ToolsContext) {
     createTubePatchesRow = null;
     createGridStepRow = null;
     createGridSideRow = null;
+    createGridSelectionRow = null;
     createGridCellsRow = null;
     createGridCellSizeRow = null;
     createGridCounts = [];
     createGridSizes = [];
     createGridErrorBanner = null;
+    refreshBox = null;
     createTrailPointsRow = null;
     createTrailNextRow = null;
     createTrailSpansRow = null;
@@ -370,6 +376,11 @@ export function createCreateTools(ctx: ToolsContext) {
           'corner the same way and the rows follow that edge too. A free corner lands on the level plane through the ' +
           'previous one, so a grid drawn in open space is flat; Ctrl puts it on the surface.',
       );
+      tip(
+        g.add({ box: edit.armCreateBox }, 'box').name('▣ create box'),
+        'Draw a rectangular base like Grid, then pull up or down and click to set its height.',
+        'Length, width and height are independent of patch size. Choose a target patch size or divisions along all three axes. Snaps position a new box; its six faces share their corners and edges.',
+      );
       if (!store.modelEditId)
         tip(
           g.add({ surface: edit.armCreateSurface }, 'surface').name('▱ create surface'),
@@ -513,6 +524,7 @@ export function createCreateTools(ctx: ToolsContext) {
   function buildCreateGridTools() {
     const placement = editSection('grid-placement', 'Placement');
     const draft = viewport.createGridCorners;
+    if (draft) createGridSelectionRow = detail(placement, viewport.createGridSelectionLabel, 'selected');
     createGridStepRow = detail(placement, `${viewport.createGridPoints.length} / 3`, 'corners');
     createGridSideRow = tip(
       detail(placement, '—', 'first side'),
@@ -523,12 +535,11 @@ export function createCreateTools(ctx: ToolsContext) {
       !draft
         ? 'click both ends of the first side, then a point for the width · snap to points on an open edge to attach along it · Ctrl puts a corner on the surface · Shift locks a world axis'
         : gridHinge(draft)
-          ? 'the grid hinges on its snapped edge · Transform above: Rotate (E) swings it about the edge, Scale (R) stretches it out from the edge or spreads its far corners, Move (W) carries the far side · click a free corner to move just that one, or the grid to take it whole again · Enter creates and selects the grid'
+          ? 'the grid hinges on its snapped edge · Transform above: Rotate (E) swings it about the edge, Scale (R) stretches it out from the edge or spreads its far corners, Move (W) carries the far side · click a free edge or corner to move it, or inside the grid to take it whole again · Enter creates and selects the grid'
           : draft.some(corner => corner.vertex !== null)
-            ? 'click a free corner to move it with the gizmo · snapped corners stay pinned · Enter creates and selects the grid'
-            : 'drag the gizmo to move the grid · Transform above (W / E / R) turns or scales it instead · click a corner to move just that one, or the grid to take it whole again · Enter creates and selects the grid',
+            ? 'click a free edge or corner to move it with the gizmo · snapped corners stay pinned · Enter creates and selects the grid'
+            : 'drag the gizmo to move the grid · Transform above (W / E / R) turns or scales it instead · click a boundary edge or corner to move it, or inside the grid to take it whole again · Enter creates and selects the grid',
     );
-    const dimensions = editSection('grid-dimensions', 'Dimensions');
     const replan = () => {
       previewCreateGrid();
       refreshCreateGridSummary();
@@ -537,64 +548,10 @@ export function createCreateTools(ctx: ToolsContext) {
       const result = createGridPlan();
       return result?.ok ? result.plan : null;
     };
-    tip(
-      dimensions
-        .add(store, 'gridSizing', { 'columns × rows': 'count', 'patch size': 'size' })
-        .name('divide by')
-        .onChange(() => {
-          rebuildTools();
-          updateCmdSheet();
-        }),
-      'Set the columns and rows directly, or give one patch size and let each side take the count nearest it.',
-      'A side attached along an existing edge always keeps that edge’s divisions, whichever is chosen.',
-    );
-    if (store.gridSizing === 'size') {
-      tip(
-        typedRange(dimensions.add(store, 'gridPatchSize', 1, 100, 0.5), { min: 0.1 })
-          .name('patch size (m)')
-          .onChange(replan),
-        'Target width and height of each patch.',
-        'Each side takes the whole number of patches whose size comes closest to this, so the patches can come out a ' +
-          'little larger or smaller, and a side shorter than half of it still gets one.',
-      );
-      createGridCounts = [];
-    } else {
-      // An attached side's count is the edge's, not the user's: the field shows it, disabled, and the user's own
-      // count is kept for the next grid.
-      const counts = {
-        get columns() {
-          const p = plan();
-          return p?.inheritedColumns ? p.columns : store.gridColumns;
-        },
-        set columns(value: number) {
-          store.gridColumns = value;
-          replan();
-        },
-        get rows() {
-          const p = plan();
-          return p?.inheritedRows ? p.rows : store.gridRows;
-        },
-        set rows(value: number) {
-          store.gridRows = value;
-          replan();
-        },
-      };
-      createGridCounts = [
-        tip(
-          typedRange(dimensions.add(counts, 'columns', 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS }).name('columns'),
-          'Patches along the first side.',
-          'When the first two corners are points joined by an open edge run, the grid attaches along it and takes its divisions instead.',
-        ),
-        tip(
-          typedRange(dimensions.add(counts, 'rows', 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS }).name('rows'),
-          'Patches across the width.',
-          'When the third corner is a point joined to the second by an open edge run, that run sets the rows instead.',
-        ),
-      ];
-    }
     previewCreateGrid();
     createGridSizes = [];
     if (draft) {
+      const dimensions = editSection('grid-dimensions', 'Dimensions');
       // Exact sizes, applied to the draft's corners: the far end of a side moves, unless a snapped corner pins it.
       const size = {
         get length() {
@@ -630,12 +587,68 @@ export function createCreateTools(ctx: ToolsContext) {
       if (gridWidthFixed(draft)) width.disable();
       createGridSizes = [length, width];
     }
-    createGridCellsRow = detail(dimensions, '—', 'cells');
+    const gridSize = editSection('grid-size', 'Grid Size');
+    tip(
+      gridSize
+        .add(store, 'gridSizing', { 'columns × rows': 'count', 'patch size': 'size' })
+        .name('divide by')
+        .onChange(() => {
+          rebuildTools();
+          updateCmdSheet();
+        }),
+      'Set the columns and rows directly, or give one patch size and let each side take the count nearest it.',
+      'A side attached along an existing edge always keeps that edge’s divisions, whichever is chosen.',
+    );
+    if (store.gridSizing === 'size') {
+      tip(
+        typedRange(gridSize.add(store, 'gridPatchSize', 1, 100, 0.5), { min: 0.1 })
+          .name('patch size (m)')
+          .onChange(replan),
+        'Target width and height of each patch.',
+        'Each side takes the whole number of patches whose size comes closest to this, so the patches can come out a ' +
+          'little larger or smaller, and a side shorter than half of it still gets one.',
+      );
+      createGridCounts = [];
+    } else {
+      // An attached side's count is the edge's, not the user's: the field shows it, disabled, and the user's own
+      // count is kept for the next grid.
+      const counts = {
+        get columns() {
+          const p = plan();
+          return p?.inheritedColumns ? p.columns : store.gridColumns;
+        },
+        set columns(value: number) {
+          store.gridColumns = value;
+          replan();
+        },
+        get rows() {
+          const p = plan();
+          return p?.inheritedRows ? p.rows : store.gridRows;
+        },
+        set rows(value: number) {
+          store.gridRows = value;
+          replan();
+        },
+      };
+      createGridCounts = [
+        tip(
+          typedRange(gridSize.add(counts, 'columns', 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS }).name('columns'),
+          'Patches along the first side.',
+          'When the first two corners are points joined by an open edge run, the grid attaches along it and takes its divisions instead.',
+        ),
+        tip(
+          typedRange(gridSize.add(counts, 'rows', 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS }).name('rows'),
+          'Patches across the width.',
+          'When the third corner is a point joined to the second by an open edge run, that run sets the rows instead.',
+        ),
+      ];
+    }
+    createGridCellsRow = detail(gridSize, '—', 'cells');
     createGridCellSizeRow = tip(
-      detail(dimensions, '—', 'cell size'),
+      detail(gridSize, '—', 'cell size'),
       'Average patch size along the first side × across it.',
     );
-    createGridErrorBanner = errorBanner(dimensions, '');
+    createGridErrorBanner = errorBanner(gridSize, '');
     refreshCreateGridSummary();
     const actions = editSection('tool-actions', 'Actions');
     const commit = tip(
@@ -649,6 +662,109 @@ export function createCreateTools(ctx: ToolsContext) {
       actions.add({ cancel: cancelCreateGrid }, 'cancel').name('cancel grid (Esc)'),
       'Discard the corners and preview without changing the mountain.',
     );
+  }
+
+  function buildCreateBoxTools() {
+    const placement = editSection('box-placement', 'Placement');
+    const draft = viewport.createBoxDraft;
+    const selected = draft ? detail(placement, viewport.createBoxSelectionLabel, 'selected') : null;
+    if (draft) placement.add({ whole: () => viewport.selectCreateBoxWhole() }, 'whole').name('select whole box');
+    const basePlaced = viewport.createBoxPoints.length >= 3;
+    const step = detail(placement, `${viewport.createBoxPoints.length} / 4`, 'placement steps');
+    note(
+      placement,
+      draft
+        ? 'click a face or boundary edge to resize it with the move gizmo · select whole box for W / E / R · dimensions follow every drag · Enter creates and selects all six faces'
+        : basePlaced
+          ? 'pull up or down from the base to preview height · click to fix it · then adjust the box or press Enter to create'
+          : 'click both ends of the base’s first side, then a point for its width · next pull up or down and click to set height · Ctrl puts a base corner on the surface · Shift locks a world axis',
+    );
+    const dimensions = basePlaced ? editSection('box-dimensions', 'Dimensions') : null;
+    const controls: { updateDisplay(): unknown }[] = [];
+    const replan = () => {
+      edit.previewCreateBox();
+      refreshCreateBoxSummary();
+    };
+    const target = Object.fromEntries((['length', 'width', 'height'] as const).map(axis => [axis, 0]));
+    for (const axis of ['length', 'width', 'height'] as BoxAxis[]) {
+      Object.defineProperty(target, axis, {
+        get: () => {
+          const current = viewport.createBoxDraft ?? viewport.createBoxCandidate;
+          return current ? len(current[axis]) : 0;
+        },
+        set: (value: number) => {
+          edit.setCreateBoxDimension(axis, value);
+          refreshCreateBoxSummary();
+        },
+      });
+      if (dimensions) {
+        const control = tip(
+          typedRange(dimensions.add(target, axis, 0.5, 500, 0.5), { min: 0.5 })
+            .name(`${axis} (m)`)
+            .decimals(1),
+          axis === 'height'
+            ? 'Distance perpendicular to the base. Pull above or below the base to choose its direction.'
+            : `Full ${axis} of the rectangular base.`,
+        );
+        if (!draft && axis !== 'height') control.disable();
+        controls.push(control);
+      }
+    }
+    const gridSize = editSection('box-grid-size', 'Grid Size');
+    tip(
+      gridSize
+        .add(store, 'boxSizing', { 'patch size': 'size', 'divisions along axes': 'count' })
+        .name('divide by')
+        .onChange(() => {
+          rebuildTools();
+          updateCmdSheet();
+        }),
+      'Set one target patch size or independent division counts along length, width and height.',
+    );
+    if (store.boxSizing === 'size') {
+      tip(
+        typedRange(gridSize.add(store, 'boxPatchSize', 1, 100, 0.5), { min: 0.1 })
+          .name('patch size (m)')
+          .onChange(replan),
+        'Each axis takes the whole number of patches closest to this size.',
+      );
+    } else {
+      for (const [property, label] of [
+        ['boxLengthDivisions', 'along length'],
+        ['boxWidthDivisions', 'across width'],
+        ['boxHeightDivisions', 'up height'],
+      ] as const) {
+        typedRange(gridSize.add(store, property, 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS })
+          .name(label)
+          .onChange(replan);
+      }
+    }
+    const divisions = detail(gridSize, '—', 'divisions');
+    const patches = detail(gridSize, '—', 'quad patches');
+    const error = errorBanner(gridSize, '');
+    refreshBox = () => {
+      const result = edit.createBoxPlan();
+      const plan = result?.ok ? result.plan : null;
+      selected?.setValue(viewport.createBoxSelectionLabel);
+      step.setValue(`${viewport.createBoxPoints.length} / 4`);
+      divisions.setValue(plan ? `${plan.divisions.length} × ${plan.divisions.width} × ${plan.divisions.height}` : '—');
+      patches.setValue(plan ? `${plan.quads.length}` : '—');
+      for (const control of controls) control.updateDisplay();
+      error.textContent = result && !result.ok ? result.error : '';
+      error.style.display = error.textContent ? '' : 'none';
+    };
+    replan();
+    const actions = editSection('tool-actions', 'Actions');
+    const commit = tip(
+      actions.add({ create: edit.finishCreateBox }, 'create').name('✔ create box (Enter)'),
+      'Commit the preview as one closed mesh and select all of its patches.',
+    );
+    if (!draft) commit.disable();
+    actions.add({ cancel: edit.cancelCreateBox }, 'cancel').name('cancel box (Esc)');
+  }
+
+  function refreshCreateBoxSummary() {
+    refreshBox?.();
   }
 
   /** The selected paths' settings as a lil-gui target: reading shows the focus path's own value (or the next new
@@ -1462,6 +1578,7 @@ export function createCreateTools(ctx: ToolsContext) {
         ? Math.hypot(end[0] - points[0].pos[0], end[1] - points[0].pos[1], end[2] - points[0].pos[2])
         : null;
     createGridStepRow.setValue(`${points.length} / 3`);
+    createGridSelectionRow?.setValue(viewport.createGridSelectionLabel);
     createGridSideRow?.setValue(side === null ? '—' : fmtM(side));
     const from =
       plan?.inheritedColumns && plan.inheritedRows
@@ -1637,6 +1754,8 @@ export function createCreateTools(ctx: ToolsContext) {
     buildCreateEdgeTools,
     buildCreateTubeTools,
     buildCreateGridTools,
+    buildCreateBoxTools,
+    refreshCreateBoxSummary,
     buildTrailTools,
     refreshCreateEdgeSummary,
     refreshCreatePatchSummary,

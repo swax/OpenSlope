@@ -206,6 +206,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       store.selectedLight = null;
       store.selectedRail = null;
       store.selectedNode = null;
+      store.selectedRailNodes = [];
       store.selectedGem = null;
       clearScreenState();
       clearLineState();
@@ -265,6 +266,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     store.selectedLight = null;
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.selectedGem = null;
     clearScreenState();
     clearLineState();
@@ -742,6 +744,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedLight = null;
         store.selectedRail = null;
         store.selectedNode = null;
+        store.selectedRailNodes = [];
         store.selectedGem = null;
         clearScreenState();
         clearLineState();
@@ -779,6 +782,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedRefProp = null;
         store.selectedRail = null;
         store.selectedNode = null;
+        store.selectedRailNodes = [];
         store.selectedGem = null;
         clearScreenState();
         clearLineState();
@@ -796,6 +800,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedLight = null;
         store.selectedRail = null;
         store.selectedNode = null;
+        store.selectedRailNodes = [];
         store.selectedGem = null;
         store.selectedScreen = null;
         clearLineState();
@@ -923,12 +928,14 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       const rail = store.mdoc.rails[store.selectedRail];
       rail.nodes.push(pos);
       store.selectedNode = null; // keep the gizmo off the last node so it doesn't intercept the next placing click
+      store.selectedRailNodes = [];
       scheduleRebuild();
       rebuildTools(); // node count changed
     },
-    onSelectRailNode(rail: number | null, node: number | null) {
+    onSelectRailNode(rail: number | null, node: number | null, nodes?: readonly number[]) {
       store.selectedRail = rail;
       store.selectedNode = node;
+      store.selectedRailNodes = rail === null ? [] : [...(nodes ?? (node === null ? [] : [node]))];
       store.pathHandle = null; // a node takes the gizmo back from a Bézier handle (docs/014)
       if (rail !== null) {
         store.selectedProp = null;
@@ -941,10 +948,20 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       } // picking a node stops drawing
       scheduleRebuild();
       if (store.currentMode === 'props') rebuildTools();
+      updateCmdSheet();
     },
     onMoveRailNode(rail: number, node: number, pos: V3) {
       const r = store.mdoc.rails?.[rail];
       if (r?.nodes[node]) r.nodes[node] = pos;
+      scheduleRebuild();
+    },
+    onMoveRailNodes(rail: number, nodes: readonly number[], delta: V3) {
+      const r = store.mdoc.rails?.[rail];
+      if (!r || !delta.every(Number.isFinite)) return;
+      for (const node of new Set(nodes)) {
+        const pos = r.nodes[node];
+        if (pos) r.nodes[node] = [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]];
+      }
       scheduleRebuild();
     },
     onAppendLineNode(pos: V3) {
@@ -961,6 +978,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedRefProp = null;
         store.selectedRail = null;
         store.selectedNode = null;
+        store.selectedRailNodes = [];
         store.selectedGem = null;
         store.railDrawing = false;
         viewport().setRailArmed(false);
@@ -1005,6 +1023,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.multiSel = [];
         store.selectedRail = null;
         store.selectedNode = null;
+        store.selectedRailNodes = [];
         store.railDrawing = false;
         viewport().setRailArmed(false);
         store.trickTool = 'gem';
@@ -1029,6 +1048,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.multiSel = [];
         store.selectedRail = null;
         store.selectedNode = null;
+        store.selectedRailNodes = [];
         store.selectedGem = null;
         store.railDrawing = false;
         clearLineState();

@@ -346,6 +346,7 @@ export function createTransformLayer(
     if (stage.gizmoKind === 'propdeform') return stage.gizmo.object?.userData.deformSection === true;
     if (stage.gizmoKind === 'trail') return true; // the trail turns itself (viewport/tools/create-trail.ts)
     if (stage.gizmoKind === 'grid') return true; // …and so does a whole Create Grid draft (viewport/tools/create-grid.ts)
+    if (stage.gizmoKind === 'box') return !stage.gizmo.object?.userData.boxResizeAxes;
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corner') return selectedFreePoint() !== null;
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
@@ -364,6 +365,7 @@ export function createTransformLayer(
   function scaleActive(): boolean {
     if (gizmoMode !== 'scale') return false;
     if (stage.gizmoKind === 'propdeform') return stage.gizmo.object?.userData.deformSection === true;
+    if (stage.gizmoKind === 'box') return !stage.gizmo.object?.userData.boxResizeAxes;
     if (stage.gizmoKind === 'trail' || stage.gizmoKind === 'grid') return true;
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
@@ -379,12 +381,31 @@ export function createTransformLayer(
    *  is the full free gizmo. A no-op while a drag is live — a drag keeps the frame it started with. */
   function applyGizmoFrame() {
     if (stage.gizmo.dragging) return;
+    if (stage.gizmoKind === 'duplicate') {
+      stage.gizmo.setMode('translate');
+      stage.gizmo.setSpace('local');
+      stage.gizmo.showX = stage.gizmo.showY = stage.gizmo.showZ = true;
+      stage.gizmoRestrict = false;
+      return;
+    }
     const rotating = rotationActive();
     const scaling = scaleActive();
     stage.gizmo.setMode(rotating ? 'rotate' : scaling ? 'scale' : 'translate');
     stage.gizmo.showX = true;
     stage.gizmo.showY = true;
     stage.gizmo.showZ = true;
+    if (stage.gizmoKind === 'gridcorner' && stage.gizmo.object?.userData.gridEdge) {
+      stage.gizmoRestrict = false;
+      stage.gizmo.setSpace('local');
+      return;
+    }
+    if (stage.gizmoKind === 'box') {
+      const axes = stage.gizmo.object?.userData.boxResizeAxes as boolean[] | null;
+      if (axes) [stage.gizmo.showX, stage.gizmo.showY, stage.gizmo.showZ] = axes;
+      stage.gizmoRestrict = false;
+      stage.gizmo.setSpace(axes || scaling ? 'local' : 'world');
+      return;
+    }
     if (stage.gizmoKind === 'grid' && stage.gizmo.object?.userData.gridHinge) {
       // A Create Grid draft drawn off an edge swings on it (viewport/tools/create-grid.ts). Its anchor is framed with
       // X along that edge and Z across to the far side, so Rotate keeps only the ring about the edge, and Scale the

@@ -14,6 +14,7 @@ import { createGridToolLayer } from '../src/app/viewport/tools/create-grid';
 import type { PlacementEndpoint } from '../src/app/viewport/input/placement-constraint';
 import type { Stage } from '../src/app/viewport/stage';
 import { check, failures } from './check';
+import { resizeGridWidth } from '../src/core/mesh/ops/grid';
 
 const stage = {
   worldRoot: new THREE.Group(),
@@ -214,6 +215,115 @@ function mode(next: 'translate' | 'rotate' | 'scale') {
   out = drag(obj => obj.scale.set(2, 1, 1));
   const length = (ps: V3[]) => Math.hypot(ps[1][0] - ps[0][0], ps[1][2] - ps[0][2]);
   check(Math.abs(length(out) - 2 * length(before)) < 1e-9, 'free: a stretch along the first side doubles its length');
+}
+
+// Boundary edges resize a placed draft as a pair, without disturbing its opposite side or snapped corners.
+{
+  stage.camera.position.set(45, 200, -30);
+  stage.camera.up.set(0, 0, -1);
+  stage.camera.lookAt(45, 0, -30);
+  stage.camera.updateMatrixWorld();
+  const pick = (pos: V3) => {
+    const projected = new THREE.Vector3(...scene(pos)).project(stage.camera);
+    stage.pointer.set(projected.x, projected.y);
+    stage.ray.setFromCamera(stage.pointer, stage.camera);
+    layer.onCommit();
+  };
+  draft([
+    { pos: [0, 0, 0], vertex: null },
+    { pos: [90, 0, 0], vertex: null },
+    { pos: [90, 0, 60], vertex: null },
+  ]);
+  mode('translate');
+  pick([90, 0, 30]);
+  check(
+    layer.selectionLabel === 'edge 2' && stage.gizmoKind === 'gridcorner',
+    'edge: a boundary click selects the whole edge',
+  );
+  check(near(stage.gizmo.object!.position.toArray(), scene([90, 0, 30])), 'edge: the move gizmo sits at its midpoint');
+  const anchor = stage.gizmo.object!;
+  stage.gizmo.dragging = true;
+  layer.gizmoDragging(true);
+  anchor.position.x = 105;
+  layer.gizmoChanged();
+  anchor.position.x = 120;
+  layer.gizmoChanged();
+  stage.gizmo.dragging = false;
+  layer.gizmoDragging(false);
+  check(
+    near(positions()[1], [120, 0, 0]) && near(positions()[2], [120, 0, 60]),
+    'edge: both endpoints follow the frozen drag, without accumulating',
+  );
+  check(near(positions()[0], [0, 0, 0]) && near(positions()[3], [0, 0, 60]), 'edge: the opposite side stays fixed');
+  layer.setCorners(resizeGridWidth(layer.corners!, 100));
+  check(near(anchor.position.toArray(), scene([120, 0, 50])), 'edge: typed dimensions reseat the selected edge gizmo');
+  pick([60, 0, 50]);
+  check(layer.wholeSelected, 'edge: clicking the interior selects the whole grid again');
+  pick([120, 0, 100]);
+  check(layer.selectionLabel === 'corner 3', 'edge: corners retain pick priority over their adjoining edges');
+  draft([
+    { pos: [0, 0, 0], vertex: 0 },
+    { pos: [90, 0, 0], vertex: 1 },
+    { pos: [90, 0, 60], vertex: null },
+  ]);
+  pick([45, 0, 0]);
+  check(layer.selectionLabel !== 'edge 1', 'edge: a snapped boundary cannot be moved');
+  pick([45, 0, 60]);
+  drag(object => (object.position.z -= 30));
+  check(
+    near(positions()[2], [90, 0, 90]) && near(positions()[3], [0, 0, 90]),
+    'edge: the free boundary resizes an attached grid',
+  );
+  check(
+    near(positions()[0], [0, 0, 0]) && near(positions()[1], [90, 0, 0]),
+    'edge: an attached grid keeps its snapped side fixed',
+  );
+  // A turned and tilted grid supplies the edge gizmo's frame, independent of world axes and the camera.
+  const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.45, 0.6, 0.15));
+  const turned = (
+    [
+      [0, 0, 0],
+      [90, 0, 0],
+      [90, 0, 60],
+      [0, 0, 60],
+    ] as V3[]
+  ).map(pos => {
+    const point = new THREE.Vector3(...scene(pos)).applyQuaternion(turn);
+    return { pos: [point.x, point.y, -point.z] as V3, vertex: null };
+  });
+  layer.setCorners(turned as unknown as NonNullable<typeof layer.corners>);
+  const midpoint = turned[2].pos.map((value, i) => (value + turned[3].pos[i]) / 2) as V3;
+  pick(midpoint);
+  const framed = stage.gizmo.object!;
+  const along = new THREE.Vector3(...scene(turned[1].pos)).sub(new THREE.Vector3(...scene(turned[0].pos))).normalize();
+  const across = new THREE.Vector3(...scene(turned[3].pos)).sub(new THREE.Vector3(...scene(turned[0].pos))).normalize();
+  const x = new THREE.Vector3(1, 0, 0).applyQuaternion(framed.quaternion);
+  const y = new THREE.Vector3(0, 1, 0).applyQuaternion(framed.quaternion);
+  const z = new THREE.Vector3(0, 0, 1).applyQuaternion(framed.quaternion);
+  check(
+    framed.userData.gridEdge === true && Math.abs(x.dot(along)) > 1 - 1e-9 && Math.abs(z.dot(across)) > 1 - 1e-9,
+    'edge frame: axes follow a rotated and tilted grid',
+  );
+  check(
+    Math.abs(y.dot(along)) < 1e-9 && Math.abs(y.dot(across)) < 1e-9,
+    'edge frame: the up axis follows the grid normal',
+  );
+  const before = positions().map(point => [...point] as V3);
+  drag(object => object.position.addScaledVector(z, 20));
+  check(
+    near(positions()[0], before[0]) && near(positions()[1], before[1]),
+    'edge frame: a local-axis resize leaves the opposite side fixed',
+  );
+  check(
+    Math.abs(new THREE.Vector3(...positions()[2]).distanceTo(new THREE.Vector3(...positions()[1])) - 80) < 1e-8,
+    'edge frame: dragging along local width changes width without shearing',
+  );
+  pick(positions()[2]);
+  check(
+    stage.gizmo.object!.userData.gridEdge === false &&
+      stage.gizmo.object!.quaternion.angleTo(new THREE.Quaternion()) < 1e-9,
+    'edge frame: corner selection clears the edge orientation',
+  );
 }
 
 if (failures) process.exitCode = 1;

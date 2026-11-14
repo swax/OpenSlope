@@ -130,6 +130,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
     void ensureTrickArt(); // tubes upgrade to their material's default skin when the shipped art lands
     store.selectedRail = rails.length - 1;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.selectedProp = null;
     store.multiSel = [];
     store.selectedLight = null;
@@ -158,6 +159,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
     leavePropLine();
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.selectedProp = null;
     store.selectedLight = null;
     store.multiSel = [];
@@ -198,6 +200,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
     store.mdoc.rails?.splice(store.selectedRail, 1);
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
   }
 
   /** Put the trick tools down: nothing held, nothing selected, and the Add buttons unlit. The Tools panel then
@@ -206,6 +209,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
   function leaveTrickTools() {
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.selectedGem = null;
     store.railDrawing = false;
     viewport.setRailArmed(false);
@@ -243,11 +247,26 @@ export function createTrickTools(deps: TrickToolsDeps) {
 
   /** Remove the selected rail's active node; if that empties the rail below two nodes, remove the whole rail. */
   function deleteSelectedRailNode() {
-    if (store.selectedRail === null || store.selectedNode === null || !store.mdoc.rails?.[store.selectedRail]) return;
+    if (store.selectedRail === null || !store.mdoc.rails?.[store.selectedRail]) return;
     const rail = store.mdoc.rails[store.selectedRail];
-    rail.nodes.splice(store.selectedNode, 1);
-    assignHandles(rail, withoutPathNode(rail.handles, store.selectedNode)); // later nodes keep their own
+    const nodes = [
+      ...new Set(
+        store.selectedRailNodes.length
+          ? store.selectedRailNodes
+          : store.selectedNode === null
+            ? []
+            : [store.selectedNode],
+      ),
+    ]
+      .filter(n => !!rail.nodes[n])
+      .sort((a, b) => b - a);
+    if (!nodes.length) return;
+    for (const node of nodes) {
+      rail.nodes.splice(node, 1);
+      assignHandles(rail, withoutPathNode(rail.handles, node)); // later nodes keep their own
+    }
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     if (rail.nodes.length < 2) {
       store.mdoc.rails.splice(store.selectedRail, 1);
       leaveTrickTools();

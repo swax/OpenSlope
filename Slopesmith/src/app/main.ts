@@ -351,9 +351,9 @@ viewportCallbacks.onClearEffectSelection = () => {
   effectsEditor?.clearSelection();
 };
 const selectRailNodeForMode = viewportCallbacks.onSelectRailNode;
-viewportCallbacks.onSelectRailNode = (rail, node) => {
-  selectRailNodeForMode?.(rail, node);
-  if (rail !== null && store.currentMode === 'effects') effectsEditor?.selectCourseSpline(rail, node);
+viewportCallbacks.onSelectRailNode = (rail, node, nodes) => {
+  selectRailNodeForMode?.(rail, node, nodes);
+  if (rail !== null && store.currentMode === 'effects') effectsEditor?.selectCourseSpline(rail, node, nodes);
 };
 // An armed Edit modal tool owns its clicks: a prop pick or a click on nothing keeps that tool's
 // meaning and never enters or leaves a model edit session.
@@ -1106,7 +1106,12 @@ function renderMountainObjects() {
 function renderMountainDetails() {
   viewport.setFreeLights(store.mdoc.lights ?? [], store.selectedLight, selectedSetLights(store));
   // A node whose Bézier handle holds the gizmo leaves it there, so its own layer is told no node is selected.
-  viewport.setRails(store.mdoc.rails ?? [], store.selectedRail, pathHandles.holds('rail') ? null : store.selectedNode);
+  viewport.setRails(
+    store.mdoc.rails ?? [],
+    store.selectedRail,
+    pathHandles.holds('rail') ? null : store.selectedNode,
+    pathHandles.holds('rail') ? [] : store.selectedRailNodes,
+  );
   viewport.setPropLines(
     propLines.displayLines(),
     store.selectedLine, // docs/070
@@ -1346,6 +1351,7 @@ function restoreDoc(json: string) {
   viewport.clearScreenSelection();
   store.selectedRail = null;
   store.selectedNode = null;
+  store.selectedRailNodes = [];
   store.railDrawing = false;
   viewport.setRailArmed(false);
   store.selectedLine = null;
@@ -2775,6 +2781,7 @@ function goToRail(index: number) {
   store.selectedGem = null;
   store.selectedRail = index;
   store.selectedNode = null;
+  store.selectedRailNodes = store.mdoc.rails?.[index]?.nodes.map((_, i) => i) ?? [];
   store.railDrawing = false;
   setMode('props');
   scheduleRebuild();
@@ -2818,6 +2825,7 @@ function goToEffects(target?: { sourceIndex: number; called: true }): void {
 }
 
 function setMode(m: Mode) {
+  if (m !== 'edit') edit.cancelSubdivisionBend(false);
   if (m !== 'props') propDeform.leave(); // a changed cage draft parks until Props shows its prop again
   propOps.cancelPropReplacement();
   usersMode.setActive(false); // Users is its own mode: picking a numbered one leaves it (docs/038)
@@ -2852,6 +2860,7 @@ function setMode(m: Mode) {
     viewport.setRailArmed(false);
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.lineDrawing = false;
     viewport.setLineDrawing(false);
     store.selectedLine = null;
@@ -3446,6 +3455,7 @@ async function loadMountain() {
     store.selectedRefScreen = null;
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.railDrawing = false;
     viewport.setRailArmed(false);
     store.selectedLine = null;

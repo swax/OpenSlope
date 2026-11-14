@@ -11,7 +11,7 @@ import {
 } from '../../../core/rails/rails';
 import { textureRefUrl } from '../../net/asset-paths';
 import { surfaceFor } from '../../ride/physics-math';
-import { note, texturePreview, tip } from '../components/gui';
+import { detail, note, texturePreview, tip, typedRange } from '../components/gui';
 import { toast } from '../components/toast';
 import { pathHandleActions, placementCancelButton, type ToolsContext } from './widgets';
 
@@ -131,11 +131,21 @@ function buildRailTools(ctx: ToolsContext) {
   if (!rail) return; // no rail selected — the Add rail pipe button's tooltip explains laying one
   const motionPath = isMotionPath(rail);
   const tube = railHasTube(rail);
+  const selected = store.selectedRailNodes;
+  if (!store.railDrawing) {
+    detail(
+      gui,
+      selected.length === 1
+        ? `Point ${selected[0] + 1} of ${rail.nodes.length}`
+        : `${selected.length} of ${rail.nodes.length} points selected`,
+      'selection',
+    );
+    note(gui, 'Shift-click points to add or remove · double-click the rail to select all points');
+  }
   // height re-floats every node by the delta, so the rail keeps its shape as it moves up / down the slope
   let lastH = rail.height;
   tip(
-    gui
-      .add(rail, 'height', 0, 12, 0.1)
+    typedRange(gui.add(rail, 'height', 0, 12, 0.1), {})
       .name('height (m)')
       .onChange((h: number) => {
         const dy = h - lastH;
@@ -244,9 +254,11 @@ function buildRailTools(ctx: ToolsContext) {
     gui.add({ done: () => finishRail() }, 'done').name(motionPath ? '✔ finish path' : '✔ finish rail');
   } else {
     gui.add({ more: () => resumeRail(ctx) }, 'more').name('✚ add more points');
-    if (store.selectedNode !== null)
-      gui.add({ delN: () => deleteSelectedRailNode() }, 'delN').name('✕ delete this point');
-    if (rail.nodes.length >= 2) pathHandleActions(ctx, gui);
+    if (selected.length)
+      gui
+        .add({ delN: () => deleteSelectedRailNode() }, 'delN')
+        .name(selected.length === 1 ? '✕ delete this point' : '✕ delete selected points');
+    if (rail.nodes.length >= 2 && store.selectedNode !== null) pathHandleActions(ctx, gui);
   }
   gui.add({ del: () => deleteSelectedRail() }, 'del').name(motionPath ? '✕ delete path' : '✕ delete rail');
   placementCancelButton(ctx);
@@ -301,6 +313,7 @@ function resumeRail(ctx: ToolsContext) {
   const { store, viewport, scheduleRebuild, rebuildTools } = ctx;
   if (store.selectedRail === null) return;
   store.selectedNode = null;
+  store.selectedRailNodes = [];
   store.railDrawing = true;
   viewport.setRailArmed(true);
   scheduleRebuild();

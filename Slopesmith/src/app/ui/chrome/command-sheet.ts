@@ -74,6 +74,12 @@ export function createCommandSheet(deps: CommandSheetDeps) {
   for (const panel of [cmdSheet, paintControls, toolHelp]) foldOnClick(panel);
 
   function editSelectionHelp() {
+    if (store.duplicatePending)
+      return helpPanel('Edit Mode — duplicate', [
+        ['drag gizmo', 'move the copy; release to create it'],
+        ['no movement', 'discard the copy'],
+        ['Esc', 'cancel'],
+      ]);
     if (deps.surfaceGuidePlacing?.())
       return helpPanel('Edit Mode — place guide', [
         ['move pointer', 'preview on the existing surface'],
@@ -188,6 +194,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
             ['Alt drag', 'move alone (allows creases)'],
             ['Ctrl+A', 'select connected'],
+            ['Ctrl+D', 'duplicate, then drag to create'],
             ['H', 'hide selection'],
             ...((store.edgeSel.length || store.cellSel.length) && canEditCurvature()
               ? [['G', `${selectedControlCagesVisible() ? 'hide' : 'show'} control cage`] as [string, string]]
@@ -199,6 +206,22 @@ export function createCommandSheet(deps: CommandSheetDeps) {
             ...(store.cellSel.length ? [['N', 'flip ridable side'] as [string, string]] : []),
           ],
     );
+  }
+
+  function railSelectionHelp() {
+    return store.railDrawing
+      ? helpPanel('Props Mode — laying a rail', [
+          ['LMB', 'add point'],
+          ['Enter / Esc', 'finish'],
+        ])
+      : helpPanel('Props Mode — rail points', [
+          ['LMB point', 'select one point'],
+          ['⇧LMB point', 'add / remove point'],
+          ['double-click rail', 'select all points'],
+          ['drag gizmo', 'move selected points together'],
+          ['Del', 'delete selected points'],
+          ['Esc', 'deselect'],
+        ]);
   }
 
   return function updateCommandSheet() {
@@ -283,52 +306,54 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                         ['LMB light', 'add it to the group'],
                         ['Esc', 'cancel'],
                       ])
-                    : store.lineDrawing
-                      ? helpPanel('Props Mode — laying a path', [
-                          ['LMB', 'add a point'],
-                          ['Enter / Esc', 'finish'],
-                        ])
-                      : store.selectedLine !== null
-                        ? (() => {
-                            // a line and a sheet (docs/070 / 071) share the path gestures; only the noun differs
-                            const noun = store.mdoc.propLines?.find(line => line.id === store.selectedLine)?.sheet
-                              ? 'sheet'
-                              : 'line';
-                            return helpPanel(`Props Mode — ${noun}`, [
-                              ['LMB point', 'select + move'],
-                              [`LMB ${noun === 'sheet' ? 'piece' : 'copy'}`, `select the ${noun}`],
-                              ['Del', store.selectedLineNode !== null ? 'delete point' : `delete ${noun}`],
-                              ['Esc', 'deselect'],
-                            ]);
-                          })()
-                        : store.armedProp
-                          ? helpPanel('Props Mode — placing', [
-                              ['LMB', 'place'],
-                              ['Alt+scroll / ← →', 'turn'],
-                              ['⇧scroll', 'resize'],
-                              ['MMB', 'select + arm prop'],
-                              ['Esc', 'put down'],
-                            ])
-                          : propPastePlacing()
-                            ? helpPanel('Props Mode — paste', [
+                    : store.selectedRail !== null
+                      ? railSelectionHelp()
+                      : store.lineDrawing
+                        ? helpPanel('Props Mode — laying a path', [
+                            ['LMB', 'add a point'],
+                            ['Enter / Esc', 'finish'],
+                          ])
+                        : store.selectedLine !== null
+                          ? (() => {
+                              // a line and a sheet (docs/070 / 071) share the path gestures; only the noun differs
+                              const noun = store.mdoc.propLines?.find(line => line.id === store.selectedLine)?.sheet
+                                ? 'sheet'
+                                : 'line';
+                              return helpPanel(`Props Mode — ${noun}`, [
+                                ['LMB point', 'select + move'],
+                                [`LMB ${noun === 'sheet' ? 'piece' : 'copy'}`, `select the ${noun}`],
+                                ['Del', store.selectedLineNode !== null ? 'delete point' : `delete ${noun}`],
+                                ['Esc', 'deselect'],
+                              ]);
+                            })()
+                          : store.armedProp
+                            ? helpPanel('Props Mode — placing', [
                                 ['LMB', 'place'],
                                 ['Alt+scroll / ← →', 'turn'],
                                 ['⇧scroll', 'resize'],
-                                ['Esc', 'cancel'],
-                              ])
-                            : helpPanel('Props Mode — select', [
-                                ['LMB', 'select'],
-                                ['Ctrl+LMB', 'add / drop a prop or light'],
-                                ['drag', 'box-select many'],
-                                ['⇧ drag', 'add boxed props'],
                                 ['MMB', 'select + arm prop'],
-                                ...(canRotateSelection()
-                                  ? [['W / E / R', 'move / rotate / scale'] as [string, string]]
-                                  : []),
-                                ['Ctrl+C / X / V', 'copy / cut / paste'],
-                                ['Del', 'remove'],
-                                ['Esc', 'deselect'],
+                                ['Esc', 'put down'],
                               ])
+                            : propPastePlacing()
+                              ? helpPanel('Props Mode — paste', [
+                                  ['LMB', 'place'],
+                                  ['Alt+scroll / ← →', 'turn'],
+                                  ['⇧scroll', 'resize'],
+                                  ['Esc', 'cancel'],
+                                ])
+                              : helpPanel('Props Mode — select', [
+                                  ['LMB', 'select'],
+                                  ['Ctrl+LMB', 'add / drop a prop or light'],
+                                  ['drag', 'box-select many'],
+                                  ['⇧ drag', 'add boxed props'],
+                                  ['MMB', 'select + arm prop'],
+                                  ...(canRotateSelection()
+                                    ? [['W / E / R', 'move / rotate / scale'] as [string, string]]
+                                    : []),
+                                  ['Ctrl+C / X / V', 'copy / cut / paste'],
+                                  ['Del', 'remove'],
+                                  ['Esc', 'deselect'],
+                                ])
                 : store.currentMode === 'edit' && edgeExtrusionStaged()
                   ? deps.edgeExtrusionPathMode?.()
                     ? helpPanel('Edit Mode — extrude along path', [
@@ -367,18 +392,31 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                             ['Esc', 'new strand (again to finish)'],
                             ['Enter', 'finish'],
                           ])
-                        : store.currentMode === 'edit' && store.surgeryTool === 'tube'
-                          ? helpPanel('Edit Mode — create tube', [
-                              ['LMB', 'place axis endpoint'],
-                              ['Ctrl+LMB', 'second end on the surface'],
-                              ['⇧LMB', 'lock world axis'],
-                              ['Enter', 'create + select patches'],
-                              ['Esc', 'cancel'],
-                            ])
-                          : store.currentMode === 'edit' && store.surgeryTool === 'grid'
-                            ? helpPanel('Edit Mode — create grid', [
+                        : store.currentMode === 'edit' && (store.surgeryTool === 'tube' || store.surgeryTool === 'bend')
+                          ? store.surgeryTool === 'bend'
+                            ? helpPanel('Edit Mode — bend cage', [
+                                ['Angle / axes', 'preview a circular bend'],
+                                ['RMB / MMB', 'orbit / pan'],
+                                ['Enter', 'apply bend'],
+                                ['Esc', 'cancel preview'],
+                              ])
+                            : helpPanel('Edit Mode — create tube', [
+                                ['LMB', 'place axis endpoint'],
+                                ['Ctrl+LMB', 'second end on the surface'],
+                                ['⇧LMB', 'lock world axis'],
+                                ['Enter', 'create + select patches'],
+                                ['Esc', 'cancel'],
+                              ])
+                          : store.currentMode === 'edit' &&
+                              (store.surgeryTool === 'grid' || store.surgeryTool === 'box')
+                            ? helpPanel(`Edit Mode — create ${store.surgeryTool}`, [
                                 ['LMB', 'first side’s two ends, then the width'],
-                                ['LMB on points', 'attach along their edge'],
+                                ...(store.surgeryTool === 'grid'
+                                  ? [['LMB on points', 'attach along their edge'] as [string, string]]
+                                  : [
+                                      ['Move after base', 'pull up / down for height'] as [string, string],
+                                      ['Fourth click', 'fix height'] as [string, string],
+                                    ]),
                                 ['Ctrl+LMB', 'corner on the surface'],
                                 ['⇧LMB', 'lock world axis'],
                                 ...(canRotateSelection()

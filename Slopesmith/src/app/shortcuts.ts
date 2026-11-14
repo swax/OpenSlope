@@ -141,6 +141,8 @@ export function installShortcuts(deps: ShortcutDeps) {
     cancelCreateTube,
     finishCreateGrid,
     cancelCreateGrid,
+    finishCreateBox,
+    cancelCreateBox,
     finishCreateTrail,
     cancelCreateTrail,
     undoCreateTrailPoint,
@@ -167,6 +169,9 @@ export function installShortcuts(deps: ShortcutDeps) {
     canCopySurfaceControlCurve,
     canPasteSurfaceControlCurve,
     cancelPastePlacement,
+    beginDuplicateSelection,
+    canDuplicateSelection,
+    cancelDuplicateSelection,
     deleteSelectedMesh,
     dissolveSelectedMesh,
     canDissolveSelectedMesh,
@@ -191,15 +196,48 @@ export function installShortcuts(deps: ShortcutDeps) {
     action();
     return true;
   }
+
+  function duplicateShortcut(e: KeyboardEvent): boolean {
+    if (
+      !(e.ctrlKey || e.metaKey) ||
+      e.altKey ||
+      e.shiftKey ||
+      e.key.toLowerCase() !== 'd' ||
+      store.currentMode !== 'edit'
+    )
+      return false;
+    e.preventDefault();
+    if (!e.repeat && !store.duplicatePending) {
+      if (canDuplicateSelection()) beginDuplicateSelection();
+      else if (canCopySurfaceControlCurve?.()) duplicateSurfaceControlCurve();
+    }
+    return true;
+  }
   // lil-gui stops keys on focused buttons before they reach the window's normal shortcut listener.
   // Curve clipboard commands still work immediately after choosing a destination Surface button.
   window.addEventListener(
     'keydown',
     e => {
+      if (
+        store.duplicatePending &&
+        (e.key === 'Escape' || ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase()))) &&
+        !chatFocused()
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        cancelDuplicateSelection();
+        return;
+      }
+      if (store.surgeryTool === 'bend' && e.key === 'Escape' && !chatFocused()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        edit.cancelSubdivisionBend();
+        return;
+      }
       if (!(e.target as HTMLElement)?.closest?.('button') || chatFocused() || viewport.riding || deps.propDeform.active)
         return;
       if (e.key.toLowerCase() === 'c' && window.getSelection?.()?.toString()) return;
-      if (surfaceClipboardShortcut(e)) e.stopImmediatePropagation();
+      if (duplicateShortcut(e) || surfaceClipboardShortcut(e)) e.stopImmediatePropagation();
     },
     { capture: true },
   );
@@ -222,6 +260,27 @@ export function installShortcuts(deps: ShortcutDeps) {
     }
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
+    if (store.duplicatePending && !typing) {
+      const nextMode = !mod && !e.altKey ? modeForShortcut(e.key) : null;
+      if (nextMode) {
+        e.preventDefault();
+        setMode(nextMode);
+      } else if (mod || ['Delete', 'Backspace', 'Enter'].includes(e.key)) e.preventDefault();
+      return;
+    }
+    if (store.surgeryTool === 'bend' && !typing) {
+      if (e.key === 'Escape' || (mod && (key === 'z' || key === 'y'))) {
+        e.preventDefault();
+        edit.cancelSubdivisionBend();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        edit.applySubdivisionBend();
+      } else if (!mod && !e.altKey && modeForShortcut(e.key)) {
+        e.preventDefault();
+        setMode(modeForShortcut(e.key)!);
+      } else if (mod || ['Delete', 'Backspace'].includes(e.key)) e.preventDefault();
+      return;
+    }
     if (deps.propDeform.active && !typing) {
       if (mod && (key === 'z' || key === 'y')) {
         e.preventDefault();
@@ -395,7 +454,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       selectConnected();
       return;
     }
-    if (surfaceClipboardShortcut(e)) return;
+    if (duplicateShortcut(e) || surfaceClipboardShortcut(e)) return;
     if (mod && e.key.toLowerCase() === 'c' && canCopyVertices()) {
       e.preventDefault();
       copySelectedVertices();
@@ -489,6 +548,11 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (e.key === 'Enter' && store.surgeryTool === 'grid') {
       e.preventDefault();
       finishCreateGrid();
+      return;
+    }
+    if (e.key === 'Enter' && store.surgeryTool === 'box') {
+      e.preventDefault();
+      finishCreateBox();
       return;
     }
     if (e.key === 'Enter' && store.surgeryTool === 'surface') {
@@ -718,7 +782,7 @@ export function installShortcuts(deps: ShortcutDeps) {
         if (effects.deleteSelection()) e.preventDefault();
       } else if (store.currentMode === 'props' && hasSelectedSet(store)) propOps.deleteMultiSelProps();
       else if (store.currentMode === 'props' && (store.railDrawing || store.selectedRail !== null)) {
-        if (store.selectedNode !== null) trickTools.deleteSelectedRailNode();
+        if (store.selectedRailNodes.length || store.selectedNode !== null) trickTools.deleteSelectedRailNode();
         else trickTools.deleteSelectedRail();
       } else if (store.currentMode === 'props' && store.selectedLine !== null) {
         if (store.selectedLineNode !== null) propLines.deleteSelectedNode();
@@ -799,6 +863,10 @@ export function installShortcuts(deps: ShortcutDeps) {
       }
       if (store.currentMode === 'edit' && store.surgeryTool === 'grid') {
         cancelCreateGrid();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'box') {
+        cancelCreateBox();
         return;
       }
       if (store.currentMode === 'edit' && store.surgeryTool === 'surface') {
@@ -907,6 +975,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       store.selectedRefScreen = null;
       store.selectedRail = null;
       store.selectedNode = null;
+      store.selectedRailNodes = [];
       store.selectedGem = null;
       store.gemArmed = false;
       viewport.setGemArmed(false);

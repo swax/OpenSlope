@@ -6,6 +6,7 @@ import type { TrailShape, TrailTransform } from '../viewport/tools/create-trail'
 import type { CellSpeedTint } from '../viewport/types';
 import type { PlacementEndpoint } from '../viewport/input/placement-constraint';
 import type { GridCorners } from '../../core/mesh/ops/grid';
+import type { BoxDraft, BoxPlan } from '../../core/mesh/ops/box';
 import type { SurfaceGuidePlacement } from '../viewport/tools/surface-guide';
 import type { Patch } from '../../core/mesh/loft-surface';
 import type { QuadMesh, MeshAdjacency } from '../../core/mesh/topology';
@@ -51,7 +52,9 @@ export interface EditViewportPort {
   setBridgeRails(rails: readonly (readonly number[])[] | null): void;
   setLoftPreview(quads: readonly (readonly number[])[] | null, source?: readonly number[] | QuadMeshDoc | null): void;
   setSurfaceGuidePlacement?(placement: SurfaceGuidePlacement | null): void;
-  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null): void;
+  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'box' | 'bend' | 'trail' | 'surface' | null): void;
+  /** Render a private modal edit without installing it in the authored document. Leaving the tool restores it. */
+  showEditDraftPreview?(doc: QuadMeshDoc): void;
   readonly createSurfacePoints?: readonly PlacementEndpoint[];
   readonly createSurfaceHover?: PlacementEndpoint | null;
   readonly createSurfaceClosing?: boolean;
@@ -75,6 +78,13 @@ export interface EditViewportPort {
   setCreateEdgeStart(start: V3 | null): void;
   setCreateEdgePath(points: readonly V3[]): void;
   readonly createTubePoints: readonly V3[];
+  readonly createBoxPoints: readonly PlacementEndpoint[];
+  readonly createBoxDraft: BoxDraft | null;
+  readonly createBoxWholeSelected: boolean;
+  readonly createBoxCandidate: BoxDraft | null;
+  setCreateBoxDraft(draft: BoxDraft): void;
+  setCreateBoxHeight(height: number): void;
+  setCreateBoxPlan(plan: Pick<BoxPlan, 'points' | 'quads'> | null): void;
   /** Create Grid's placed clicks, its draft's four corners once the third is down, the cursor's candidate for the
    *  next click, and the camera it is drawn from. */
   readonly createGridPoints: readonly PlacementEndpoint[];
@@ -91,6 +101,9 @@ export interface EditViewportPort {
   setCreateTrailSurfaceLift(value: number): void;
   projectedVerticesInsidePatches(quads: readonly number[]): number[];
   setPasteTool(clip: MeshVertexClipboard | null, propOrigins?: readonly V3[]): void;
+  beginDuplicateTool?(clip: MeshVertexClipboard): boolean;
+  cancelDuplicateTool?(): void;
+  refreshSyncedCorner?(): void;
   readonly pastePlacing: boolean;
   /** Alt held on the live pointer: a drag moves only what it grabbed (creases allowed) instead of staying smooth. */
   readonly independentDrag?: boolean;

@@ -1,4 +1,6 @@
 import type { QuadMeshDoc, V3, SurfaceBoundary, SurfaceStitch } from '../../core/doc/types';
+import { appendBox, planBox, resizeBox, type BoxAxis, type BoxPlan, type BoxPlanResult } from '../../core/mesh/ops/box';
+import { add, len } from '../../core/math/vec';
 import {
   addSurfaceStitch,
   detachSurfaceStitches,
@@ -22,6 +24,7 @@ import {
   validateSurfaceCutPath,
   fillSelectedEdgeHoles,
   type GridPlanResult,
+  type GridCorners,
   type SurfaceCutPoint,
 } from '../../core/mesh/ops';
 import { applyLoft, railFromEdges, type RailResult } from '../../core/mesh/loft';
@@ -43,6 +46,7 @@ import {
 import type { SurfaceAxis } from '../../core/math/spline-surface';
 import { createSubdivisionCage, rebuildSubdivision } from '../../core/mesh/subdivision-object';
 import { surfaceEditState } from '../state/surface-edit';
+import { createSubdivisionBendTools } from './subdivision-bend';
 import {
   guideRows,
   guideCharts,
@@ -181,6 +185,21 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   } = deps;
   const view = () => getViewport();
   const mdoc = () => editMesh(store); // the edit target: the mountain net, or the model being edited
+  const bend = createSubdivisionBendTools({
+    store,
+    viewport: getViewport,
+    commitHistory: deps.commitHistory,
+    scheduleRebuild,
+    rebuildTools,
+    updateCmdSheet,
+    selectSurfaceControls,
+    clearSelection: () => {
+      clearCellSelection();
+      clearEdgeSelection();
+      dropCornerSelection();
+      exitRegion();
+    },
+  });
   let guidePlacement: {
     id: string;
     axis: SurfaceAxis;
@@ -1361,6 +1380,118 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     );
   }
 
+  function armCreateBox() {
+    if (!store.cageOn) {
+      store.cageOn = true;
+      applyCage();
+      persistUi();
+    }
+    exitRegion();
+    store.selectedCorner = null;
+    store.selected = null;
+    store.surgeryTool = 'box';
+    store.createPatchQuads = [];
+    store.weldTool = null;
+    store.weldSource = [];
+    store.weldEdgeSource = [];
+    view().setWeldTool(false);
+    view().setSurgeryTool('box');
+    view().setCreateBoxHeight(store.boxHeight);
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
+    toast('click both ends of the base’s first side, then its width — pull up or down and click to set height', 'info');
+  }
+
+  let boxPlan: BoxPlanResult | null = null;
+  function previewCreateBox() {
+    const draft = view().createBoxDraft;
+    if (draft) store.boxHeight = len(draft.height);
+    const candidate = view().createBoxCandidate;
+    boxPlan =
+      candidate && (draft || len(candidate.height) >= 1e-3)
+        ? planBox(candidate, {
+            patchSize: store.boxSizing === 'size' ? store.boxPatchSize : null,
+            divisions: {
+              length: store.boxLengthDivisions,
+              width: store.boxWidthDivisions,
+              height: store.boxHeightDivisions,
+            },
+          })
+        : null;
+    let preview: Pick<BoxPlan, 'points' | 'quads'> | null = boxPlan?.ok ? boxPlan.plan : null;
+    if (candidate && !draft && len(candidate.height) < 1e-3) {
+      const { origin, length, width } = candidate;
+      const corners = [origin, add(origin, length), add(add(origin, length), width), add(origin, width)].map(pos => ({
+        pos,
+        vertex: null,
+      })) as unknown as GridCorners;
+      const base = planGrid(mdoc(), corners, {
+        columns: store.boxLengthDivisions,
+        rows: store.boxWidthDivisions,
+        patchSize: store.boxSizing === 'size' ? store.boxPatchSize : null,
+        eye: view().createGridEye,
+      });
+      if (base.ok) preview = base.plan;
+      else boxPlan = base;
+    }
+    view().setLoftPreview(preview?.quads ?? null, preview?.points.flat() ?? null);
+    view().setCreateBoxPlan(preview);
+    return boxPlan;
+  }
+
+  function setCreateBoxDimension(axis: BoxAxis, value: number) {
+    const draft = view().createBoxDraft;
+    if (draft) view().setCreateBoxDraft(resizeBox(draft, axis, value));
+    else if (axis === 'height' && Number.isFinite(value) && value > 0) {
+      store.boxHeight = value;
+      view().setCreateBoxHeight(value);
+    }
+    previewCreateBox();
+  }
+
+  function cancelCreateBox() {
+    if (store.surgeryTool !== 'box') return;
+    store.surgeryTool = null;
+    boxPlan = null;
+    view().setSurgeryTool(null);
+    view().setLoftPreview(null);
+    rebuildTools();
+    updateCmdSheet();
+  }
+
+  function finishCreateBox() {
+    if (store.surgeryTool !== 'box') return;
+    if (!view().createBoxDraft) {
+      toast('Place the three base corners, then pull up or down and click to set the box height.', 'err');
+      return;
+    }
+    const planned = previewCreateBox();
+    if (!planned?.ok) {
+      if (planned) toast(planned.error, 'err');
+      return;
+    }
+    const result = appendBox(mdoc(), planned.plan);
+    if (!result.ok) {
+      toast(result.error, 'err');
+      return;
+    }
+    commitEditMesh(store, result.doc);
+    store.surgeryTool = null;
+    boxPlan = null;
+    view().setSurgeryTool(null);
+    view().setLoftPreview(null);
+    clearEdgeSelection();
+    dropCornerSelection();
+    clearCellSelection();
+    store.cellSel = quadNames(mdoc(), result.quads);
+    store.anchorCell = store.cellSel[0] ?? null;
+    resetGizmoMode();
+    scheduleRebuild();
+    refreshCreatedCellSelection();
+    toast(`box created · ${result.quads.length} patches`, 'ok');
+  }
+
   /** Plan the grid from its draft corners — or, while the third is being placed, from the cursor standing in for
    *  it — and show the lattice in the teal preview. */
   function previewCreateGrid() {
@@ -1750,6 +1881,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     updateSurface,
     createSubdivision,
     updateSubdivision,
+    ...bend,
     selectSurfaceControls,
     selectSurfaceRow,
     addSurfaceRow,
@@ -1778,6 +1910,12 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     finishCreateTube,
     cancelCreateTube,
     armCreateGrid,
+    armCreateBox,
+    previewCreateBox,
+    finishCreateBox,
+    cancelCreateBox,
+    setCreateBoxDimension,
+    createBoxPlan: () => boxPlan,
     previewCreateGrid,
     finishCreateGrid,
     cancelCreateGrid,

@@ -40,6 +40,7 @@ import {
 import { AMOUNT_MAX, AMOUNT_PORT } from '../../core/particles/snowfall';
 import { DEFAULT_TRAIL_TILES } from '../../core/mesh/trail-textures';
 import { DEFAULT_GRID_COLUMNS, DEFAULT_GRID_PATCH_SIZE_M, DEFAULT_GRID_ROWS } from '../../core/mesh/ops/grid';
+import { DEFAULT_BOX_HEIGHT_M } from '../../core/mesh/ops/box';
 
 /**
  * The editor's shared mutable state — the single source of truth the whole app reads and writes: the active
@@ -200,7 +201,8 @@ export type Store = {
   modelEditPlacementId: string | null; // the placement the session opened AT (rebased home) — only it hides
 
   // Topology surgery (Edit): which modal topology tool is armed (null = ordinary corner/cell editing).
-  surgeryTool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null;
+  surgeryTool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'box' | 'bend' | 'trail' | 'surface' | null;
+  duplicatePending: boolean;
   createPatchQuads: QuadName[]; // patches committed during the current repeating Create Patch session
   createPatchSides: 3 | 4; // Create Patch shape: wedge triangle or ordinary quad
   tubeWidth: number; // Create Tube elliptical width diameter, metres
@@ -211,6 +213,12 @@ export type Store = {
   gridColumns: number; // Create Grid patches along its first side (an attached edge run overrides)
   gridRows: number; // Create Grid patches across its width (an attached edge run overrides)
   gridPatchSize: number; // Create Grid target patch size, metres, when dividing by size
+  boxSizing: 'count' | 'size';
+  boxPatchSize: number;
+  boxHeight: number;
+  boxLengthDivisions: number;
+  boxWidthDivisions: number;
+  boxHeightDivisions: number;
   // A new trail's settings (docs/023). A trail keeps its own copy; editing one also updates these, so the next
   // trail starts the way the last was tuned.
   trailWidth: number; // Create Trail rim-to-rim width, metres
@@ -303,6 +311,7 @@ export type Store = {
   // deleting one below it must not move the selection onto another
   selectedRail: number | null; // index into mdoc.rails of the rail being edited (its nodes show)
   selectedNode: number | null; // node within selectedRail carrying the move gizmo
+  selectedRailNodes: number[]; // selected points on that rail; a group moves from their centroid
   railDrawing: boolean; // the Rails tool is laying a rail: ground clicks append nodes
   selectedLine: string | null; // id (`line:NNNN`) of the selected prop line (docs/070) — its path + nodes show
   selectedLineNode: number | null; // node within selectedLine carrying the move gizmo
@@ -504,16 +513,23 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     modelEditLocked: false,
     modelEditPlacementId: null,
     surgeryTool: null,
+    duplicatePending: false,
     createPatchQuads: [],
     createPatchSides: 4,
     tubeWidth: 20,
     tubeHeight: 20,
     tubeSectionLength: 10,
     tubeRingEdges: 4,
-    gridSizing: 'count',
+    gridSizing: 'size',
     gridColumns: DEFAULT_GRID_COLUMNS,
     gridRows: DEFAULT_GRID_ROWS,
     gridPatchSize: DEFAULT_GRID_PATCH_SIZE_M,
+    boxSizing: 'size',
+    boxPatchSize: DEFAULT_GRID_PATCH_SIZE_M,
+    boxHeight: DEFAULT_BOX_HEIGHT_M,
+    boxLengthDivisions: DEFAULT_GRID_COLUMNS,
+    boxWidthDivisions: DEFAULT_GRID_ROWS,
+    boxHeightDivisions: DEFAULT_GRID_ROWS,
     trailWidth: 13,
     trailLanes: 2,
     trailCenterBias: 0.5,
@@ -583,6 +599,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     selectedLight: null,
     selectedRail: null,
     selectedNode: null,
+    selectedRailNodes: [],
     railDrawing: false,
     selectedLine: null,
     selectedLineNode: null,

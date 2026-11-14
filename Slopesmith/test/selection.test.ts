@@ -145,6 +145,13 @@ function stubViewport(): EditViewportPort & { readonly regionMarks: readonly V3[
     setCreateEdgeTool: noop,
     setCreateEdgeStart: noop,
     setCreateEdgePath: noop,
+    createBoxPoints: [],
+    createBoxDraft: null,
+    createBoxWholeSelected: false,
+    createBoxCandidate: null,
+    setCreateBoxDraft: noop,
+    setCreateBoxHeight: noop,
+    setCreateBoxPlan: noop,
     get createTubePoints() {
       return [] as readonly V3[];
     },
@@ -169,6 +176,8 @@ function stubViewport(): EditViewportPort & { readonly regionMarks: readonly V3[
     setCreateTrailSurfaceLift: noop,
     projectedVerticesInsidePatches: () => [],
     setPasteTool: noop,
+    beginDuplicateTool: () => true,
+    cancelDuplicateTool: noop,
     get pastePlacing() {
       return false;
     },
@@ -787,6 +796,95 @@ for (const reverse of [false, true]) {
         cornersBefore,
       ),
     'clipboard: re-copying through the held names lands on the same patch after the edit',
+  );
+}
+
+// A duplicate stays outside the document until a moved gizmo is released; it preserves the selected family.
+for (const kind of ['point', 'edge', 'patch'] as const) {
+  const { store, session } = editor();
+  if (kind === 'point') session.viewportCallbacks.onSelectCorner(7);
+  else if (kind === 'edge') session.viewportCallbacks.onSelectEdge?.([6, 7], 'replace');
+  else session.viewportCallbacks.onSelectEditCell?.(6, 'replace');
+  const original = store.mdoc,
+    originalText = JSON.stringify(original),
+    point = store.selectedCorner;
+  session.beginDuplicateSelection();
+  check(store.duplicatePending && store.mdoc === original, `duplicate ${kind}: arming does not write the document`);
+  session.viewportCallbacks.onDuplicateVertices?.([0, 0, 0]);
+  check(!store.duplicatePending && store.mdoc === original, `duplicate ${kind}: a zero-distance release makes no copy`);
+  if (kind === 'point')
+    check(store.selectedCorner === point, 'duplicate point: a zero move keeps the original selected');
+  session.beginDuplicateSelection();
+  session.cancelDuplicateSelection();
+  check(store.mdoc === original && !store.duplicatePending, `duplicate ${kind}: cancelling makes no copy`);
+  session.beginDuplicateSelection();
+  session.viewportCallbacks.onDuplicateVertices?.([12, -4, 8]);
+  flushFrames();
+  const doc = store.mdoc,
+    count = original.vertices.length / 3,
+    added = doc.vertices.length / 3 - count;
+  check(JSON.stringify(original) === originalText, `duplicate ${kind}: the original history snapshot stays unchanged`);
+  check(
+    added === (kind === 'patch' ? 4 : kind === 'edge' ? 2 : 1),
+    `duplicate ${kind}: copies exactly the selected geometry`,
+  );
+  check(
+    doc.quads.length - original.quads.length === (kind === 'patch' ? 1 : 0),
+    `duplicate ${kind}: duplicates patches only when selected`,
+  );
+  check(
+    (doc.freeEdges?.length ?? 0) === (kind === 'edge' ? 1 : 0),
+    `duplicate ${kind}: an edge copy is separate from the original patch`,
+  );
+  check(
+    kind === 'patch'
+      ? store.cellSel.length === 1 && !store.edgeSel.length && !store.regionSel.length
+      : kind === 'edge'
+        ? store.edgeSel.length === 1 && !store.cellSel.length && !store.regionSel.length
+        : store.regionSel.length === 1 && !store.edgeSel.length && !store.cellSel.length,
+    `duplicate ${kind}: the copy keeps its original selection type`,
+  );
+  const source = kind === 'point' ? [7] : kind === 'edge' ? [6, 7] : [...original.quads[6]].sort((a, b) => a - b);
+  check(
+    source.every((index, local) =>
+      near(getVertex(doc, count + local), getVertex(original, index).map((n, axis) => n + [12, -4, 8][axis]) as V3),
+    ),
+    `duplicate ${kind}: all copied points use the same translation`,
+  );
+}
+{
+  const { store, session } = editor();
+  session.viewportCallbacks.onSelectEditCell?.(6, 'replace');
+  session.copySelectedVertices();
+  const kind = store.clipboardKind;
+  session.viewportCallbacks.onSelectCorner(7);
+  session.beginDuplicateSelection();
+  session.viewportCallbacks.onDuplicateVertices?.([12, 0, 0]);
+  flushFrames();
+  const before = store.mdoc.quads.length;
+  session.pasteSelectedVertices();
+  session.viewportCallbacks.onPasteVertices?.([0, 30, 0]);
+  flushFrames();
+  check(
+    store.clipboardKind === kind && store.mdoc.quads.length === before + 1,
+    'duplicate: keeps the existing clipboard contents',
+  );
+}
+{
+  const { store, session } = editor();
+  session.viewportCallbacks.onSelectCorner(7);
+  session.beginDuplicateSelection();
+  session.deselectEdit();
+  check(!store.duplicatePending, 'duplicate: deselect cancels an armed copy');
+  session.viewportCallbacks.onSelectCorner(7);
+  session.beginDuplicateSelection();
+  const replacement = freshGrid();
+  store.mdoc = replacement;
+  session.refreshAfterSync();
+  session.viewportCallbacks.onDuplicateVertices?.([12, 0, 0]);
+  check(
+    store.mdoc === replacement && !store.duplicatePending,
+    'duplicate: replacing the document discards the pending copy',
   );
 }
 

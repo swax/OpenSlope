@@ -203,6 +203,7 @@ import { createTransformLayer, type TransformLayer } from './gizmo/transform';
 import { createViewGridLayer, type ViewGridLayer } from './camera/view-grid';
 import { createLoftPreviewLayer, type LoftPreviewLayer } from './tools/loft-preview';
 import { createClipboardPlacementLayer, type ClipboardPlacementLayer } from './tools/clipboard-placement';
+import { createDuplicateLayer, type DuplicateLayer } from './tools/duplicate';
 import { createEdgeExtrusionLayer, type EdgeExtrusionLayer } from './tools/edge-extrusion';
 import { createWeldToolLayer, type WeldToolLayer } from './tools/weld';
 import { createGizmoReadout, type GizmoReadout } from './gizmo/readout';
@@ -210,6 +211,8 @@ import { createBridgePreviewLayer, type BridgePreviewLayer } from './tools/bridg
 import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch';
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
 import { createGridToolLayer, type GridToolLayer } from './tools/create-grid';
+import { createBoxToolLayer, type BoxToolLayer } from './tools/create-box';
+import type { BoxDraft, BoxPlan } from '../../core/mesh/ops/box';
 import { createSurfaceToolLayer, type SurfaceToolLayer } from './tools/create-surface';
 import { createTrailToolLayer, type TrailShape, type TrailToolLayer } from './tools/create-trail';
 import {
@@ -320,6 +323,7 @@ export class Viewport {
   readonly selection: SelectionLayer; // mesh-selection machinery: cell / edge highlights, cage handles, markers, hidden-set caches, reference picks, marquee resolution
   readonly loftPreview: LoftPreviewLayer;
   readonly clipboardPlacement: ClipboardPlacementLayer;
+  readonly duplicateTool: DuplicateLayer;
   readonly edgeExtrusion: EdgeExtrusionLayer;
   readonly weldTool: WeldToolLayer;
   readonly gizmoReadout: GizmoReadout;
@@ -330,6 +334,8 @@ export class Viewport {
   readonly tubeTool: TubeToolLayer;
   private createTubePreviewListener: (() => void) | null = null;
   readonly gridTool: GridToolLayer;
+  readonly boxTool: BoxToolLayer;
+  private createBoxPreviewListener: (() => void) | null = null;
   private createGridPreviewListener: (() => void) | null = null;
   readonly trailTool: TrailToolLayer;
   readonly pathHandles: PathHandlesLayer;
@@ -779,6 +785,20 @@ export class Viewport {
         else this.gizmoReadout.end();
         return;
       }
+      if (this.gizmoKind === 'duplicate') {
+        if (dragging) this.gizmoReadout.begin('move');
+        else {
+          this.gizmoReadout.end();
+          this.duplicateTool.release();
+        }
+        return;
+      }
+      if (this.gizmoKind === 'box') {
+        this.boxTool.gizmoDragging(dragging);
+        if (dragging) this.gizmoReadout.begin(this.transforms.mode);
+        else this.gizmoReadout.end();
+        return;
+      }
       if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') {
         // a Create Grid draft, not the mesh
         this.gridTool.gizmoDragging(dragging);
@@ -924,6 +944,19 @@ export class Viewport {
       this.cb.onCreateGridChange?.();
       this.createGridPreviewListener?.();
     });
+    this.boxTool = createBoxToolLayer(
+      this.stage,
+      () => this.placementSurface,
+      () => {
+        const vertex = this.picking.pickCorner();
+        const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+        return pos ? { vertex, pos } : null;
+      },
+    );
+    this.boxTool.setListener(() => {
+      this.cb.onCreateBoxChange?.();
+      this.createBoxPreviewListener?.();
+    });
     this.surfaceTool = createSurfaceToolLayer(
       this.stage,
       () => this.placementSurface,
@@ -963,6 +996,11 @@ export class Viewport {
       terrain: () => this.terrain,
       reference: () => this.reference,
     });
+    this.duplicateTool = createDuplicateLayer(this.stage, {
+      meshDoc: () => this.meshDoc,
+      terrain: () => this.terrain,
+      reference: () => this.reference,
+    });
     this.edgeExtrusion = createEdgeExtrusionLayer(this.stage, {
       canBegin: () => {
         const onSelectionGizmo = (this.gizmoKind === 'corners' || this.gizmoKind === 'cagehandle') && !!this.gizmo.axis;
@@ -976,6 +1014,8 @@ export class Viewport {
           !this.patchTool.active &&
           !this.tubeTool.active &&
           !this.gridTool.active &&
+          !this.boxTool.active &&
+          !this.bendPreviewActive &&
           !this.surfaceTool.active &&
           !this.trailTool.active &&
           !this.surgery.tool &&
@@ -1576,6 +1616,7 @@ export class Viewport {
         patchTool: this.patchTool,
         tubeTool: this.tubeTool,
         gridTool: this.gridTool,
+        boxTool: this.boxTool,
         trailTool: this.trailTool,
         pathHandles: this.pathHandles,
         propDeform: this.propDeform,
@@ -1598,6 +1639,7 @@ export class Viewport {
       },
       {
         mode: () => this._mode,
+        modalEditActive: () => this.bendPreviewActive || this.duplicateTool.active,
         isMountain: () => this.isMountain,
         terrain: () => this.terrain,
         reference: () => this.reference,
@@ -1744,6 +1786,7 @@ export class Viewport {
       this.patchTool.scaleMarkers();
       this.tubeTool.scaleMarkers();
       this.gridTool.scaleMarkers();
+      this.boxTool.scaleMarkers();
       this.surfaceTool.scaleMarkers();
       this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
       this.dropLines.sync(); // the selection's plumb lines follow a drag, a re-select and a terrain edit
@@ -2564,6 +2607,7 @@ export class Viewport {
     if (this.patchTool?.active) this.patchTool.refresh();
     if (this.tubeTool?.active) this.tubeTool.refresh();
     if (this.gridTool?.active) this.gridTool.refresh();
+    if (this.boxTool?.active) this.boxTool.refresh();
     if (this.trailTool?.active) this.trailTool.refresh();
     if (this.clipboardPlacement?.active) this.clipboardPlacement.refresh();
     if (this.props?.propArm) this.props.seatPropGhost();
@@ -2627,6 +2671,8 @@ export class Viewport {
         this.patchTool.active ||
         this.tubeTool.active ||
         this.gridTool.active ||
+        this.boxTool.active ||
+        this.bendPreviewActive ||
         this.surfaceTool.active ||
         this.trailTool.active)
     )
@@ -2878,6 +2924,7 @@ export class Viewport {
 
   /** Stop gestures whose frozen indices belong to the document being replaced. Keep camera and tool modes. */
   cancelDocumentGesture() {
+    this.duplicateTool.cancel();
     if (this.edgeExtrusion.active) this.edgeExtrusion.cancel();
     this.router.cancelDocumentGesture();
     if (this.gizmoKind === 'reference') return; // the independent reference has not changed
@@ -2898,7 +2945,7 @@ export class Viewport {
 
   /** Rebuild all scene content from a mountain document; knot handles are its run. */
   setMountain(doc: EditDoc, selected: number | null, selectedKnots: readonly number[] = []) {
-    if (!this.drawingSurfaceCornerPreview) this.surfaceCornerPreviewBase = null;
+    if (!this.drawingEditDraftPreview) this.editDraftPreviewBase = null;
     this.beginMountain(doc);
     this.installMountainPreview(doc, buildMountainPreview(doc), selected, selectedKnots);
   }
@@ -3191,6 +3238,8 @@ export class Viewport {
     pv.twistOf = q => (doc.linearCage ? bilinearTwist(pv.mesh, q) : (doc.quadTwist?.[q] ?? null));
     this.cageLayer.streamCornerDots(doc.vertices);
     if (this.cageLayer.subCage) this.cageLayer.updateAuthoredControlPointCache(this.dirtyPatches(doc, change) ?? []);
+    // Selected edges follow the authored controls immediately, ahead of the fitted surface preview.
+    this.selection.rebuildEditEdgeSel();
     if (this.selection.controlPointSel.length) this.selection.refreshControlPointSelection();
     this.selection.placeCornerMarker(this.selectedCornerIndex());
   }
@@ -3623,6 +3672,11 @@ export class Viewport {
       this.gizmoReadout.update();
       return;
     }
+    if (this.gizmoKind === 'duplicate') {
+      this.duplicateTool.changed();
+      this.gizmoReadout.update();
+      return;
+    }
     if (this.gizmoKind === 'trail') {
       this.trailTool.wholeChanged();
       this.gizmoReadout.update();
@@ -3630,6 +3684,11 @@ export class Viewport {
     }
     if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') {
       this.gridTool.gizmoChanged();
+      this.gizmoReadout.update();
+      return;
+    }
+    if (this.gizmoKind === 'box') {
+      this.boxTool.gizmoChanged();
       this.gizmoReadout.update();
       return;
     }
@@ -3727,8 +3786,7 @@ export class Viewport {
       if (d[0] || d[1] || d[2]) this.cb.onMoveProps?.(d);
     } else if (this.gizmoKind === 'light' && this.lights.selectedLight !== null)
       this.cb.onMoveLight?.(this.lights.selectedLight, p);
-    else if (this.gizmoKind === 'railnode' && this.rails.selectedRail !== null && this.rails.selectedNode !== null)
-      this.cb.onMoveRailNode?.(this.rails.selectedRail, this.rails.selectedNode, p);
+    else if (this.gizmoKind === 'railnode') this.rails.moveSelectedNodes(p);
     else if (
       this.gizmoKind === 'linenode' &&
       this.propLines.selectedLine !== null &&
@@ -3852,23 +3910,27 @@ export class Viewport {
 
   // ---- topology surgery (docs/017): the armed tool + ghost overlay live in SurgeryLayer (this.surgery) ----
 
-  /** Arm/disarm the mutually-exclusive loop-cut, create-patch, create-tube, create-grid, or create-trail tool. */
-  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null) {
-    if (tool !== 'surface' && this.surfaceCornerPreviewBase) {
-      const base = this.surfaceCornerPreviewBase;
-      this.surfaceCornerPreviewBase = null;
+  /** Arm/disarm the mutually-exclusive topology creation tools. */
+  private bendPreviewActive = false;
+  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'box' | 'bend' | 'trail' | 'surface' | null) {
+    this.bendPreviewActive = tool === 'bend';
+    if (tool !== 'surface' && tool !== 'bend' && this.editDraftPreviewBase) {
+      const base = this.editDraftPreviewBase;
+      this.editDraftPreviewBase = null;
       this.setMountain(base, null);
       this.settleMountain();
     }
     const leavingGeneratedPreview =
       (this.tubeTool.active && tool !== 'tube') ||
       (this.gridTool.active && tool !== 'grid') ||
+      (this.boxTool.active && tool !== 'box') ||
       (this.surfaceTool.active && tool !== 'surface') ||
       (this.trailTool.active && tool !== 'trail');
     this.surgery.setTool(tool === 'loopcut' ? 'loopcut' : null);
     this.patchTool.setActive(tool === 'patch');
     this.tubeTool.setActive(tool === 'tube');
     this.gridTool.setActive(tool === 'grid');
+    this.boxTool.setActive(tool === 'box');
     this.surfaceTool.setActive(tool === 'surface');
     this.trailTool.setActive(tool === 'trail');
     if (leavingGeneratedPreview) this.setLoftPreview(null);
@@ -3921,16 +3983,19 @@ export class Viewport {
   setCreateSurfaceBoundary(points: readonly PlacementEndpoint[], corners: readonly number[]) {
     this.surfaceTool.setBoundary(points, corners);
   }
-  private surfaceCornerPreviewBase: EditDoc | null = null;
-  private drawingSurfaceCornerPreview = false;
+  private editDraftPreviewBase: EditDoc | null = null;
+  private drawingEditDraftPreview = false;
   showSurfaceCornerPreview(doc: EditDoc) {
-    this.surfaceCornerPreviewBase ??= this.meshDoc;
-    this.drawingSurfaceCornerPreview = true;
+    this.showEditDraftPreview(doc);
+  }
+  showEditDraftPreview(doc: EditDoc) {
+    this.editDraftPreviewBase ??= this.meshDoc;
+    this.drawingEditDraftPreview = true;
     try {
       this.setMountain(doc, null);
       this.settleMountain();
     } finally {
-      this.drawingSurfaceCornerPreview = false;
+      this.drawingEditDraftPreview = false;
     }
   }
   undoCreateSurfacePoint() {
@@ -3960,11 +4025,44 @@ export class Viewport {
   get createGridPoints(): readonly PlacementEndpoint[] {
     return this.gridTool.points;
   }
+  get createBoxPoints() {
+    return this.boxTool.points;
+  }
+  get createBoxDraft() {
+    return this.boxTool.draft;
+  }
+  get createBoxWholeSelected() {
+    return this.boxTool.active && this.boxTool.wholeSelected;
+  }
+  get createBoxSelectionLabel() {
+    return this.boxTool.selectionLabel;
+  }
+  selectCreateBoxWhole() {
+    this.boxTool.selectWhole();
+  }
+  get createBoxCandidate() {
+    return this.boxTool.candidate;
+  }
+  setCreateBoxDraft(draft: BoxDraft) {
+    this.boxTool.setDraft(draft);
+  }
+  setCreateBoxHeight(height: number) {
+    this.boxTool.setHeight(height);
+  }
+  setCreateBoxPlan(plan: Pick<BoxPlan, 'points' | 'quads'> | null) {
+    this.boxTool.setPlan(plan);
+  }
+  setCreateBoxPreviewListener(listener: (() => void) | null) {
+    this.createBoxPreviewListener = listener;
+  }
   get createGridCorners(): GridCorners | null {
     return this.gridTool.corners;
   }
   get createGridWholeSelected(): boolean {
     return this.gridTool.active && this.gridTool.wholeSelected;
+  }
+  get createGridSelectionLabel() {
+    return this.gridTool.selectionLabel;
   }
   setCreateGridCorners(corners: GridCorners) {
     this.gridTool.setCorners(corners);
@@ -4048,6 +4146,18 @@ export class Viewport {
 
   get pastePlacing(): boolean {
     return this.clipboardPlacement.active;
+  }
+
+  beginDuplicateTool(clip: MeshVertexClipboard): boolean {
+    return this.duplicateTool.begin(clip);
+  }
+
+  cancelDuplicateTool() {
+    this.duplicateTool.cancel();
+    // Escape may arrive before pointer-up. End that native gesture before restoring the source gizmo.
+    this.gizmo.dragging = false;
+    this.stage.controls.enabled = true;
+    this.gizmoReadout.end();
   }
 
   /** Alt on the latest pointer event: an Edit drag moves only what it grabbed, creases allowed. */
@@ -4961,8 +5071,8 @@ export class Viewport {
     this.rails.setArmed(on);
     this.setArmedPlacement(on ? 'rail' : null);
   }
-  setRails(rails: Rail[], selRail: number | null, selNode: number | null) {
-    this.rails.setRails(rails, selRail, selNode);
+  setRails(rails: Rail[], selRail: number | null, selNode: number | null, nodes?: readonly number[]) {
+    this.rails.setRails(rails, selRail, selNode, nodes);
   }
   setRailSkins(skins: RailSkins) {
     this.rails.setSkins(skins);

@@ -26,7 +26,7 @@ import { quadPerimeterEdges, readVertex } from '../primitives';
 
 export const DEFAULT_GRID_COLUMNS = 4;
 export const DEFAULT_GRID_ROWS = 4;
-export const DEFAULT_GRID_PATCH_SIZE_M = 10;
+export const DEFAULT_GRID_PATCH_SIZE_M = 30;
 export const MAX_GRID_DIVISIONS = 256;
 const MAX_GRID_PATCHES = 50_000;
 /** A run of edges stands in for a side only while it runs nearly straight between its ends: no longer than this

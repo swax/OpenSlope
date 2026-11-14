@@ -11,9 +11,8 @@
  *     Wireframe was the mountain's only solid the view could not see through.
  *  2. **The guide curve and the node bulbs are editor markers**, not geometry, so no shade view touches them.
  *
- * And selection: clicking a rail has to answer as loudly as clicking a prop does, which means the amber edge
- * outline over the tube — the brighter red curve and the node bulbs are both too thin to carry it on a pipe
- * the size of the thing just clicked.
+ * A multi-point rail selection wears the amber tube outline. A lone selected point keeps its own marker,
+ * so moving one point never reads as selecting the entire pipe.
  */
 import * as THREE from 'three';
 import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
@@ -105,7 +104,7 @@ layer.setRails([piped, bare], null, null);
 check(shipped().length === 2, `a piped rail with supports draws a tube and its posts (${shipped().length})`);
 check(outlines().length === 0, 'an unselected mountain of rails draws no selection outline');
 
-layer.setRails([piped, bare], 0, 1);
+layer.setRails([piped, bare], 0, null, [0, 1, 2]);
 check(
   outlines().length === 2,
   `selecting a rail outlines its tube AND its posts in the props' own amber (${outlines().length})`,
@@ -129,7 +128,7 @@ check(
 
 console.log('\n== the tube and posts follow the shade view; the markers do not ==');
 
-layer.setRails([piped, bare], 0, 1);
+layer.setRails([piped, bare], 0, null, [0, 1, 2]);
 const [tube] = shipped();
 const texturedMaterial = tube.material as THREE.Material;
 const bulbMaterials = bulbs().map(bulb => bulb.material);
@@ -174,7 +173,7 @@ check(tube.material === texturedMaterial, 'Textured hands the rail its real skin
 console.log('\n== a rebuild under a shade view arrives already wearing it ==');
 
 layer.setShadeMode('none');
-layer.setRails([{ ...piped, solid: true }, bare], 0, 1);
+layer.setRails([{ ...piped, solid: true }, bare], 0, null, [0, 1, 2]);
 const rebuilt = shipped();
 check(
   rebuilt.length === 2 &&

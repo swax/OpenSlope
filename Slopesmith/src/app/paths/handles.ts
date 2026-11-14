@@ -117,6 +117,7 @@ export function createPathHandleOps(deps: PathHandleDeps) {
     if (owner.family === 'rail') store.selectedNode = node;
     else if (owner.family === 'line') store.selectedLineNode = node;
     else selectTrailNode(node);
+    if (owner.family === 'rail') store.selectedRailNodes = [node];
     scheduleRebuild();
     rebuildTools();
   }

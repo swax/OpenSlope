@@ -569,9 +569,10 @@ export interface ViewportCallbacks {
   /** Rail drawing: a terrain click appends a node at this final height-adjusted, snapped data-space point. */
   onAppendRailNode?(pos: V3): void;
   /** A rail node was selected (its rail + node index), or cleared with null/null. */
-  onSelectRailNode?(rail: number | null, node: number | null): void;
+  onSelectRailNode?(rail: number | null, node: number | null, nodes?: readonly number[]): void;
   /** A rail node was dragged to a new data-space position. */
   onMoveRailNode?(rail: number, node: number, pos: V3): void;
+  onMoveRailNodes?(rail: number, nodes: readonly number[], delta: V3): void;
   /** Prop-line drawing (docs/070): a terrain click appends a node at this snapped data-space ground point. */
   onAppendLineNode?(pos: V3): void;
   /** A prop line was selected — a node of it, or the line alone (node null) — or cleared with null/null. */
@@ -622,6 +623,8 @@ export interface ViewportCallbacks {
   onCreateTubeAxisChange?(): void;
   /** Edit mode, Create Grid: its corners or the cursor standing in for the third changed, so the host re-plans. */
   onCreateGridChange?(): void;
+  /** Edit mode, Create Box: its base placement or whole-box transform changed. */
+  onCreateBoxChange?(): void;
   onCreateSurfaceChange?(): void;
   /** Edit mode, trail drawing (docs/023): a click on no point asks for one at this lifted surface point. */
   onAppendTrailKnot?(pos: V3): void;
@@ -669,4 +672,6 @@ export interface ViewportCallbacks {
   /** Edit mode, Paste vertices: the clipboard ghost was placed on the AUTHORED mountain. `translation` is the
    *  clipboard vertex-centroid → terrain-hit delta in data space; the host appends and selects the copy. */
   onPasteVertices?(translation: V3): void;
+  /** Release a pending mesh copy; a zero translation discards it. */
+  onDuplicateVertices?(translation: V3): void;
 }

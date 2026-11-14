@@ -127,6 +127,10 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
       }
       group.add({ select: () => edit.selectSurfaceControls(surface.id) }, 'select').name('select all cage points');
       tip(
+        group.add({ bend: () => edit.beginSubdivisionBend(surface.id) }, 'bend').name('bend cage…'),
+        'Wrap this cage into a quarter pipe or arch. Preview the angle and direction, then Apply or Cancel.',
+      );
+      tip(
         group.add({ revert: () => edit.revertSubdivision(surface.id) }, 'revert').name('revert cage to patches'),
         'Return the coarse cage faces at their current positions to editable patches. Append geometry and create a new subdivision cage when ready. Undo restores the live cage.',
       );

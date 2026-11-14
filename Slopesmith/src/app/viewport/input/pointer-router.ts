@@ -25,6 +25,7 @@ import type { SurgeryLayer } from '../tools/surgery';
 import type { PatchToolLayer } from '../tools/create-patch';
 import type { TubeToolLayer } from '../tools/create-tube';
 import type { GridToolLayer } from '../tools/create-grid';
+import type { BoxToolLayer } from '../tools/create-box';
 import type { TrailToolLayer } from '../tools/create-trail';
 import type { PathHandlesLayer } from '../scene/path-handles';
 import type { PropDeformLayer } from '../scene/prop-deform';
@@ -67,6 +68,7 @@ export interface RouterLayers {
   patchTool: PatchToolLayer;
   tubeTool: TubeToolLayer;
   gridTool: GridToolLayer;
+  boxTool?: BoxToolLayer;
   trailTool: TrailToolLayer;
   pathHandles: PathHandlesLayer;
   weldTool: WeldToolLayer;
@@ -91,6 +93,7 @@ export interface RouterLayers {
  *  preview / reference), the tool toggles, and the snap / pick helpers the host still owns. */
 export interface RouterAccess {
   mode(): Mode;
+  modalEditActive?(): boolean;
   isMountain(): boolean;
   terrain(): THREE.Mesh;
   reference(): THREE.Mesh | null;
@@ -717,7 +720,7 @@ export function createPointerRouter(
   /** Select rail `r` node `n`: clear the other scene-object selections, then seat the gizmo on the node
    *  (a rail node and a prop / light / gem / reference can't both be selected). */
   /** Select rail `r`, at node `n` or — with `null` — as a whole with no node gizmo (Effects inspection). */
-  function selectRailNode(r: number, n: number | null) {
+  function selectRailNode(r: number, n: number | null, additive = false, whole = false) {
     stage.cb.onSelectKnot(null);
     layers.selection.placeCornerMarker(null);
     host.clearRefSelection();
@@ -729,8 +732,9 @@ export function createPointerRouter(
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     dropLineSelection();
-    if (n === null) layers.rails.seatRail(r);
-    else layers.rails.seatNode(r, n);
+    if (whole) layers.rails.seatAll(r);
+    else if (n === null) layers.rails.seatRail(r);
+    else layers.rails.seatNode(r, n, additive);
   }
 
   /** Select gem `i`: clear the other scene-object selections, then seat the gizmo on it. */
@@ -838,7 +842,7 @@ export function createPointerRouter(
    *  prop instead of selecting it. With `toggle` (Ctrl/Cmd), a placed prop is added to the selection or dropped
    *  from it, as in Edit and Effects mode — a free light too — and a click off everything keeps the set being
    *  built. */
-  function pickOrPlaceProp(toggle = false) {
+  function pickOrPlaceProp(toggle = false, additiveRail = false) {
     // rail drawing: a terrain click appends a height-adjusted, grid-snapped node; nothing else
     // is pickable while laying a rail, so the flow stays a straight chain of clicks.
     if (layers.rails.railArmed) {
@@ -941,7 +945,11 @@ export function createPointerRouter(
     if (pick?.target === 'rail' && pick.source === 'authored') {
       // a node bulb resolves its exact node; a hit on the tube grabs the node nearest the click
       const p = pick.hit.point;
-      selectRailNode(pick.railIndex, pick.railNode ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z]));
+      selectRailNode(
+        pick.railIndex,
+        pick.railNode ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z]),
+        toggle || additiveRail,
+      );
       return;
     }
     // A usable authored surface places gems/lights even when a mesh point or edge overlaps it.
@@ -1129,12 +1137,32 @@ export function createPointerRouter(
    * there is part of the stroke). The camera keeps its current angle and just retargets + dollies in.
    */
   function onDoubleClick(e: MouseEvent) {
+    if (access.mode() === 'edit' && access.modalEditActive?.()) return;
     if (layers.surfaceGuide?.active) return;
     if (layers.rideCtl.riding) return; // a test ride owns input
     if (access.mode() === 'paint' || access.mode() === 'sculpt') return;
     if (access.mode() === 'edit' && layers.createEdge.armed) return; // endpoint clicks own the gesture; Enter/Esc finishes
     if (access.mode() === 'info' && layers.courseDraw.ownsDoubleClick()) return; // …as a course being redrawn's do
     stage.castAt(e);
+    if (
+      access.mode() === 'props' &&
+      !layers.rails.railArmed &&
+      !layers.props.propArm &&
+      !layers.gems.gemArmed &&
+      !layers.lights.lightArmed
+    ) {
+      const pick = layers.scenePicking.pick({
+        props: 'standard',
+        lights: true,
+        rails: true,
+        gems: true,
+        surfaces: true,
+      });
+      if (pick?.target === 'rail' && pick.source === 'authored') {
+        selectRailNode(pick.railIndex, null, false, true);
+        return;
+      }
+    }
     const preview = access.preview(),
       reference = access.reference(),
       refData = access.refData();
@@ -1281,6 +1309,11 @@ export function createPointerRouter(
       }
     }
     if (e.button !== 0) return; // MMB (pan) handled by OrbitControls; ignore here
+    if (access.mode() === 'edit' && access.modalEditActive?.()) {
+      // A pending duplicate owns mesh picking, while its Move gizmo still receives the native press.
+      if (stage.gizmoKind !== 'duplicate' || !stage.gizmo.axis) e.stopImmediatePropagation();
+      return;
+    }
     if (access.mode() === 'edit' && layers.surfaceGuide?.active) {
       if (e.pointerType !== 'touch') layers.surfaceGuide.commit(e);
       else {
@@ -1296,6 +1329,32 @@ export function createPointerRouter(
       pickPropAtPointer(true);
       e.stopImmediatePropagation();
       return;
+    }
+    // Point selection wins over the shared gizmo when a modifier edits the set, or a group is narrowed.
+    // Capture the press so the newly seated gizmo cannot start a drag on that same click.
+    if (
+      access.mode() === 'props' &&
+      !layers.rails.railArmed &&
+      !layers.props.propArm &&
+      !layers.gems.gemArmed &&
+      !layers.lights.lightArmed &&
+      layers.rails.selectedRail !== null &&
+      (e.shiftKey || e.ctrlKey || e.metaKey || layers.rails.selectedNodes.length > 1)
+    ) {
+      stage.castAt(e);
+      const pick = layers.scenePicking.pick({
+        props: 'standard',
+        lights: true,
+        rails: true,
+        gems: true,
+        screens: true,
+        surfaces: true,
+      });
+      if (pick?.target === 'rail' && pick.source === 'authored' && pick.railNode !== undefined) {
+        selectRailNode(pick.railIndex, pick.railNode, e.shiftKey || e.ctrlKey || e.metaKey);
+        e.stopImmediatePropagation();
+        return;
+      }
     }
     // a press on a gizmo handle is the gizmo's to drive (it set .axis on the preceding hover) - defer to
     // it. But not when hover-gating disabled the gizmo because the cursor is over a tangent nub: nubs
@@ -1420,6 +1479,10 @@ export function createPointerRouter(
       layers.gridTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
       return;
     }
+    if (access.mode() === 'edit' && layers.boxTool?.active) {
+      layers.boxTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
+      return;
+    }
     // Trail drawing (docs/023): a click on a knot picks it up to move; anywhere else extends the centre spline.
     if (access.mode() === 'edit' && layers.trailTool.active) {
       if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(e.shiftKey);
@@ -1451,6 +1514,7 @@ export function createPointerRouter(
    *  a course knot, or the reference body's centre handle; in Edit it seats the gizmo on the picked
    *  knot / tangent nub / corner, or clears the selection over empty space. */
   function selectAtPointer(shift = false, ctrl = false) {
+    if (access.mode() === 'edit' && access.modalEditActive?.()) return;
     if (access.mode() === 'edit' && layers.surfaceGuide?.commit()) return;
     // loop-cut surgery owns the click via surgery.onCommit (pointerDown); a touch tap reaches here with no
     // hover preview to commit, so swallow it rather than fall through to corner selection.
@@ -1484,6 +1548,10 @@ export function createPointerRouter(
       layers.gridTool.onCommit(shift, ctrl);
       return;
     }
+    if (access.mode() === 'edit' && layers.boxTool?.active) {
+      layers.boxTool.onCommit(shift, ctrl);
+      return;
+    }
     // Trail drawing touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.trailTool.active) {
       if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(shift);
@@ -1494,7 +1562,7 @@ export function createPointerRouter(
     // props mode: place the armed prop at its ghost, or (select mode) grab what's under the cursor / clear.
     // Runs for a mouse click (pointerDown) and a touch tap (pointerUp).
     if (access.mode() === 'props') {
-      pickOrPlaceProp(ctrl);
+      pickOrPlaceProp(ctrl, shift);
       return;
     }
     if (access.mode() === 'effects') {
@@ -2058,6 +2126,7 @@ export function createPointerRouter(
     }
     brushRing.visible = false;
     // Paste vertices: its faithful teal copy follows authored terrain or the free-space construction plane and
+    if (access.mode() === 'edit' && access.modalEditActive?.()) return;
     // owns Edit hover while armed.
     if (access.mode() === 'edit' && layers.surfaceGuide?.update(e)) return;
     if (access.mode() === 'edit' && layers.clipboardPlacement.onHover(e)) return;
@@ -2070,6 +2139,7 @@ export function createPointerRouter(
     // Create Grid: its next corner follows the level plane, the surface (Ctrl) or a snapped vertex.
     if (access.mode() === 'edit' && layers.surfaceTool?.onHover(e)) return;
     if (access.mode() === 'edit' && layers.gridTool.onHover(e)) return;
+    if (access.mode() === 'edit' && layers.boxTool?.onHover(e)) return;
     // Create Trail: the next centre-spline knot follows terrain or the construction plane.
     if (access.mode() === 'edit' && layers.trailTool.onHover(e)) return;
     // Create Edge: preview the next endpoint and segment, reusing the exact host vertex under a snap.
@@ -2204,11 +2274,11 @@ export function createPointerRouter(
     }
     // a deferred props-mode press that never dragged is a click: select what's under it now
     if (propClickPending) {
-      const { ctrl } = propClickPending;
+      const { ctrl, shift } = propClickPending;
       propClickPending = null;
       (e.target as Element).releasePointerCapture?.(e.pointerId);
       stage.castAt(e);
-      pickOrPlaceProp(ctrl);
+      pickOrPlaceProp(ctrl, shift);
       return;
     }
     // a deferred Edit-mode press that never dragged is a click: select the corner / knot / nub (Shift = range)

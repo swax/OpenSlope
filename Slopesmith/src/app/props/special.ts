@@ -25,6 +25,7 @@ export function createSpecialPropOps(deps: {
     store.selectedGem = null;
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.selectedLight = null;
     store.selectedRefLight = null;
     store.selectedScreen = null;

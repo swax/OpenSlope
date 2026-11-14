@@ -584,6 +584,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (store.selectedRail === null) return false;
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.railDrawing = false;
     viewport.setRailArmed(false);
     viewport.setRails(store.mdoc.rails ?? [], null, null);
@@ -592,7 +593,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   /** Select an authored course spline without turning it into a prop/graph selection: an Effects-owned motion
    *  path with the clicked node live for dragging, or a grind rail as a whole for inspection. */
-  function selectCourseSpline(index: number, node: number | null = null): boolean {
+  function selectCourseSpline(index: number, node: number | null = null, nodes?: readonly number[]): boolean {
     if (!active || store.currentMode !== 'effects') return false;
     const path = store.mdoc.rails?.[index];
     if (!path) return false;
@@ -613,6 +614,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     viewport.selectReferenceParticleVolume(null);
     store.selectedRail = index;
     store.selectedNode = node;
+    store.selectedRailNodes = [...(nodes ?? (node === null ? [] : [node]))];
     render();
     return true;
   }
@@ -655,13 +657,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function bindFogTexture(volume: ParticleVolume): void {
     if (volume.texture) return;
     const document = store.mdoc;
-    void resolveFogTexture(volume.donor).then(texture => {
-      if (store.mdoc !== document || volume.texture || !document.particleVolumes?.includes(volume)) return;
-      volume.texture = texture;
-      dirty();
-    }).catch(() => {
-      // Keep unavailable source art missing. Loading its course lets the legacy lookup resolve it later.
-    });
+    void resolveFogTexture(volume.donor)
+      .then(texture => {
+        if (store.mdoc !== document || volume.texture || !document.particleVolumes?.includes(volume)) return;
+        volume.texture = texture;
+        dirty();
+      })
+      .catch(() => {
+        // Keep unavailable source art missing. Loading its course lets the legacy lookup resolve it later.
+      });
   }
 
   function addFogVolume(): void {
@@ -793,6 +797,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function beginDrawing(index: number): void {
     store.selectedRail = index;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.railDrawing = true;
     viewport.setRailArmed(true);
     selectCourseSpline(index);
@@ -809,6 +814,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       store.mdoc.rails!.splice(selected.index, 1);
       store.selectedRail = null;
       store.selectedNode = null;
+      store.selectedRailNodes = [];
       toast(`${noun} needs at least two points — discarded`, 'warn');
     } else toast(`${noun} finished`, 'ok');
     dirty();
@@ -817,6 +823,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function resumeDrawnSpline(): void {
     if (!selectedDrawableSpline()) return;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.railDrawing = true;
     viewport.setRailArmed(true);
     dirty();
@@ -829,6 +836,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     store.mdoc.rails!.splice(selected.index, 1);
     store.selectedRail = null;
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     store.railDrawing = false;
     viewport.setRailArmed(false);
     dirty();
@@ -840,6 +848,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (!selected || node === null || !selected.rail.nodes[node]) return;
     selected.rail.nodes.splice(node, 1);
     store.selectedNode = null;
+    store.selectedRailNodes = [];
     assignHandles(selected.rail, withoutPathNode(selected.rail.handles, node)); // later nodes keep their own
     if (selected.rail.nodes.length < 2 && !store.railDrawing) {
       store.mdoc.rails!.splice(selected.index, 1);
@@ -1750,7 +1759,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const label = volume.texture ? parseTexRef(volume.texture).name : 'Shared fog sprite';
     const image = el('img', 'sp-fog-texture-image');
     image.alt = '';
-    setImageAsset(image, volume.texture ? textureRefUrl(volume.texture) : particleTextureUrl('fog0.png', volume.donor ?? ''));
+    setImageAsset(
+      image,
+      volume.texture ? textureRefUrl(volume.texture) : particleTextureUrl('fog0.png', volume.donor ?? ''),
+    );
     control.append(image, el('span', 'sp-fog-texture-name', label));
     control.title = volume.texture ?? 'Original shared fog sprite';
     if (editable) {
@@ -1772,7 +1784,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         });
       };
     }
-    return row('Texture', control, editable ? 'Choose a library texture or add your own PNG. Cancel keeps the current reference.' : 'Original fog texture. Copy this volume onto your mountain to change it.');
+    return row(
+      'Texture',
+      control,
+      editable
+        ? 'Choose a library texture or add your own PNG. Cancel keeps the current reference.'
+        : 'Original fog texture. Copy this volume onto your mountain to change it.',
+    );
   }
 
   function authoredParticlePanel(): HTMLElement | null {

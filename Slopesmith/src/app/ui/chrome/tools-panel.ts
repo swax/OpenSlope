@@ -19,6 +19,7 @@ import { buildSpecialPropTools } from '../tool-panels/special';
 import { createCreateTools } from '../tool-panels/create';
 import { createMeshSelectTools } from '../tool-panels/mesh-selection';
 import { buildSurfaceTools } from '../tool-panels/surface';
+import { buildSubdivisionBendTools } from '../tool-panels/subdivision-bend';
 import { createRetopologyTools } from '../tool-panels/retopology';
 import { createLabelTools } from '../tool-panels/labels';
 import { MODE_ICON } from '../components/icons';
@@ -230,8 +231,10 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     return store.controlSel.length;
   };
   const canRotateSelection = () =>
-    store.currentMode === 'edit' && store.surgeryTool === 'grid'
-      ? viewport.createGridWholeSelected
+    store.currentMode === 'edit' && (store.surgeryTool === 'grid' || store.surgeryTool === 'box')
+      ? store.surgeryTool === 'box'
+        ? viewport.createBoxWholeSelected
+        : viewport.createGridWholeSelected
       : deps.propDeform.active
         ? deps.propDeform.state?.mode === 'section' && !deps.propDeform.state.busy
         : viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path'
@@ -246,7 +249,10 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
                 cageActive() &&
                 (store.controlSel.length
                   ? movableControlPointCount() > 1
-                  : store.edgeSel.length > 0 || store.cellSel.length > 0 || edit.selectedFreePoint()));
+                  : store.regionSel.length > 1 ||
+                    store.edgeSel.length > 0 ||
+                    store.cellSel.length > 0 ||
+                    edit.selectedFreePoint()));
   type EditSelectionKind = 'point' | 'edge' | 'patch' | 'prop';
   const editSelectionCounts = (): { kind: EditSelectionKind; count: number; readOnly: boolean }[] => {
     const authoredPoints = store.controlSel.length || store.regionSel.length || (store.selectedCorner !== null ? 1 : 0);
@@ -302,7 +308,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       store.selectedGem !== null
     )
       return true;
-    if (store.selectedRail !== null && store.selectedNode !== null && !store.railDrawing) return true;
+    if (store.selectedRail !== null && store.selectedRailNodes.length > 0 && !store.railDrawing) return true;
     if (store.selectedLine !== null && store.selectedLineNode !== null && !store.lineDrawing) return true;
     const screen =
       store.selectedScreen === null ? undefined : store.mdoc.screens?.find(entry => entry.id === store.selectedScreen);
@@ -580,7 +586,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     refreshShowFilters(); // keep the top-bar Props / Tricks filters in sync
     syncAddTrickBtns(); // and the Prop Tools' Add rail / gem / light pressed highlight
     propLibToggle.style.display = propLaunchersVisible() ? 'block' : 'none';
-    const canRotate = canRotateSelection();
+    const canRotate = !store.duplicatePending && canRotateSelection();
     // Mixed selections own their compact Move / Rotate chooser inside the count panel, so they deliberately
     // hide the persistent single-family transform bar. Rotation is still a valid mode and must survive this
     // rebuild (notably the rebuild requested by the E shortcut).
@@ -605,6 +611,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       hasMeshTransformSelection() &&
       !mixedEditSelection() &&
       !viewport.edgeExtrusionStaged &&
+      !store.duplicatePending &&
       !edit.selectedTrail();
     framePillRow.style.display = frameVisible ? 'flex' : 'none';
     framePill.refresh();
@@ -659,6 +666,13 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       else if (!buildSpecialPropTools(ctx)) propTools.buildPropTools();
       return;
     }
+    if (store.duplicatePending) {
+      const section = editSection('duplicate', 'Duplicate');
+      detail(section, 'Drag the gizmo, then release to create the copy.');
+      detail(section, 'No movement creates no duplicate.');
+      section.add({ cancel: () => edit.cancelDuplicateSelection() }, 'cancel').name('cancel duplicate (Esc)');
+      return;
+    }
     if (viewport.edgeExtrusionStaged) {
       buildExtrudePlacementTools(ctx);
       return;
@@ -684,6 +698,14 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     }
     if (store.surgeryTool === 'grid') {
       createTools.buildCreateGridTools();
+      return;
+    }
+    if (store.surgeryTool === 'box') {
+      createTools.buildCreateBoxTools();
+      return;
+    }
+    if (store.surgeryTool === 'bend') {
+      buildSubdivisionBendTools(ctx);
       return;
     }
     if (store.surgeryTool === 'surface') {
@@ -851,6 +873,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   viewport.setCreatePatchPreviewListener(createTools.refreshCreatePatchSummary);
   viewport.setCreateTubePreviewListener(createTools.refreshCreateTubeSummary);
   viewport.setCreateGridPreviewListener(createTools.refreshCreateGridSummary);
+  viewport.setCreateBoxPreviewListener(createTools.refreshCreateBoxSummary);
   viewport.setCreateTrailPreviewListener(createTools.refreshCreateTrailSummary);
   return { rebuildTools, updatePaintUi, updateCmdSheet };
 }

@@ -172,10 +172,12 @@ type EditCallbackName =
   | 'createEdgeCuts'
   | 'onCreateTubeAxisChange'
   | 'onCreateGridChange'
+  | 'onCreateBoxChange'
   | 'onCreateSurfaceChange'
   | 'onLoopCut'
   | 'onCreatePatch'
   | 'onPasteVertices'
+  | 'onDuplicateVertices'
   | 'onAppendTrailKnot'
   | 'onSelectTrailKnot'
   | 'onMoveTrailKnot'
@@ -250,6 +252,7 @@ export function createEditSession(deps: EditSessionDeps) {
   let slideBase: QuadMeshDoc | null = null;
   let slideWeld: [number, number][] = [];
   let tubePointCount = -1;
+  let boxPanelKey = '';
   /** Create Grid's last click count and gizmo holder, which the toolbox is rebuilt for when either changes. */
   let gridPanelKey = '';
   let selectedDirNb: Record<HandleDir, number> | null = null;
@@ -587,6 +590,7 @@ export function createEditSession(deps: EditSessionDeps) {
   function transformSelectionActive(): boolean {
     if (view().edgeExtrusionStaged) return true;
     if (store.surgeryTool === 'grid') return view().createGridWholeSelected;
+    if (store.surgeryTool === 'box') return view().createBoxWholeSelected;
     if (store.currentMode === 'props') return store.selectedProp !== null || hasSelectedSet(store);
     if (store.currentMode !== 'edit' || store.bridgeRails !== null || !cageActive()) return false;
     if (mixedEditSelection())
@@ -865,6 +869,7 @@ export function createEditSession(deps: EditSessionDeps) {
   function rotatableSelection(): boolean {
     if (view().edgeExtrusionStaged) return true;
     if (store.surgeryTool === 'grid') return view().createGridWholeSelected;
+    if (store.surgeryTool === 'box') return view().createBoxWholeSelected;
     if (store.currentMode === 'props') return store.selectedProp !== null || hasSelectedSet(store);
     if (store.bridgeRails !== null) return false;
     if (mixedEditSelection())
@@ -1987,6 +1992,8 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function deselectEdit() {
+    clipboard.cancelDuplicateSelection(false);
+    topology.cancelSubdivisionBend(false);
     topology.cancelSurfaceStitch();
     topology.cancelSurfaceGuidePlacement(false);
     resetGizmoMode();
@@ -2591,6 +2598,7 @@ export function createEditSession(deps: EditSessionDeps) {
     updateCmdSheet,
     deleteSelectedMesh,
     refreshMixedSelection: renderEditMarqueeSelection,
+    commitHistory: deps.commitHistory,
   });
 
   function slidePlanPreviewChange(plan: SlidePlan) {
@@ -2984,6 +2992,15 @@ export function createEditSession(deps: EditSessionDeps) {
         updateCmdSheet();
       } else topology.previewCreateTube();
     },
+    onCreateBoxChange() {
+      if (store.surgeryTool !== 'box') return;
+      const key = `${view().createBoxPoints.length}:${view().createBoxWholeSelected}`;
+      if (key !== boxPanelKey) {
+        boxPanelKey = key;
+        rebuildTools();
+        updateCmdSheet();
+      } else topology.previewCreateBox();
+    },
     onCreateGridChange() {
       if (store.surgeryTool !== 'grid') return;
       // A new click reshapes the panel, and so does the gizmo moving between the whole draft (Move / Rotate /
@@ -3053,6 +3070,9 @@ export function createEditSession(deps: EditSessionDeps) {
     },
     onPasteVertices(translation) {
       clipboard.commitPastedVertices(translation);
+    },
+    onDuplicateVertices(translation) {
+      clipboard.commitDuplicatedVertices(translation);
     },
     onSelectEditCell(quad, mode) {
       const surface =
@@ -3196,6 +3216,7 @@ export function createEditSession(deps: EditSessionDeps) {
     viewportCallbacks,
     /** Re-seat surviving selections after a snapshot; no selection transitions or edits are authored here. */
     refreshAfterSync() {
+      clipboard.cancelDuplicateSelection(false);
       slideBase = null;
       slideWeld = [];
       view().setWeldTool(store.weldTool === 'weld' ? vertexIndices(mdoc(), store.weldSource) : false);
