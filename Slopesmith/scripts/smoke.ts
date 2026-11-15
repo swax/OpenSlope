@@ -8,7 +8,8 @@
  * author pastes out of the exported folder's `Repack.md`. That pairing is the point: the editor exports
  * through a second provider in the browser, and this proves the composition both share still bakes.
  */
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultMountain } from '../src/core/doc/mountain';
 import { setTex } from '../src/core/doc/doc-edit';
@@ -37,8 +38,7 @@ import { readLevelPatches } from '../src/server/routes/levels';
 
 const doc = defaultMountain();
 doc.name = 'SMOKEMTN';
-const dir = join(mapsRoot(), doc.name);
-rmSync(dir, { recursive: true, force: true });
+const dir = join(mkdtempSync(join(tmpdir(), 'slopesmith-export-smoke-')), doc.name);
 
 /**
  * The extracted level this smoke run reads for its reference-sun and painted-tile legs. It is named once
