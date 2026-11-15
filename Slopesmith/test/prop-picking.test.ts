@@ -307,7 +307,14 @@ const layers: any = {
     },
   },
   lights: { freeLightGroup, lightArmed: false, clearSelection() {}, clearRigSource() {}, selectRigSource() {} },
-  rails: { railGroup, railArmed: false, clearSelection() {} },
+  rails: {
+    railGroup,
+    railArmed: false,
+    selectedRail: null,
+    selectedNode: null,
+    selectedNodes: [],
+    clearSelection() {},
+  },
   propLines: {
     group: new THREE.Group(),
     drawing: false,

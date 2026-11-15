@@ -90,7 +90,7 @@ const layers = {
       return store.mdoc.lights ?? [];
     },
   },
-  rails: { railArmed: false },
+  rails: { railArmed: false, selectedRail: null, selectedNode: null, selectedNodes: [] },
   gems: { gemArmed: false, gemLine: null },
   rideCtl: { riding: false },
   cameraCtl: { activePointers: new Set(), touchPts: new Map(), orbiting: false, flying: false },
