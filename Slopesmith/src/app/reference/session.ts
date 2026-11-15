@@ -78,6 +78,7 @@ import {
   listEditableReferences,
   findEditableReference,
   openEditableReference,
+  referenceMapGames,
   type EditableReferenceChoice,
 } from './editable';
 import { installReferenceSource } from '../net/reference-source';
@@ -581,6 +582,7 @@ export function createReference(deps: ReferenceDeps) {
       'Reference',
       () => updateRefPickerLoad(),
       neutralLevel,
+      referenceMapGames,
     );
     picker.setMaps(
       opts

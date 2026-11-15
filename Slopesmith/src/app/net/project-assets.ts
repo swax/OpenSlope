@@ -2,7 +2,7 @@ import type { ProjectBundle } from '../../core/project/transfer';
 import { mapSourceId } from '../../core/reference/map-source';
 import { safeDataName } from '../../core/export/names';
 import { readAssetVersion } from '../../shared/map-asset-version';
-import { readAssetManifest } from '../../shared/map-asset-manifest';
+import type { AssetSelection } from '../../shared/map-asset-manifest';
 import { listLevelOrigins } from '../../shared/map-levels';
 import { createAssetReader } from '../net/asset-reader';
 import { createAssetResolver } from '../../shared/asset-resolver';
@@ -14,17 +14,14 @@ import {
 } from '../net/asset-cache';
 import { currentAccount } from '../net/account';
 import { readLevelGroups } from '../../shared/map-groups';
-import {
-  buildLevelPropsUncached,
-  nativeArtSource,
-  readMaterialTables,
-  readPhysicsBodySpheres,
-} from '../../shared/map-props';
+import { nativeArtSource, readMaterialTables, readPhysicsBodySpheres } from '../../shared/map-props';
 import { levelsWithNativeSky, nativeSkyFiles } from '../../shared/map-sky';
 import { bindMapPayload, mapSourceRequest } from '../net/map-source';
 import { bundleAssets, bundleProps } from '../public/bundle-assets';
 import { cachedIsoCourses } from '../public/iso-cache';
 import { lazyLocalMapData } from '../public/lazy-local-map-data';
+import { createLocalAssetBank } from '../public/local-asset-bank';
+import { matchImportedAssets } from '../public/imported-assets';
 import { readParticleTextureReference } from '../../shared/map-particle-texture';
 
 /** Read one snapshot's own and borrowed assets without reconfiguring the active editor or player. */
@@ -34,7 +31,9 @@ export async function projectAssetSource(
   projectId?: string,
 ) {
   const cached = await cachedIsoCourses();
+  const localNames = new Map([...Object.keys(aliases), ...cached].map(name => [name.toLowerCase(), name]));
   const local = await lazyLocalMapData(cached, aliases);
+  const localBank = createLocalAssetBank(local);
   const custom = bundleAssets(bundle);
   const packed = (bytes: Uint8Array) => {
     let binary = '';
@@ -66,13 +65,14 @@ export async function projectAssetSource(
         })),
         ...(await listLevelOrigins(local.source)).map(map => ({
           ...map,
-          name: mapSourceId('local', map.name),
+          name: mapSourceId('local', localNames.get(map.name.toLowerCase()) ?? map.name),
           source: 'local',
         })),
       ];
       return Response.json({ levels: maps.map(map => map.name), maps });
     }
-    const level = selected.name;
+    const level =
+      selected.source === 'server' ? selected.name : (localNames.get(selected.name.toLowerCase()) ?? selected.name);
     const useLocal =
       selected.source !== 'server' &&
       (local.hasLevel(level) || (url.pathname === '/api/particle-texture' && !level && cached.length > 0));
@@ -120,10 +120,14 @@ export async function projectAssetSource(
     }
     if (useLocal) {
       let body: unknown;
-      if (url.pathname === '/api/map-asset-manifest') body = await readAssetManifest(local.source, level);
+      if (url.pathname === '/api/map-asset-manifest')
+        body = await localBank.manifest(
+          level,
+          q.has('select') ? (JSON.parse(q.get('select')!) as AssetSelection) : undefined,
+        );
       else if (url.pathname === '/api/map-asset-version') body = await readAssetVersion(local.source, level);
       else if (url.pathname === '/api/groups') body = await readLevelGroups(local.source, level);
-      else if (url.pathname === '/api/props') body = await buildLevelPropsUncached(local.source, level);
+      else if (url.pathname === '/api/props') body = await localBank.props(level, q.get('asset') ?? undefined);
       else if (url.pathname === '/api/physics-body')
         body = { spheres: await readPhysicsBodySpheres(local.source, level, Number(q.get('idx'))) };
       else if (url.pathname === '/api/skybox/native' && q.get('files') === '1')
@@ -179,6 +183,9 @@ export async function projectAssetSource(
   });
   return {
     request: (path: string) => assets.fetch(path),
+    matchImported<T>(document: T) {
+      return matchImportedAssets(document, reader);
+    },
     dispose() {
       assets.clear();
       custom.dispose();

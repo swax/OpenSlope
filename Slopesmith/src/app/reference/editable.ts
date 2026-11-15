@@ -1,5 +1,5 @@
 import type { ProjectBundle } from '../../core/project/transfer';
-import type { MapSourceChoice } from '../../core/reference/map-game';
+import { mapGame, mapGameLabel, type MapSourceChoice } from '../../core/reference/map-game';
 import type { MapSource } from '../../core/reference/map-source';
 import type { PlacedProp, V3 } from '../../core/doc/types';
 import { AUTHORED_MODEL_LEVEL, authoredModelLevelProps } from '../../core/doc/models';
@@ -30,13 +30,25 @@ export interface EditableReferenceChoice extends MapSourceChoice {
   source: MapSource;
 }
 
+/** Reference groups distinguish saved editable mountains from unclassified map folders. */
+export const referenceMapGames = {
+  id(map: MapSourceChoice): string {
+    if (/^(local|server):@project:/.test(map.name)) return 'slopesmith';
+    const game = mapGame(map);
+    return game === 'unknown' || game === 'slopesmith' ? 'custom-ref' : game;
+  },
+  label(game: string): string {
+    return game === 'slopesmith' ? 'Slopesmith' : game === 'custom-ref' ? 'Custom Ref' : mapGameLabel(game);
+  },
+};
+
 export function editableReferenceChoice(project: ClientProject, source: MapSource): EditableReferenceChoice {
   return {
     name: `${source}:@project:${encodeURIComponent(project.id)}`,
     projectId: project.id,
     source,
     origin: 'slopesmith',
-    label: `${project.name} (editable)`,
+    label: project.name,
     displayName: project.name,
   };
 }
@@ -91,7 +103,27 @@ export async function openEditableReference(choice: EditableReferenceChoice): Pr
     bundle.isoAliases,
     choice.source === 'server' ? choice.projectId : undefined,
   );
-  return documentReferenceSource(`${choice.name}:snapshot:${crypto.randomUUID()}`, bundle, assets);
+  try {
+    const importedProps = bundle.document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)
+      ? await json<PropsPayload>(await assets.request('/api/custom-props'))
+      : null;
+    // Match only this snapshot: the editor's active document and runtime substitutions stay independent.
+    const matched = await assets.matchImported({ document: bundle.document, importedProps });
+    return documentReferenceSource(
+      `${choice.name}:snapshot:${crypto.randomUUID()}`,
+      { ...bundle, document: matched.document.document },
+      {
+        request: path =>
+          path === '/api/custom-props' && matched.document.importedProps
+            ? Promise.resolve(Response.json(matched.document.importedProps))
+            : assets.request(path),
+        dispose: () => assets.dispose(),
+      },
+    );
+  } catch (error) {
+    assets.dispose();
+    throw error;
+  }
 }
 
 async function json<T>(response: Response): Promise<T> {

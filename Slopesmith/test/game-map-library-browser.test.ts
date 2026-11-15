@@ -224,8 +224,8 @@ try {
   assert.equal(await storedReference(), 'BANK_2_4', 'clearing the other mountain preserves this selection');
   await page.locator('.ref-clear-btn').click();
   assert.equal(await maps('Reference').inputValue(), '(none)');
-  await game('Reference').selectOption('unknown');
-  assert.deepEqual(await maps('Reference').locator('option').allTextContents(), ['(none)', 'MYSTERY']);
+  await game('Reference').selectOption({ label: 'Custom Ref' });
+  assert.deepEqual(await maps('Reference').locator('option').allTextContents(), ['(none)', 'AUTHORED', 'MYSTERY']);
   await game('Reference').selectOption('1080-avalanche');
   for (const title of ['Disc Tenderfoot', 'Powder Threat', "Wit's Thicket"])
     assert((await maps('Reference').locator('option').allTextContents()).includes(title));

@@ -16,6 +16,7 @@ import { encodePng, decodePng } from '../src/server/routes/png';
 import type { Viewport } from '../src/app/viewport/viewport';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import type { ProjectBundle } from '../src/core/project/transfer';
+import { referenceAssetId } from '../src/core/reference/asset-manifest';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-editable-reference-'));
 const maps = join(root, 'Maps');
@@ -55,9 +56,21 @@ const yellow = encodePng({ w: 1, h: 1, data: new Uint8Array([255, 255, 0, 255]) 
 const hash = createHash('sha256').update(yellow).digest('hex');
 localBundle.assets = [{ kind: 'texture', name: 'shared.png', hash, size: yellow.length }];
 localBundle.blobs = { [hash]: yellow.toString('base64') };
+localBundle.document.quadTex = {
+  0: referenceAssetId('ssx-tricky', 'TRICKY_GARI', 'texture', 'tile.png', 'a'.repeat(64)),
+};
+localBundle.document.props!.push({
+  id: 'prop:0001',
+  level: referenceAssetId('ssx-tricky', 'TRICKY_GARI', 'prop', '0', 'b'.repeat(64)),
+  model: 0,
+  name: 'Tree',
+  pos: [15, 0, 15],
+  yaw: 0,
+  scale: 1,
+});
 type Observation = {
   slopesmith: { doc(): QuadMeshDoc; errors(): unknown[]; settled(): Promise<unknown> };
-  referenceState(): { level: string; draws: number; offset: V3 };
+  referenceState(): { level: string; draws: number; offset: V3; props: string[] };
   moveReference(offset: V3): void;
   frameReference(): number[];
 };
@@ -76,16 +89,55 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript('globalThis.__name = value => value');
   await page.goto(base + 'maps');
-  const localId = await page.evaluate(async serialized => {
-    const moduleName = '/src/app/state/local-projects.ts';
-    const { openLocalProjects } = (await import(moduleName)) as typeof import('../src/app/state/local-projects');
-    const projects = await openLocalProjects({ restoreActive: false });
-    try {
-      return (await projects.restore(JSON.parse(serialized) as ProjectBundle, false)).project.id;
-    } finally {
-      projects.close();
-    }
-  }, JSON.stringify(localBundle));
+  const localId = await page.evaluate(
+    async ({ serialized, texture }) => {
+      const cacheModule = '/src/app/public/iso-cache.ts';
+      const { openIsoCache, cacheTransaction, isoCourseCacheVersion } = await import(/* @vite-ignore */ cacheModule);
+      const course = 'TRICKY_GARI';
+      const files = {
+        'Import.json': new Blob([JSON.stringify({ Game: 'ssx-tricky' })]),
+        'Patches.json': new Blob(['{"Patches":[]}']),
+        'Materials.json': new Blob([JSON.stringify({ Materials: [{ TexturePath: 'tile.png' }] })]),
+        'Models.json': new Blob([
+          JSON.stringify({
+            Models: [
+              {
+                ModelName: 'Tree',
+                ModelObjects: [{ ParentID: -1, MeshData: [{ MeshPath: 'tree.obj', MaterialID: 0 }] }],
+              },
+            ],
+          }),
+        ]),
+        'Instances.json': new Blob([
+          JSON.stringify({
+            Instances: [{ ModelID: 0, Location: [0, 0, 0], Rotation: [0, 0, 0, 1], Scale: [1, 1, 1] }],
+          }),
+        ]),
+        'Meshes/tree.obj': new Blob(['v 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n']),
+        'Textures/tile.png': new Blob([Uint8Array.from(atob(texture), char => char.charCodeAt(0))], {
+          type: 'image/png',
+        }),
+      };
+      const db = await openIsoCache();
+      await cacheTransaction(db, 'files', 'readwrite', (store: IDBObjectStore) => {
+        for (const [path, blob] of Object.entries(files))
+          store.put({ key: `${course}/${path.toLowerCase()}`, course, path, blob });
+      });
+      await cacheTransaction(db, 'courses', 'readwrite', (store: IDBObjectStore) =>
+        store.put({ course, files: Object.keys(files).length, version: isoCourseCacheVersion(course) }),
+      );
+      db.close();
+      const moduleName = '/src/app/state/local-projects.ts';
+      const { openLocalProjects } = (await import(moduleName)) as typeof import('../src/app/state/local-projects');
+      const projects = await openLocalProjects({ restoreActive: false });
+      try {
+        return (await projects.restore(JSON.parse(serialized) as ProjectBundle, false)).project.id;
+      } finally {
+        projects.close();
+      }
+    },
+    { serialized: JSON.stringify(localBundle), texture: yellow.toString('base64') },
+  );
   const url = base + `editor/ACTIVE_MOUNTAIN?project=${activeProject.project.id}&agent=1`;
   const loaded = () =>
     page!.waitForFunction(
@@ -110,6 +162,9 @@ try {
           (window as unknown as Observation).referenceState = () => ({
             level: viewport.refLevelName,
             draws: viewport.refDecor.propDrawMeshes.length,
+            props: viewport.refDecor.propDrawMeshes.flatMap(mesh =>
+              ((mesh.userData.propSlots ?? []) as { name: string }[]).map(slot => slot.name),
+            ),
             offset: viewport.referenceOffset(),
           });
           (window as unknown as Observation).moveReference = offset => {
@@ -150,8 +205,13 @@ try {
   });
   const choose = async (storage: string, id: string) => {
     await page!.getByLabel('Reference source', { exact: true }).selectOption(storage);
-    await page!.getByLabel('Reference game', { exact: true }).selectOption('slopesmith');
+    await page!.getByLabel('Reference game', { exact: true }).selectOption({ label: 'Slopesmith' });
     await page!.getByLabel('Reference map', { exact: true }).selectOption(`${storage}:@project:${id}`);
+    assert.equal(
+      await page!.getByLabel('Reference map', { exact: true }).locator('option:checked').textContent(),
+      sourceProject.project.name,
+      'editable names appear without an editable suffix',
+    );
     await page!.getByRole('button', { name: 'Load reference', exact: true }).click();
     await loaded();
     await page!.waitForFunction(
@@ -207,7 +267,12 @@ try {
   );
   assert.deepEqual(await pixels(), [0, 255, 0, 255]);
   await choose('local', localId);
-  assert.deepEqual(await pixels(), [255, 255, 0, 255], 'a same-named Local reference retains its own custom art');
+  assert.deepEqual(await pixels(), [255, 255, 0, 255], 'Local references decode compatible imported terrain art');
+  assert.deepEqual(
+    new Set(await page.evaluate(() => (window as unknown as Observation).referenceState().props)),
+    new Set(['Authored sign', 'Tree']),
+    'authored and compatible imported prop geometry both render',
+  );
   assert.deepEqual(
     await page.evaluate(() => (window as unknown as Observation).slopesmith.doc()),
     before,
@@ -225,13 +290,13 @@ try {
     'no exported map folder or reference files are produced',
   );
   await page.getByLabel('Reference source', { exact: true }).selectOption('server');
-  await page.getByLabel('Reference game', { exact: true }).selectOption('unknown');
+  await page.getByLabel('Reference game', { exact: true }).selectOption({ label: 'Custom Ref' });
   await page.getByLabel('Reference map', { exact: true }).selectOption({ label: 'MAP_FOLDER' });
   await page.getByRole('button', { name: 'Load reference', exact: true }).click();
   await loaded();
   assert.equal(
     await page.evaluate(() => (window as unknown as Observation).referenceState().level),
-    'MAP_FOLDER',
+    'server:MAP_FOLDER',
     'ordinary map-folder references keep loading',
   );
   assert.deepEqual(errors, []);

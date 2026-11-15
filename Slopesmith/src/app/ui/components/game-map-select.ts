@@ -19,6 +19,10 @@ export class GameMapSelect {
     private context: string,
     private changed: (name: string) => void,
     private none?: string,
+    private games: { id(map: MapSourceChoice): string; label(game: string): string } = {
+      id: mapGame,
+      label: mapGameLabel,
+    },
   ) {
     this.sourceSelect.setAttribute('aria-label', `${context} source`);
     this.gameSelect.setAttribute('aria-label', `${context} game`);
@@ -88,8 +92,8 @@ export class GameMapSelect {
     }
     if (map) {
       this.sourceSelect.value = sourceOf(map);
-      this.rememberedGame.set(this.sourceSelect.value, mapGame(map));
-      this.fillGames(mapGame(map));
+      this.rememberedGame.set(this.sourceSelect.value, this.games.id(map));
+      this.fillGames(this.games.id(map));
       this.remembered.set(this.selectionKey(), map.name);
     } else this.fillGames(this.rememberedGame.get(this.sourceSelect.value));
     this.fillMaps(map?.name ?? this.none ?? '');
@@ -102,21 +106,22 @@ export class GameMapSelect {
     this.fillMaps(this.mapSelect.value);
   }
   private fillGames(preferred?: string): void {
-    const games = [...new Set(this.maps.filter(map => sourceOf(map) === this.sourceSelect.value).map(mapGame))].sort(
-      (a, b) =>
-        a === 'slopesmith'
-          ? -1
-          : b === 'slopesmith'
+    const games = [
+      ...new Set(this.maps.filter(map => sourceOf(map) === this.sourceSelect.value).map(map => this.games.id(map))),
+    ].sort((a, b) =>
+      a === 'slopesmith'
+        ? -1
+        : b === 'slopesmith'
+          ? 1
+          : a === 'unknown'
             ? 1
-            : a === 'unknown'
-              ? 1
-              : b === 'unknown'
-                ? -1
-                : mapGameLabel(a).localeCompare(mapGameLabel(b)),
+            : b === 'unknown'
+              ? -1
+              : this.games.label(a).localeCompare(this.games.label(b)),
     );
     this.gameSelect.replaceChildren();
     if (this.none) this.gameSelect.add(new Option('Choose game', ''));
-    for (const game of games) this.gameSelect.add(new Option(mapGameLabel(game), game));
+    for (const game of games) this.gameSelect.add(new Option(this.games.label(game), game));
     if (preferred && games.includes(preferred)) this.gameSelect.value = preferred;
     this.gameSelect.disabled = games.length === 0;
   }
@@ -124,7 +129,7 @@ export class GameMapSelect {
     this.mapSelect.replaceChildren();
     if (this.none) this.mapSelect.add(new Option(this.none, this.none));
     for (const map of this.maps.filter(
-      map => sourceOf(map) === this.sourceSelect.value && mapGame(map) === this.gameSelect.value,
+      map => sourceOf(map) === this.sourceSelect.value && this.games.id(map) === this.gameSelect.value,
     ))
       this.mapSelect.add(new Option(map.label ?? mapNameInGame(map), map.name));
     if ([...this.mapSelect.options].some(option => option.value === selected)) this.mapSelect.value = selected;

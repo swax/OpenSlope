@@ -2,8 +2,8 @@
 
 ## Saved editable maps
 
-In **Scene → Reference**, choose **Local** or **Server**, **Custom**, then a saved mountain marked
-**(editable)** and press **Load reference**. Terrain, texture paint and placed props load directly from the
+In **Scene → Reference**, choose **Local** or **Server**, **Slopesmith**, then a saved mountain and press
+**Load reference**. Terrain, texture paint and placed props load directly from the
 saved editable document. Authored models, imported models and borrowed model geometry share the ordinary
 reference renderer. No export or intermediate map folder is created.
 
@@ -14,6 +14,9 @@ with the same name in another source cannot replace its art. Borrowed assets ret
 
 Reference selection and placement are saved for the active mountain in this browser. Reload reads the
 chosen source again and restores its placement. A missing Local map never falls back to a Server map.
+Older borrowed texture and prop identities use the editor's compatible-import matching against the
+source map's available assets. Matching affects only the read-only snapshot, including authored and imported
+prop materials; it preserves saved asset identities and the active mountain's asset choices.
 Checkpoint comparisons retain their terrain-only appearance.
 
 ## Map folders
@@ -71,8 +74,10 @@ Open saved mountains from the main library page. Its **Local** and **Server** fi
 The optional `Game` in
 `Origin.json` is the stable source ID (`ssx-tricky`, `ssx-3`, `1080-avalanche`, etc.), independent of the
 folder name. Snowknife and native imports write it. Older folders fall back to `Import.json.Game`, then
-recognized course IDs; an unidentified folder appears under **Unknown**. Custom maps and the current
-mountain's own assets appear under **Custom**, even when they borrow art from another game.
+recognized course IDs. In the Reference picker, saved editable maps appear under **Slopesmith**;
+exported custom maps and unidentified folders appear under **Custom Ref**. Recognized retail maps keep
+their game categories. Texture and Prop Library selectors use **Unknown** for unidentified folders and
+**Custom** for authored assets, even when they borrow art from another game.
 The catalogue APIs retain their `levels` lists and also return `maps` with each map's `game`.
 Reference maps keep source-qualified identities. Props and textures use the content versions below.
 Existing unqualified references retain their local-first resolution until their original assets can be pinned.

@@ -10,8 +10,9 @@ import { orientFromPatchUV } from '../src/core/paint/orientation';
 
 const cleanup = installTestDom();
 try {
-  const { documentReferenceSource, editableReferenceChoice, findEditableReference } =
+  const { documentReferenceSource, editableReferenceChoice, findEditableReference, referenceMapGames } =
     await import('../src/app/reference/editable');
+  const { GameMapSelect } = await import('../src/app/ui/components/game-map-select');
   const { installReferenceSource } = await import('../src/app/net/reference-source');
   const { workspaceFetch } = await import('../src/app/net/workspace');
   const { setClientProjectId, clientProjectId } = await import('../src/app/net/client');
@@ -20,6 +21,58 @@ try {
   const local = editableReferenceChoice(project, 'local');
   const server = editableReferenceChoice(project, 'server');
   assert.notEqual(local.name, server.name, 'equal names and IDs retain their storage source');
+  assert.equal(local.label, project.name, 'the Slopesmith group makes an editable suffix unnecessary');
+  const choices = [
+    local,
+    server,
+    { name: 'server:MYSTERY', source: 'server' as const },
+    { name: 'local:MYSTERY', source: 'local' as const },
+    { name: 'server:My Hill', source: 'server' as const, origin: 'slopesmith', game: 'ssx-tricky' },
+    { name: 'server:TRICKY_GARI', source: 'server' as const, origin: 'retail' },
+  ];
+  const picker = new GameMapSelect(
+    document.createElement('select'),
+    'Reference',
+    () => {},
+    '(none)',
+    referenceMapGames,
+  );
+  picker.setMaps(choices, server.name);
+  assert.deepEqual(
+    [...picker.gameSelect.options].map(option => option.text),
+    ['Choose game', 'Slopesmith', 'Custom Ref', 'SSX Tricky'],
+  );
+  assert.equal(picker.mapSelect.selectedOptions[0].text, project.name);
+  const choose = (select: HTMLSelectElement, value: string) => {
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+  };
+  choose(picker.gameSelect, 'custom-ref');
+  assert.deepEqual(
+    [...picker.mapSelect.options].map(option => option.value),
+    ['(none)', 'server:MYSTERY', 'server:My Hill'],
+    'unidentified folders and authored exports share Custom Ref, independently of borrowed art',
+  );
+  choose(picker.sourceSelect, 'local');
+  assert.deepEqual(
+    [...picker.mapSelect.options].map(option => option.value),
+    ['(none)', 'local:MYSTERY'],
+  );
+  picker.select(local.name);
+  assert.equal(picker.gameSelect.value, 'slopesmith');
+  assert.equal(picker.mapSelect.value, local.name);
+  picker.select('server:TRICKY_GARI');
+  assert.equal(picker.sourceSelect.value, 'server');
+  assert.equal(picker.gameSelect.value, 'ssx-tricky');
+  assert.equal(picker.mapSelect.selectedOptions[0].text, 'Garibaldi');
+  picker.select('server:MYSTERY');
+  assert.equal(picker.gameSelect.value, 'custom-ref', 'saved folder identities restore into the new group');
+  assert.equal(picker.mapSelect.value, 'server:MYSTERY');
+  const assetPicker = new GameMapSelect(document.createElement('select'), 'Texture', () => {});
+  assetPicker.setMaps(choices, 'server:MYSTERY');
+  assert.equal(assetPicker.gameSelect.selectedOptions[0].text, 'Unknown');
+  assetPicker.select('server:My Hill');
+  assert.equal(assetPicker.gameSelect.selectedOptions[0].text, 'Custom');
   assert.equal(findEditableReference([server, local], `${local.name}:snapshot:old`), local);
   assert.equal(
     findEditableReference([server], local.name),

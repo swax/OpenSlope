@@ -5,6 +5,14 @@ import { splitMapSource } from '../../core/reference/map-source';
 import { mapLimit } from '../../shared/map-data';
 import { availableAssetMaps, readAssetManifestAt, readAssetBankAt, readSelectedAssetManifestAt } from '../net/asset-versions';
 import type { AssetSelection } from '../../shared/map-asset-manifest';
+import type { createAssetReader } from '../net/asset-reader';
+
+const workspaceAssets = {
+  maps: availableAssetMaps,
+  selectedManifest: readSelectedAssetManifestAt,
+  manifest: readAssetManifestAt,
+  version: readAssetBankAt,
+};
 
 function selectionFor(document: unknown, map: string, accepts: (asset: AssetVersion) => boolean): AssetSelection {
   const textures = new Set<string>(), props = new Set<string>(), names = new Set<string>(), bodies = new Set<string>();
@@ -36,11 +44,14 @@ function selectionFor(document: unknown, map: string, accepts: (asset: AssetVers
 }
 
 /** Playback substitutions use imported identities without rewriting the authored document. */
-export async function matchImportedAssets<T>(document: T) {
+export async function matchImportedAssets<T>(
+  document: T,
+  assets: Pick<ReturnType<typeof createAssetReader>, 'maps' | 'selectedManifest' | 'manifest' | 'version'> = workspaceAssets,
+) {
   const expected = assetVersionsIn(document).map(id => parseAssetVersion(id)!).filter(asset =>
     asset.game !== 'slopesmith');
   if (!expected.length) return { document, replacements: [] };
-  const maps = await availableAssetMaps();
+  const maps = await assets.maps();
   const source = (map: MapSourceChoice) => map.source ?? splitMapSource(map.name).source;
   const sameScope = (map: MapSourceChoice, asset: typeof expected[number]) =>
     mapGame(map) === asset.game && assetMapKey(splitMapSource(map.name).name, map.course) === asset.map;
@@ -54,9 +65,9 @@ export async function matchImportedAssets<T>(document: T) {
   const loaded = await mapLimit(candidates, 4, async map => {
     try {
       const [manifest, bank] = await Promise.all([
-        source(map) === 'local' ? readSelectedAssetManifestAt(map.name, selectionFor(document, assetMapKey(splitMapSource(map.name).name, map.course), asset =>
-          mapGame(map) === asset.game && compatibleImportScope(asset.map, assetMapKey(splitMapSource(map.name).name, map.course)))) : readAssetManifestAt(map.name),
-        expected.some(asset => !asset.kind && sameScope(map, asset)) ? readAssetBankAt(map.name).catch(() => null) : null,
+        source(map) === 'local' ? assets.selectedManifest(map.name, selectionFor(document, assetMapKey(splitMapSource(map.name).name, map.course), asset =>
+          mapGame(map) === asset.game && compatibleImportScope(asset.map, assetMapKey(splitMapSource(map.name).name, map.course)))) : assets.manifest(map.name),
+        expected.some(asset => !asset.kind && sameScope(map, asset)) ? assets.version(map.name).catch(() => null) : null,
       ]);
       return { map, manifest, bank };
     }
