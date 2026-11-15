@@ -1,4 +1,22 @@
-# 036 — Custom map exports as references
+# 036 — Editable maps and map folders as references
+
+## Saved editable maps
+
+In **Scene → Reference**, choose **Local** or **Server**, **Custom**, then a saved mountain marked
+**(editable)** and press **Load reference**. Terrain, texture paint and placed props load directly from the
+saved editable document. Authored models, imported models and borrowed model geometry share the ordinary
+reference renderer. No export or intermediate map folder is created.
+
+The loaded map is a read-only snapshot. Loading it keeps the active project and its document unchanged;
+press **Load reference** again to read the source map's latest saved state. Each snapshot resolves custom
+textures and imported models from its own mountain, so equal filenames in the active mountain or a map
+with the same name in another source cannot replace its art. Borrowed assets retain their source identities.
+
+Reference selection and placement are saved for the active mountain in this browser. Reload reads the
+chosen source again and restores its placement. A missing Local map never falls back to a Server map.
+Checkpoint comparisons retain their terrain-only appearance.
+
+## Map folders
 
 Slopesmith treats any folder under the configured Reference Maps root that contains `Patches.json` as a
 reference terrain. That includes both retail maps extracted by Snowknife and map folders exported by

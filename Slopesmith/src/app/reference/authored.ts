@@ -3,6 +3,8 @@ import { deriveQuadMesh } from '../../core/doc/mountain';
 import { quadControlPoints } from '../../core/mesh/topology';
 import { toRaw } from '../../core/export/level';
 import { buildReferenceMesh, type RawPatch, type ReferenceMesh } from '../../core/reference/terrain';
+import { surfaceStyle } from '../../core/doc/types';
+import { orientUV } from '../../core/paint/orientation';
 
 /**
  * An authored document as reference geometry, so a checkpoint can be studied beside the live mountain
@@ -22,7 +24,7 @@ import { buildReferenceMesh, type RawPatch, type ReferenceMesh } from '../../cor
 
 /** One document's faces as the reference layer reads them: the same records `Patches.json` carries, minus the
  *  appearance a stored level supplies. Patch order is quad order, so a record's index is its quad's. */
-export function authoredPatches(doc: QuadMeshDoc): RawPatch[] {
+export function authoredPatches(doc: QuadMeshDoc, texture?: (ref: string) => string): RawPatch[] {
   const derived = deriveQuadMesh(doc);
   const { mesh, edgeHandle } = derived;
   const patches: RawPatch[] = new Array(mesh.quadCount);
@@ -30,6 +32,21 @@ export function authoredPatches(doc: QuadMeshDoc): RawPatch[] {
     patches[quad] = {
       Points: quadControlPoints(mesh, edgeHandle, quad, derived.twistOf(quad)).map(toRaw),
       SurfaceType: derived.surfOf(quad),
+      ...(texture
+        ? {
+            TexturePath: texture(derived.texOf(quad) ?? `@surface/${surfaceStyle(derived.surfOf(quad)).tex}`),
+            UVPoints: [
+              [0, 0],
+              [1, 0],
+              [0, 1],
+              [1, 1],
+            ].map(([u, v]) => {
+              const orientation = derived.orientOf(quad);
+              const [a, b] = orientation ? orientUV(u, v, orientation.rot, orientation.mirror) : [u, v];
+              return [0.008 + 0.984 * a, -(0.008 + 0.984 * b)];
+            }),
+          }
+        : {}),
     };
   }
   return patches;

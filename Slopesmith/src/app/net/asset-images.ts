@@ -6,6 +6,7 @@ import { missingTextureCanvas, missingTextureUrl } from '../viewport/missing-tex
 import { referenceAssetRequest } from './asset-cache';
 import { resolveFogTexture } from './fog-texture';
 import { textureRefUrl } from './asset-paths';
+import { isEditableReferenceRequest } from './reference-source';
 
 const urls = new Map<string, Promise<string>>();
 export function versionedAssetUrl(url: string): boolean {
@@ -14,6 +15,7 @@ export function versionedAssetUrl(url: string): boolean {
 }
 
 function workspaceImage(url: string): boolean {
+  if (isEditableReferenceRequest(url)) return true;
   if (referenceAssetRequest(url)) return true;
   if (versionedAssetUrl(url)) return true;
   const value = new URL(url, globalThis.location?.origin ?? 'http://localhost');
@@ -32,10 +34,19 @@ export function imageAssetUrl(url: string): Promise<string> {
   if (!pending) {
     pending = (async () => {
       const request = new URL(url, globalThis.location?.origin ?? 'http://localhost');
-      if (request.pathname === '/api/particle-texture' && (request.searchParams.get('name') ?? 'fog0.png') === 'fog0.png')
-        return imageAssetUrl(textureRefUrl(await resolveFogTexture(
-          request.searchParams.get('level') ?? '', workspaceFetch, request.searchParams.get('mapSource') ?? undefined,
-        )));
+      if (
+        request.pathname === '/api/particle-texture' &&
+        (request.searchParams.get('name') ?? 'fog0.png') === 'fog0.png'
+      )
+        return imageAssetUrl(
+          textureRefUrl(
+            await resolveFogTexture(
+              request.searchParams.get('level') ?? '',
+              workspaceFetch,
+              request.searchParams.get('mapSource') ?? undefined,
+            ),
+          ),
+        );
       const response = await workspaceFetch(url);
       if (!response.ok) {
         const error = (await response.json().catch(() => ({}))) as { error?: string };

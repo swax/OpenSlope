@@ -3568,7 +3568,8 @@ const browserViews = createBrowserViews({
     if (view.reference === 'none') reference.clearReference();
     else {
       if (reference.getRefLevel() !== view.reference) await reference.openReference(view.reference);
-      if (viewport.refLevelName !== view.reference) throw new Error(`Reference ${view.reference} could not be loaded.`);
+      if (!reference.hasReference() || reference.getRefLevel() !== view.reference)
+        throw new Error(`Reference ${view.reference} could not be loaded.`);
       viewport.setReferenceOffset(view.refOffset ?? [REF_LOAD_OFFSET_X, 0, 0]);
     }
     setMode(view.mode === 'scene' ? 'info' : view.mode === 'test' ? 'play' : view.mode);

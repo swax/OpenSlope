@@ -74,6 +74,13 @@ import { GameMapSelect } from '../ui/components/game-map-select';
 import { mapDisplayName, mapGame, mapGameLabel } from '../../core/reference/map-game';
 import { findMapChoice } from '../../core/reference/map-source';
 import { referencePropBuildStatus, referencePropLoadStatus } from './prop-progress';
+import {
+  listEditableReferences,
+  findEditableReference,
+  openEditableReference,
+  type EditableReferenceChoice,
+} from './editable';
+import { installReferenceSource } from '../net/reference-source';
 
 /**
  * The reference-world subsystem: loading an extracted level's terrain to study (read-only), the lighting
@@ -230,7 +237,10 @@ export function createReference(deps: ReferenceDeps) {
    *  extract of a retail course and which slot, or an authored export and whether it borrows retail art. Shown
    *  under the picker as the loaded reference's `origin` row, so what is in the slot says what it is. */
   let mapOrigins = new Map<string, ReferenceMapSummary>();
-  const levelDisplayName = (level: string) => mapDisplayName(mapOrigins.get(level) ?? { name: level });
+  let editableMaps: EditableReferenceChoice[] = [];
+  let disposeReferenceSource: (() => void) | null = null;
+  const levelDisplayName = (level: string) =>
+    findEditableReference(editableMaps, level)?.displayName ?? mapDisplayName(mapOrigins.get(level) ?? { name: level });
   const originInfo = { origin: NO_COST };
   let originCtl: { updateDisplay(): void } | null = null;
   let refMesh: ReferenceMesh | null = null; // the loaded reference (kept for the lighting study)
@@ -391,7 +401,12 @@ export function createReference(deps: ReferenceDeps) {
 
   /** The origin row for the level in the slot, or the neutral dash when nothing (or a checkpoint) is there. */
   function showOrigin(level: string | null): void {
-    originInfo.origin = level ? describeOrigin(mapOrigins.get(level)) : NO_COST;
+    const editable = level && findEditableReference(editableMaps, level);
+    originInfo.origin = editable
+      ? `Editable map · ${editable.source === 'local' ? 'Local' : 'Server'} snapshot`
+      : level
+        ? describeOrigin(mapOrigins.get(level))
+        : NO_COST;
     originCtl?.updateDisplay();
   }
 
@@ -529,6 +544,7 @@ export function createReference(deps: ReferenceDeps) {
     const storedRef = restore && key ? loadStored<StoredRef>(key) : null;
     refStorageKey = key;
     let opts: string[] = ['(dev server only)'];
+    const editablePending = listEditableReferences();
     try {
       const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[]; localLevels?: string[] }>(
         '/api/levels',
@@ -539,9 +555,16 @@ export function createReference(deps: ReferenceDeps) {
     } catch {
       /* static build / server down - leave the placeholder */
     }
+    const savedMaps = await editablePending;
     if (generation !== refGeneration || key !== referenceStorageKey()) return;
+    editableMaps = savedMaps;
+    if (editableMaps.length)
+      opts = ['(none)', ...opts.filter(name => !name.startsWith('(')), ...editableMaps.map(map => map.name)];
     // Restore only the reference saved for this mountain, if that level is still available.
-    const restoredMap = storedRef && findMapChoice([...mapOrigins.values()], storedRef.level);
+    const restoredMap =
+      storedRef &&
+      (findEditableReference(editableMaps, storedRef.level) ??
+        findMapChoice([...mapOrigins.values()], storedRef.level));
     const restoreRef =
       restore && storedRef && (restoredMap || opts.includes(storedRef.level))
         ? { ...storedRef, level: restoredMap?.name ?? storedRef.level }
@@ -560,7 +583,9 @@ export function createReference(deps: ReferenceDeps) {
       neutralLevel,
     );
     picker.setMaps(
-      opts.filter(name => !name.startsWith('(')).map(name => mapOrigins.get(name) ?? { name }),
+      opts
+        .filter(name => !name.startsWith('('))
+        .map(name => mapOrigins.get(name) ?? editableMaps.find(map => map.name === name) ?? { name }),
       refState.level,
     );
     const rows = picker.controls.map(control => {
@@ -595,9 +620,10 @@ export function createReference(deps: ReferenceDeps) {
     updateRefPickerLoad();
     levelCtl = {
       updateDisplay: () => {
+        const editable = findEditableReference(editableMaps, refState.level);
         const available = picker.has(refState.level);
-        picker.select(refState.level);
-        if (available) refState.level = picker.mapSelect.value;
+        picker.select(editable?.name ?? refState.level);
+        if (available && !editable) refState.level = picker.mapSelect.value;
         updateRefPickerLoad();
       },
     };
@@ -646,7 +672,11 @@ export function createReference(deps: ReferenceDeps) {
       // load without stealing the restored camera view (frame:false) and without changing the current
       // selection (select:false); then re-apply the saved placement offset.
       await loadReference({ frame: false, select: false });
-      if (refMesh && refStorageKey === key && refState.level === restoreRef.level) {
+      if (
+        refMesh &&
+        refStorageKey === key &&
+        (findEditableReference(editableMaps, refState.level)?.name ?? refState.level) === restoreRef.level
+      ) {
         // where a previous session put it (an all-zero offset is the pre-fixed-offset era's overlay default,
         // not a drag — let those fall through to the fixed load offset)
         if (restoreRef.offset && restoreRef.offset.some(v => v !== 0)) viewport.setReferenceOffset(restoreRef.offset);
@@ -676,6 +706,8 @@ export function createReference(deps: ReferenceDeps) {
       refLoadStatusToken = null;
     }
     viewport.setReference(null);
+    disposeReferenceSource?.();
+    disposeReferenceSource = null;
     onReferenceChanged(null);
     onReferenceEffects({ status: 'empty' });
     store.playSpawnRef = null; // a future reference must derive its own course-based ride default
@@ -1212,20 +1244,35 @@ export function createReference(deps: ReferenceDeps) {
   }
 
   async function loadReference(opts: { frame?: boolean; select?: boolean } = {}) {
-    const name = refState.level;
+    let name = refState.level;
     if (!name || name.startsWith('(')) return;
     const generation = ++refGeneration;
+    const editable = findEditableReference(editableMaps, name);
+    let releaseSource: (() => void) | null = null;
     refPickerLoading = true;
     updateRefPickerLoad();
     const statusToken = loadStatus.begin({
-      title: `Loading ${mapDisplayName(mapOrigins.get(name) ?? { name })}`,
-      label: 'Downloading reference terrain',
-      detail: 'Waiting for the extracted mountain data',
+      title: `Loading ${levelDisplayName(name)}`,
+      label: editable ? 'Reading editable map' : 'Downloading reference terrain',
+      detail: editable
+        ? 'Loading a read-only snapshot and its source assets'
+        : 'Waiting for the extracted mountain data',
       progress: 5,
     });
     refLoadStatusToken = statusToken;
     log(`loading ${name} terrain...`);
     try {
+      if (editable) {
+        const source = await openEditableReference(editable);
+        if (generation !== refGeneration || name !== refState.level) {
+          source.dispose();
+          loadStatus.cancel(statusToken);
+          return;
+        }
+        name = refState.level = source.id;
+        levelCtl?.updateDisplay();
+        releaseSource = installReferenceSource(source);
+      }
       // Only request layers that are wanted. Receiving text overlaps terrain's network/build work; decoding
       // and registering it still wait until ensureRefProps, after the useful terrain paint and Effects join.
       if (store.propsVisible || store.tricksVisible || store.lightRigVisible) prefetchPropLevel(name);
@@ -1280,6 +1327,10 @@ export function createReference(deps: ReferenceDeps) {
       });
       await loadStatus.afterPaint();
       refMesh = mesh;
+      refDocument = null;
+      disposeReferenceSource?.();
+      disposeReferenceSource = releaseSource;
+      releaseSource = null;
       refOwner = { generation, level: name, mesh, patches };
       refLightingIntent = 'lightmap';
       refLightmapStatus = 'idle';
@@ -1360,7 +1411,7 @@ export function createReference(deps: ReferenceDeps) {
       viewport.setReferenceLaps(refLaps); // what a reference Play counts down, and what gates its lap volumes
       setupLightingUi();
       void musicStudy.setLevel(name);
-      setupRefSky(name); // this level's own sky: its horizon panorama + the ⟶ button that adopts it
+      setupRefSky(editable ? null : name); // a stored map's assets never fall through to a same-named folder
       applyGodRays(); // ...and its sun's beams, when this course shipped with any (docs/049)
       if (opts.select === false) {
         rebuildOutliner();
@@ -1368,12 +1419,13 @@ export function createReference(deps: ReferenceDeps) {
       } // boot-restore keeps the current selection (ref stays unselected)
       else selectScene('info'); // a fresh load returns to Reference, where both positionable worlds are framed
       persistRef(); // remember this level so a reload re-loads it
-      onReferenceChanged(name);
+      onReferenceChanged(editable?.name ?? name);
       const verts = (mesh.positions.length / 3) | 0;
       refInfo.terrain = `${mesh.patchCount.toLocaleString()} patches · ${verts.toLocaleString()} verts`;
       refInfoCtl?.updateDisplay(); // the summary lives in the Reference panel, not a viewport overlay
       showOrigin(name); // what this folder is, from the listing already in hand
-      void refreshCost(name); // priced on its own request: reading every mesh must not delay the terrain
+      if (editable) clearCostRows();
+      else void refreshCost(name); // folder census is independent of editable storage
       log(''); // clear the transient "loading…" line so nothing overlays the view
       loadStatus.update(statusToken, {
         progress: 77,
@@ -1422,6 +1474,7 @@ export function createReference(deps: ReferenceDeps) {
       log(`load failed: ${message}`);
       await loadStatus.fail(statusToken, message);
     } finally {
+      releaseSource?.();
       if (refLoadStatusToken === statusToken) refLoadStatusToken = null;
       if (refGeneration === generation) {
         refPickerLoading = false;
@@ -1434,7 +1487,8 @@ export function createReference(deps: ReferenceDeps) {
   async function openReference(level: string): Promise<void> {
     const name = level.trim();
     if (!name || name.startsWith('(')) return;
-    if (refOwner?.level === name && refMesh) {
+    const activeName = refOwner && (findEditableReference(editableMaps, refOwner.level)?.name ?? refOwner.level);
+    if (activeName === name && refMesh) {
       selectScene('info');
       return;
     }
@@ -2378,7 +2432,7 @@ export function createReference(deps: ReferenceDeps) {
     hasReference: () => !!refMesh,
     getRefCourse: () => refCourse,
     getRefLaps: () => refLaps,
-    getRefLevel: () => refState.level,
+    getRefLevel: () => findEditableReference(editableMaps, refState.level)?.name ?? refState.level,
     getRefDisplayName: () => refDocument ?? levelDisplayName(refState.level),
     /** What the slot is showing when it holds a checkpoint rather than an extracted level (docs/040). */
     getRefDocument: () => refDocument,

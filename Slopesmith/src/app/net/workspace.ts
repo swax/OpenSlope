@@ -16,6 +16,7 @@ import {
   validateReferenceAssetResponse,
 } from './asset-cache';
 import { currentAccount } from './account';
+import { readReferenceSource } from './reference-source';
 let local = false;
 let handler: ((url: URL, init?: RequestInit) => Promise<Response | null>) | null = null;
 let generation = 0;
@@ -53,6 +54,8 @@ export function configureWorkspace(localOnly: boolean, request: NonNullable<type
 }
 
 export async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const reference = readReferenceSource(input, init);
+  if (reference) return reference;
   const replacement = await fetchRuntimeAssetReplacement(
     input,
     init,
@@ -65,6 +68,8 @@ export async function workspaceFetch(input: RequestInfo | URL, init?: RequestIni
 
 /** Identity checks/migrations must observe saved bytes, even while the renderer uses a compatible view. */
 export async function exactWorkspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const reference = readReferenceSource(input, init);
+  if (reference) return reference;
   if (referenceAssetRequest(input)) return assets.fetch(input, init);
   if (mapSourceRequest(input).version) return fetchVersionedAsset(input, init);
   return rawWorkspaceFetch(input, init);
