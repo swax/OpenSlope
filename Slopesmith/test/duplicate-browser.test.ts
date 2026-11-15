@@ -202,6 +202,12 @@ try {
     assert.deepEqual(await read(), before);
     if (kind === 'patch') await page.screenshot({ path: join(root, 'duplicate-preview.png') });
     await page.mouse.up();
+    // Point handles refresh on the next frame after the document commit.
+    const selection = kind === 'patch' ? 'patches' : kind === 'edge' ? 'edges' : 'points';
+    await page.waitForFunction<boolean, 'patches' | 'edges' | 'points'>(
+      key => (window as unknown as Observation).duplicateState()[key] === 1,
+      selection,
+    );
     const next = await read(),
       selected = await state();
     const added = kind === 'patch' ? 4 : kind === 'edge' ? 2 : 1;
@@ -212,7 +218,7 @@ try {
       original.vertices,
       'the original stays in place',
     );
-    assert.equal(selected[kind === 'patch' ? 'patches' : kind === 'edge' ? 'edges' : 'points'], 1);
+    assert.equal(selected[selection], 1);
     assert(Math.abs(next.vertices[original.vertices.length] - offset[0]) < 1e-4);
     await page.keyboard.press('Control+z');
     await page.waitForFunction(() => (window as unknown as Observation).slopesmith.doc().vertices.length === 12);
