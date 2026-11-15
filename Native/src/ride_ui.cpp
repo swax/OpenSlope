@@ -152,9 +152,12 @@ std::string RideUi::loading_label() const {
 }
 
 std::vector<UiButton> RideUi::buttons() const {
-    if (loading)
-        return importing ? std::vector<UiButton>{{.06, .85, .88, .085, "CANCEL", UiAction::CancelImport}}
-                         : std::vector<UiButton>{};
+    if (loading) {
+        std::vector<UiButton> list;
+        if (importing)
+            list.push_back({.06, .85, .88, .085, "CANCEL", UiAction::CancelImport});
+        return list;
+    }
     if (graphics_options) {
         const auto y = immersive ? .36 : .60;
         std::vector<UiButton> list;
