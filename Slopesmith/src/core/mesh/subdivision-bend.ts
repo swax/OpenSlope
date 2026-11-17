@@ -8,6 +8,8 @@ export type BendSettings = {
   axis: BendAxis;
   direction: BendAxis;
   angle: number;
+  /** Offset along the axis perpendicular to the bend plane, per full turn. */
+  risePerTurn?: number;
   anchor: 'start' | 'centre' | 'end';
 };
 
@@ -30,12 +32,13 @@ export function defaultBendSettings(points: readonly V3[]): BendSettings {
   return { axis, direction: axis === 1 ? 0 : 1, angle: 0, anchor: 'start' };
 }
 
-/** Circular bend from a frozen source. Cross-sections rotate with the arc; its neutral line keeps its length. */
+/** Bend from a frozen source. Cross-sections rotate with the arc; rise separates successive turns. */
 export function bendPoints(points: readonly V3[], settings: BendSettings) {
-  const { axis, direction, angle, anchor } = settings;
+  const { axis, direction, angle, anchor, risePerTurn = 0 } = settings;
   if (![0, 1, 2].includes(axis) || ![0, 1, 2].includes(direction) || axis === direction)
     throw new Error('Choose different length and bend-direction axes.');
-  if (!Number.isFinite(angle) || Math.abs(angle) > 180) throw new Error('Choose a bend angle between −180° and 180°.');
+  if (!Number.isFinite(angle)) throw new Error('Choose a finite bend angle.');
+  if (!Number.isFinite(risePerTurn)) throw new Error('Choose a finite rise per turn.');
   if (!['start', 'centre', 'end'].includes(anchor)) throw new Error('Choose a start, centre or end anchor.');
   const { min, max, spans } = bounds(points);
   const length = spans[axis];
@@ -52,6 +55,7 @@ export function bendPoints(points: readonly V3[], settings: BendSettings) {
     );
   const origin = min[axis] + length * (anchor === 'start' ? 0 : anchor === 'end' ? 1 : 0.5);
   const middle = (min[direction] + max[direction]) * 0.5;
+  const riseAxis = (3 - axis - direction) as BendAxis;
   const bent = points.map((point): V3 => {
     if (angle === 0) return [...point];
     const s = point[axis] - origin,
@@ -63,20 +67,26 @@ export function bendPoints(points: readonly V3[], settings: BendSettings) {
     const out: V3 = [...point];
     out[axis] = origin + s * sinc - t * Math.sin(theta);
     out[direction] = middle + s * cosc + t * Math.cos(theta);
+    out[riseAxis] += (risePerTurn * Math.abs(radians) * s) / (2 * Math.PI * length);
     return out;
   });
   return { points: bent, radiusM, length };
 }
 
 /** Bend only the source cage and regenerate its terrain, retaining topology, sharp marks and stable IDs. */
-export function bendSubdivisionCage(doc: QuadMeshDoc, id: string, settings: BendSettings) {
+export function bendSubdivisionCage(doc: QuadMeshDoc, id: string, settings: BendSettings, offsets?: readonly V3[]) {
   const surface = doc.surfaces?.find(s => s.id === id);
   if (!surface?.subdivision) throw new Error('Select a live subdivision cage to bend.');
   const source = subdivisionSource(doc, surface);
   const bent = bendPoints(source.points, settings);
-  if (settings.angle === 0) return { doc, surface, radiusM: bent.radiusM, length: bent.length };
+  if (offsets) {
+    if (offsets.length !== bent.points.length || offsets.some(p => p.length !== 3 || p.some(n => !Number.isFinite(n))))
+      throw new Error('Each cage point needs a finite offset.');
+    bent.points = bent.points.map((p, i) => p.map((n, a) => n + offsets[i][a]) as V3);
+  }
+  if (settings.angle === 0 && !offsets?.some(p => p.some(n => n !== 0))) return { doc, surface, ...bent };
   const index = nameIndex(doc.vertexIds);
   const out = { ...doc, vertices: doc.vertices.slice() };
   surface.controls.flat().forEach((name, i) => writeVertex(out.vertices, index.get(name)!, bent.points[i]));
-  return { ...rebuildSubdivision(out, surface), radiusM: bent.radiusM, length: bent.length };
+  return { ...rebuildSubdivision(out, surface), ...bent };
 }

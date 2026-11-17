@@ -12,6 +12,7 @@ import type { Patch } from '../../core/mesh/loft-surface';
 import type { QuadMesh, MeshAdjacency } from '../../core/mesh/topology';
 import type { PreparedPatches } from '../../core/mesh/tessellation';
 import type { MeshPreviewChange } from '../../core/mesh/surface-preview';
+import type { BendHandles } from '../viewport/tools/subdivision-bend';
 
 export type { CellSpeedTint, TrailShape, TrailTransform };
 
@@ -55,6 +56,7 @@ export interface EditViewportPort {
   setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'box' | 'bend' | 'trail' | 'surface' | null): void;
   /** Render a private modal edit without installing it in the authored document. Leaving the tool restores it. */
   showEditDraftPreview?(doc: QuadMeshDoc): void;
+  setSubdivisionBendHandles?(handles: BendHandles | null): void;
   readonly createSurfacePoints?: readonly PlacementEndpoint[];
   readonly createSurfaceHover?: PlacementEndpoint | null;
   readonly createSurfaceClosing?: boolean;

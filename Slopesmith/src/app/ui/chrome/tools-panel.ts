@@ -591,7 +591,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     // hide the persistent single-family transform bar. Rotation is still a valid mode and must survive this
     // rebuild (notably the rebuild requested by the E shortcut).
     const mixedCanRotate = store.currentMode === 'edit' && mixedEditSelection() && edit.rotatableSelection();
-    if (!canRotate && !mixedCanRotate && store.gizmoMode !== 'move') {
+    const bendCanRotate = store.surgeryTool === 'bend' && edit.subdivisionBendState()?.canTransform;
+    if (!canRotate && !mixedCanRotate && !bendCanRotate && store.gizmoMode !== 'move') {
       store.gizmoMode = 'move';
       viewport.setGizmoMode('move');
     }

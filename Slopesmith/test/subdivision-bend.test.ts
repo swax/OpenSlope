@@ -60,7 +60,32 @@ for (const [axis, direction] of [
 assert.deepEqual(defaultBendSettings(points), { ...settings, angle: 0 });
 assert.throws(() => bendPoints(points, { ...settings, direction: 0 }), /different/);
 assert.throws(() => bendPoints(points, { ...settings, angle: NaN }), /angle/);
-assert.throws(() => bendPoints(points, { ...settings, angle: 181 }), /angle/);
+assert.throws(() => bendPoints(points, { ...settings, angle: Infinity }), /angle/);
+assert.throws(() => bendPoints(points, { ...settings, risePerTurn: NaN }), /rise/);
+const longPoints: V3[] = Array.from({ length: 17 }, (_, i) => [i * 7.5, 0, 0]);
+const loop = bendPoints(longPoints, { ...settings, angle: 360 });
+near(loop.points[0], loop.points[16]);
+assert.equal(loop.radiusM, 120 / (2 * Math.PI));
+const springSettings: BendSettings = { ...settings, direction: 2, angle: 720, risePerTurn: -12 };
+const spring = bendPoints(longPoints, springSettings);
+near(spring.points[0], [0, 0, 0]);
+near(spring.points[8], [0, -12, 0]);
+near(spring.points[16], [0, -24, 0]);
+near(bendPoints(longPoints, { ...springSettings, angle: -720 }).points[16], [0, -24, 0]);
+near(bendPoints(longPoints, { ...springSettings, anchor: 'centre' }).points[8], longPoints[8]);
+near(bendPoints(longPoints, { ...springSettings, anchor: 'end' }).points[16], longPoints[16]);
+const springBox = bendFixture('SPRING', 16);
+springBox.doc.vertices = springBox.doc.vertices.map((n, i) => (i % 3 === 0 ? n * 3 : n));
+const coiledBox = bendSubdivisionCage(springBox.doc, springBox.surface.id, springSettings);
+const springSource = subdivisionSource(springBox.doc, springBox.surface);
+const springEnd = springSource.points.findIndex(p => p[0] === 360);
+near(coiledBox.points[springEnd], [0, springSource.points[springEnd][1] - 24, springSource.points[springEnd][2]]);
+assert(
+  coiledBox.doc.vertices.every(Number.isFinite),
+  'a thick source cage regenerates as a descending horizontal coil',
+);
+assert(bendPoints(longPoints, { ...settings, angle: 270 }).points.every(p => p.every(Number.isFinite)));
+assert.throws(() => bendPoints(points, { ...settings, angle: 720 }), /more divisions/);
 assert.throws(
   () =>
     bendPoints(
@@ -109,9 +134,25 @@ near(
   bendPoints(subdivisionSource(source, fixture.surface).points, settings).points[0],
 );
 assert.equal(bendSubdivisionCage(source, fixture.surface.id, { ...settings, angle: 0 }).doc, source);
+const cagePoints = subdivisionSource(source, fixture.surface).points;
+const offsets: V3[] = cagePoints.map((_, i) => (i === 0 ? [0, 12, 3] : [0, 0, 0]));
+const manual = bendSubdivisionCage(source, fixture.surface.id, { ...settings, angle: 0 }, offsets);
+near(subdivisionSource(manual.doc, manual.surface).points[0], [
+  cagePoints[0][0],
+  cagePoints[0][1] + 12,
+  cagePoints[0][2] + 3,
+]);
+assert.notDeepEqual(
+  manual.doc.vertices,
+  source.vertices,
+  'manual point edits regenerate the terrain without requiring an angle',
+);
+assert.deepEqual(manual.surface.subdivision, source.surfaces![0].subdivision);
+assert.throws(() => bendSubdivisionCage(source, fixture.surface.id, settings, []), /offset/);
+assert.deepEqual(source, before, 'manual offsets also leave the frozen source untouched');
 const serialized = serializeMountain(bent.doc);
 assert.deepEqual(serialized.surfaces![0].subdivision, bent.surface.subdivision);
 assert.throws(() => bendSubdivisionCage(source, 'missing', settings), /live subdivision/);
 console.log(
-  'SUBDIVISION BEND: PASS (quarter pipe, arch, signed axes, anchors, thickness, stable topology and metadata)',
+  'SUBDIVISION BEND: PASS (arcs, full turns, descending springs, manual points, anchors, thickness and stable topology)',
 );

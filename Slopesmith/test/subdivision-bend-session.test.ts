@@ -6,6 +6,7 @@ import type { EditViewportPort } from '../src/app/edit/viewport-port';
 import type { ToolsContext } from '../src/app/ui/tool-panels/widgets';
 import { installTestDom } from './dom-test-support';
 import { bendFixture } from './subdivision-bend.fixture';
+import type { BendHandles } from '../src/app/viewport/tools/subdivision-bend';
 
 const cleanup = installTestDom();
 const { default: GUI } = await import('lil-gui');
@@ -19,6 +20,7 @@ const store = createStore({ mdoc: fixture.doc, currentMode: 'edit', storedUi: {}
 let displayed: QuadMeshDoc = store.mdoc;
 let restored = '';
 const history: string[] = [];
+let handles: BendHandles | null = null;
 const gui = new GUI();
 const editSection = createEditSections(gui);
 const viewport = {
@@ -27,6 +29,9 @@ const viewport = {
   },
   showEditDraftPreview(doc: QuadMeshDoc) {
     displayed = doc;
+  },
+  setSubdivisionBendHandles(value: BendHandles | null) {
+    handles = value;
   },
 } as EditViewportPort;
 const edit = createSubdivisionBendTools({
@@ -89,6 +94,39 @@ try {
   assert.match(edit.subdivisionBendState()!.error!, /document changed/);
   edit.cancelSubdivisionBend();
   assert.equal(store.mdoc.name, 'CHANGED_WHILE_BENDING', 'a stale preview never overwrites newer edits');
+  store.mdoc = structuredClone(fixture.doc);
+  edit.beginSubdivisionBend(fixture.surface.id);
+  const unedited = JSON.stringify(store.mdoc);
+  const originalY = edit.subdivisionBendState()!.position[1];
+  controller('position Y (m)').setValue(originalY + 12);
+  assert.equal(edit.subdivisionBendState()!.position[1], originalY + 12);
+  assert.equal(edit.subdivisionBendState()!.canApply, true, 'manual edits work with zero bend angle');
+  assert.equal(controller('reset manual edits')._disabled, false);
+  assert.equal(JSON.stringify(store.mdoc), unedited);
+  edit.updateSubdivisionBend({ angle: 90 });
+  assert.equal(
+    edit.subdivisionBendState()!.position[1],
+    originalY + 12,
+    'bend settings preserve manual edits at the anchor',
+  );
+  controller('reset manual edits').getValue()();
+  assert.equal(edit.subdivisionBendState()!.manual, false);
+  assert.equal(edit.subdivisionBendState()!.settings.angle, 90);
+  controller('reset bend').getValue()();
+  assert.equal(edit.subdivisionBendState()!.canApply, false);
+  controller('edit handles').setValue('point');
+  assert.equal(edit.subdivisionBendState()!.canTransform, false);
+  const drag = handles as unknown as BendHandles;
+  const moved = drag.points.map((p, i) =>
+    i === 0 ? ([p[0], p[1] + 7, p[2]] as [number, number, number]) : ([...p] as [number, number, number]),
+  );
+  drag.onChange(moved, false);
+  assert.equal(edit.subdivisionBendState()!.canApply, false, 'cannot apply in the middle of a drag');
+  (handles as unknown as BendHandles).onChange(moved, true);
+  assert.equal(edit.subdivisionBendState()!.canApply, true);
+  edit.applySubdivisionBend();
+  assert.notEqual(JSON.stringify(store.mdoc), unedited);
+  assert.equal(handles, null, 'apply removes the preview handles');
   console.log(
     'SUBDIVISION BEND SESSION: PASS (real controls, frozen preview, reset, cancel, one-step apply, stale guard)',
   );

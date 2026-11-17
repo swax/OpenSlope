@@ -36,6 +36,7 @@ export type GizmoKind =
   | 'effect'
   | 'edgeextrusion'
   | 'propdeform'
+  | 'subdivisionbend'
   | 'gridcorner'
   | 'surfacepoint'
   | 'grid'

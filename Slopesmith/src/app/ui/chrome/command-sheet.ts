@@ -395,7 +395,9 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                         : store.currentMode === 'edit' && (store.surgeryTool === 'tube' || store.surgeryTool === 'bend')
                           ? store.surgeryTool === 'bend'
                             ? helpPanel('Edit Mode — bend cage', [
-                                ['Angle / axes', 'preview a circular bend'],
+                                ['Angle / rise', 'bend or coil through multiple turns'],
+                                ['LMB', 'select a cage section or point'],
+                                ['W / E / R', 'move / rotate / scale section'],
                                 ['RMB / MMB', 'orbit / pan'],
                                 ['Enter', 'apply bend'],
                                 ['Esc', 'cancel preview'],

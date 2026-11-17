@@ -24,13 +24,22 @@ const vite = await createServer({
   server: { host: '127.0.0.1', port: 0, proxy: { '/api': { target: api.url, ws: true } } },
 });
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined, page: Page | undefined;
-type Visuals = { cage: number[]; terrain: number[] };
+type Visuals = {
+  cage: number[];
+  terrain: number[];
+  handles: number[][];
+  screen: number[];
+  axis: string | null;
+  mode: string;
+  kind: string | null;
+  dragging: boolean;
+};
 type Observation = {
   slopesmith: { doc(): QuadMeshDoc; errors(): unknown[]; settled(): Promise<unknown> };
   bendVisuals?(): Visuals;
 };
 try {
-  const fixture = bendFixture('SUBDIVISION_BEND_BROWSER');
+  const fixture = bendFixture('SUBDIVISION_BEND_BROWSER', 16);
   const response = await fetch(`${api.url}/api/projects`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -46,6 +55,7 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript('globalThis.__name = value => value');
   await page.addInitScript(() => {
     const view = JSON.stringify({
       pos: [60, 220, -15],
@@ -81,12 +91,29 @@ try {
         mode.set!.call(this, value);
         const viewport = this as Viewport;
         (window as unknown as Observation).bendVisuals = () => {
+          const rect = viewport.stage.renderer.domElement.getBoundingClientRect();
+          const project = (p: typeof viewport.stage.camera.position) => {
+            const at = p.clone().project(viewport.stage.camera);
+            return [rect.x + ((at.x + 1) * rect.width) / 2, rect.y + ((1 - at.y) * rect.height) / 2];
+          };
           const cage: number[] = [];
           viewport.stage.worldRoot.traverse(object => {
             const geometry = (object as Object3D & { geometry?: BufferGeometry }).geometry;
             if (geometry?.name === 'source-cage-points') cage.push(...geometry.getAttribute('position').array);
           });
-          return { cage, terrain: Array.from(viewport.terrainLayer.terrain.geometry.getAttribute('position').array) };
+          const overlay = viewport.stage.scene.getObjectByName('subdivision-bend-handles');
+          return {
+            cage,
+            terrain: Array.from(viewport.terrainLayer.terrain.geometry.getAttribute('position').array),
+            handles: overlay?.visible
+              ? overlay.children.filter(o => typeof o.userData.control === 'number').map(o => project(o.position))
+              : [],
+            screen: viewport.stage.gizmo.object ? project(viewport.stage.gizmo.object.position) : [],
+            axis: viewport.stage.gizmo.axis,
+            mode: viewport.stage.gizmo.mode,
+            kind: viewport.stage.gizmoKind,
+            dragging: viewport.stage.gizmo.dragging,
+          };
         };
       },
     });
@@ -108,6 +135,46 @@ try {
   assert(originalVisuals.cage.length > 0);
   await button('bend cage…').click();
   assert(await button('apply bend (Enter)').isDisabled());
+  const middle = (await visuals()).handles[8];
+  await page.mouse.click(middle[0], middle[1]);
+  assert.equal(await controller('section').locator('input').inputValue(), '9', 'canvas handles select cage sections');
+  const initialHandle = await visuals();
+  let dragX = initialHandle.screen[0];
+  for (const offset of [25, 35, 45, 55, 65]) {
+    dragX = initialHandle.screen[0] + offset;
+    await page.mouse.move(dragX, initialHandle.screen[1]);
+    if ((await visuals()).axis === 'X') break;
+  }
+  assert.equal((await visuals()).axis, 'X', 'the bend handle exposes the move gizmo');
+  await page.mouse.down();
+  await page.mouse.move(dragX + 45, initialHandle.screen[1], { steps: 8 });
+  await page.mouse.up();
+  assert.notDeepEqual((await visuals()).cage, originalVisuals.cage, 'a real gizmo drag reshapes the private cage');
+  assert.deepEqual((await read()).vertices, original.vertices);
+  assert(await button('apply bend (Enter)').isEnabled(), 'manual edits can be applied with angle zero');
+  await page.keyboard.press('e');
+  assert.equal((await visuals()).mode, 'rotate');
+  await page.keyboard.press('r');
+  assert.equal((await visuals()).mode, 'scale');
+  await button('reset manual edits').click();
+  assert.deepEqual((await visuals()).cage, originalVisuals.cage);
+  await controller('edit handles').locator('select').selectOption({ label: 'Points' });
+  await controller('position Y (m)').locator('input').fill('18');
+  await controller('position Y (m)').locator('input').press('Tab');
+  assert.notDeepEqual(
+    (await visuals()).terrain,
+    originalVisuals.terrain,
+    'individual point moves update the SubD terrain',
+  );
+  await button('reset bend').click();
+  await angle().fill('1080');
+  await angle().press('Tab');
+  assert.equal(await angle().inputValue(), '1080', 'typed angles extend beyond the slider');
+  await controller('rise per turn (m)').locator('input').fill('-20');
+  await controller('rise per turn (m)').locator('input').press('Tab');
+  assert(await button('apply bend (Enter)').isEnabled(), 'multi-turn coils support rise per turn');
+  assert.deepEqual((await read()).vertices, original.vertices);
+  await button('reset bend').click();
   await button('quarter pipe (90°)').click();
   const quarter = await visuals();
   assert.notDeepEqual(quarter.cage, originalVisuals.cage, 'the source cage preview bends');

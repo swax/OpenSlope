@@ -275,6 +275,10 @@ export function installShortcuts(deps: ShortcutDeps) {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         edit.applySubdivisionBend();
+      } else if (!mod && !e.altKey && ['w', 'e', 'r'].includes(key)) {
+        e.preventDefault();
+        edit.transformSubdivisionBend(key === 'w' ? 'move' : key === 'e' ? 'rotate' : 'scale');
+        rebuildTools();
       } else if (!mod && !e.altKey && modeForShortcut(e.key)) {
         e.preventDefault();
         setMode(modeForShortcut(e.key)!);

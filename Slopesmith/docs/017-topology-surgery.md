@@ -246,6 +246,20 @@ Choose **revert cage to patches** to turn the coarse cage faces at their current
 editable patches instead. Append or change their topology, then create a new subdivision cage.
 Both conversions support undo.
 
+Choose **bend cage…** to preview a bend before applying it. Click a teal section handle and use
+**W / E / R** to move, rotate or scale that section, or switch **edit handles** to **Points** to move
+individual source points. The position fields offer the same moves numerically. Manual edits remain
+when angle, axes or rise change; **reset manual edits** removes only those adjustments. **Reset bend**
+restores the original cage. **Enter** applies one undoable edit; **Esc** cancels the preview.
+
+The angle slider spans −720° to 720°; type a larger angle for more turns. **Rise per turn (m)** offsets
+each full turn along the axis perpendicular to the bend plane. For a descending spring, choose
+**length axis: World X**, **bend toward: World Z**, an angle above 360°, and a negative rise. For example,
+720° and −20 m per turn makes two turns descending 40 m from the start anchor. Start with a long,
+thin box and enough length divisions: each cage segment may turn at most 90°, and the radius must
+exceed half the cage's thickness in the bend direction. Use enough rise to keep successive turns apart;
+the preview does not prevent intersections between turns or after manual edits.
+
 ## UI
 
 All ops live in the Edit tool as a "Surgery" group; each follows the placement-model conventions

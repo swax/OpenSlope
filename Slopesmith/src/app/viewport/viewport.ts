@@ -222,6 +222,7 @@ import {
   type ShownPath,
 } from './scene/path-handles';
 import { createPropDeformLayer, type PropDeformLayer } from './scene/prop-deform';
+import { createSubdivisionBendLayer, type BendHandles } from './tools/subdivision-bend';
 import { createCourseDrawLayer, type CourseDrawHandlers, type CourseDrawLayer } from './tools/course-draw';
 import { fadeObject } from './shared/fade';
 import { createPointerRouter, type PointerRouter } from './input/pointer-router';
@@ -340,6 +341,7 @@ export class Viewport {
   readonly trailTool: TrailToolLayer;
   readonly pathHandles: PathHandlesLayer;
   readonly propDeform: PropDeformLayer;
+  readonly subdivisionBend: ReturnType<typeof createSubdivisionBendLayer>;
   private createTrailPreviewListener: (() => void) | null = null;
   readonly courseDraw: CourseDrawLayer; // Info's reset course: the run redrawn by clicking the terrain
   private courseDragY: number | null = null; // the ground a dragged course knot / flag last stood on
@@ -776,6 +778,10 @@ export class Viewport {
         this.propDeform.dragging(dragging);
         return;
       }
+      if (this.gizmoKind === 'subdivisionbend') {
+        this.subdivisionBend.dragging(dragging);
+        return;
+      }
       // A course knot / flag drag starts on the deck the point stands on (see onGizmoChange).
       const courseObj = this.gizmoKind === 'knot' || this.gizmoKind === 'anchor' ? this.gizmo.object : undefined;
       this.courseDragY =
@@ -985,6 +991,7 @@ export class Viewport {
     });
     this.pathHandles = createPathHandlesLayer(this.stage); // the selected path's Bézier handles (docs/014)
     this.propDeform = createPropDeformLayer(this.stage, material => this.assets.propTex.variant(material));
+    this.subdivisionBend = createSubdivisionBendLayer(this.stage);
     this.pathHandles.setHost({ select: (owner, node, side) => this.cb.onSelectPathHandle?.(owner, node, side) });
     this.courseDraw = createCourseDrawLayer(this.stage, () => this.terrain);
     this.bridgePreview = createBridgePreviewLayer(this.stage, {
@@ -1620,6 +1627,7 @@ export class Viewport {
         trailTool: this.trailTool,
         pathHandles: this.pathHandles,
         propDeform: this.propDeform,
+        subdivisionBend: this.subdivisionBend,
         weldTool: this.weldTool,
         clipboardPlacement: this.clipboardPlacement,
         courseDraw: this.courseDraw,
@@ -1789,6 +1797,7 @@ export class Viewport {
       this.boxTool.scaleMarkers();
       this.surfaceTool.scaleMarkers();
       this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
+      this.subdivisionBend.sync();
       this.dropLines.sync(); // the selection's plumb lines follow a drag, a re-select and a terrain edit
       sceneMs += performance.now() - phaseStarted;
       // Last before submission: seat the headset rig on whatever the rider is standing on this frame — the board
@@ -3663,6 +3672,10 @@ export class Viewport {
       this.propDeform.changed();
       return;
     }
+    if (this.gizmoKind === 'subdivisionbend') {
+      this.subdivisionBend.changed();
+      return;
+    }
     if (this.heldGizmo) {
       this.holdGizmo();
       return;
@@ -3912,8 +3925,12 @@ export class Viewport {
 
   /** Arm/disarm the mutually-exclusive topology creation tools. */
   private bendPreviewActive = false;
+  setSubdivisionBendHandles(handles: BendHandles | null) {
+    this.subdivisionBend.set(handles);
+  }
   setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'box' | 'bend' | 'trail' | 'surface' | null) {
     this.bendPreviewActive = tool === 'bend';
+    if (tool !== 'bend') this.subdivisionBend.set(null);
     if (tool !== 'surface' && tool !== 'bend' && this.editDraftPreviewBase) {
       const base = this.editDraftPreviewBase;
       this.editDraftPreviewBase = null;

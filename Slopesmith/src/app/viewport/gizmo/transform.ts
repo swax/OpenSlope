@@ -343,7 +343,8 @@ export function createTransformLayer(
    *  lone free point, whose own frame (its path direction and roll) is what it turns. */
   function rotationActive(): boolean {
     if (gizmoMode !== 'rotate') return false;
-    if (stage.gizmoKind === 'propdeform') return stage.gizmo.object?.userData.deformSection === true;
+    if (stage.gizmoKind === 'propdeform' || stage.gizmoKind === 'subdivisionbend')
+      return stage.gizmo.object?.userData.deformSection === true;
     if (stage.gizmoKind === 'trail') return true; // the trail turns itself (viewport/tools/create-trail.ts)
     if (stage.gizmoKind === 'grid') return true; // …and so does a whole Create Grid draft (viewport/tools/create-grid.ts)
     if (stage.gizmoKind === 'box') return !stage.gizmo.object?.userData.boxResizeAxes;
@@ -364,7 +365,8 @@ export function createTransformLayer(
   /** Scale has the same extent requirement as rotation; a lone point has no size to transform. */
   function scaleActive(): boolean {
     if (gizmoMode !== 'scale') return false;
-    if (stage.gizmoKind === 'propdeform') return stage.gizmo.object?.userData.deformSection === true;
+    if (stage.gizmoKind === 'propdeform' || stage.gizmoKind === 'subdivisionbend')
+      return stage.gizmo.object?.userData.deformSection === true;
     if (stage.gizmoKind === 'box') return !stage.gizmo.object?.userData.boxResizeAxes;
     if (stage.gizmoKind === 'trail' || stage.gizmoKind === 'grid') return true;
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();

@@ -29,6 +29,7 @@ import type { BoxToolLayer } from '../tools/create-box';
 import type { TrailToolLayer } from '../tools/create-trail';
 import type { PathHandlesLayer } from '../scene/path-handles';
 import type { PropDeformLayer } from '../scene/prop-deform';
+import type { createSubdivisionBendLayer } from '../tools/subdivision-bend';
 import type { WeldToolLayer } from '../tools/weld';
 import type { ClipboardPlacementLayer } from '../tools/clipboard-placement';
 import type { CourseDrawLayer } from '../tools/course-draw';
@@ -57,6 +58,7 @@ import {
  *  before the router is constructed. */
 export interface RouterLayers {
   propDeform: PropDeformLayer;
+  subdivisionBend?: ReturnType<typeof createSubdivisionBendLayer>;
   selection: SelectionLayer;
   picking: MeshPicking;
   scenePicking: ScenePicking;
@@ -1310,8 +1312,18 @@ export function createPointerRouter(
     }
     if (e.button !== 0) return; // MMB (pan) handled by OrbitControls; ignore here
     if (access.mode() === 'edit' && access.modalEditActive?.()) {
-      // A pending duplicate owns mesh picking, while its Move gizmo still receives the native press.
-      if (stage.gizmoKind !== 'duplicate' || !stage.gizmo.axis) e.stopImmediatePropagation();
+      // Modal previews own mesh picking; their transform gizmos still receive native presses.
+      if (
+        (stage.gizmoKind === 'duplicate' || stage.gizmoKind === 'subdivisionbend') &&
+        stage.gizmo.enabled &&
+        stage.gizmo.axis
+      )
+        return;
+      if (layers.subdivisionBend && stage.gizmoKind === 'subdivisionbend') {
+        stage.castAt(e);
+        layers.subdivisionBend.pickHandle();
+      }
+      e.stopImmediatePropagation();
       return;
     }
     if (access.mode() === 'edit' && layers.surfaceGuide?.active) {
