@@ -39,7 +39,7 @@ type Observation = {
   bendVisuals?(): Visuals;
 };
 try {
-  const fixture = bendFixture('SUBDIVISION_BEND_BROWSER', 16);
+  const fixture = bendFixture('SUBDIVISION_BEND_BROWSER', 10);
   const response = await fetch(`${api.url}/api/projects`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -135,9 +135,9 @@ try {
   assert(originalVisuals.cage.length > 0);
   await button('bend cage…').click();
   assert(await button('apply bend (Enter)').isDisabled());
-  const middle = (await visuals()).handles[8];
+  const middle = (await visuals()).handles[5];
   await page.mouse.click(middle[0], middle[1]);
-  assert.equal(await controller('section').locator('input').inputValue(), '9', 'canvas handles select cage sections');
+  assert.equal(await controller('section').locator('input').inputValue(), '6', 'canvas handles select cage sections');
   const initialHandle = await visuals();
   let dragX = initialHandle.screen[0];
   for (const offset of [25, 35, 45, 55, 65]) {
@@ -167,9 +167,9 @@ try {
     'individual point moves update the SubD terrain',
   );
   await button('reset bend').click();
-  await angle().fill('1080');
+  await angle().fill('900');
   await angle().press('Tab');
-  assert.equal(await angle().inputValue(), '1080', 'typed angles extend beyond the slider');
+  assert.equal(await angle().inputValue(), '900', 'typed angles extend beyond the slider');
   await controller('rise per turn (m)').locator('input').fill('-20');
   await controller('rise per turn (m)').locator('input').press('Tab');
   assert(await button('apply bend (Enter)').isEnabled(), 'multi-turn coils support rise per turn');

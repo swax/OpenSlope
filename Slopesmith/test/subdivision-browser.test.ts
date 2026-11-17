@@ -323,16 +323,23 @@ try {
   await page.keyboard.press('Control+Shift+z');
   await waitMarks(1, 1);
   await page.screenshot({ path: join(root, 'subdivision-sharpness.png') });
+  await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
   await button('select all cage points').click();
   await button('select all cage points').blur();
-  // The group gizmo sits at the center of the four selected cage points.
+  await page.waitForFunction(() => (window as unknown as Observation).subdivisionVisuals!().gizmoScreen.length === 2);
   const before = await read(),
     oldX = before.vertices[before.vertexIds.indexOf(source) * 3];
-  const pivot = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+  const groupScreen = (await visuals()).gizmoScreen;
   await page.keyboard.press('w');
-  await page.mouse.move(pivot.x + 45, pivot.y);
+  let groupDragX = groupScreen[0];
+  for (const offset of [25, 35, 45, 55, 65]) {
+    groupDragX = groupScreen[0] + offset;
+    await page.mouse.move(groupDragX, groupScreen[1]);
+    if ((await visuals()).gizmoAxis === 'X') break;
+  }
+  assert.equal((await visuals()).gizmoAxis, 'X', 'the selected cage group has a pickable move handle');
   await page.mouse.down();
-  await page.mouse.move(pivot.x + 75, pivot.y, { steps: 6 });
+  await page.mouse.move(groupDragX + 30, groupScreen[1], { steps: 6 });
   await page.mouse.up();
   await page.waitForFunction(
     ({ source, oldX }) => {
