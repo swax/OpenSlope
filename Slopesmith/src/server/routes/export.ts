@@ -71,7 +71,7 @@ function nodeExportProvider(dir: string): ExportProvider {
       return (level, model) => geometry.get(`${safeDataName(level)}:${model}`) ?? null;
     },
 
-    materialTables: () => readMaterialTables(),
+    materialTables: levels => readMaterialTables(levels),
     importedProps: () => importedPropsPayload(),
     nativeArt: () => nativeArtSource(),
     referenceTexture: async (level, name) => {

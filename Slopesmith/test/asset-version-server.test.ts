@@ -120,6 +120,14 @@ try {
   await exportLevel(migrated, { outDir: join(root, 'individual-export'), lighting: false });
   assert(JSON.parse(readFileSync(join(root, 'individual-export/Models.json'), 'utf8')).Models.length > 0);
   assert(readFileSync(join(root, 'individual-export/Slopesmith.json'), 'utf8').includes(individualTile.id));
+  const materialUrl = '/api/props/materials?level=' + encodeURIComponent(individualProp.id);
+  const materialResponse = await get(materialUrl);
+  assert.equal(materialResponse.status, 200);
+  assert.deepEqual(await materialResponse.json(), { tables: { TRICKY_GARI: [{ TexturePath: 'tile.png' }] } });
+  const legacyMaterials = await get('/api/props/materials?level=GARI');
+  assert.deepEqual(await legacyMaterials.json(), { tables: { GARI: [{ TexturePath: 'tile.png' }] } });
+  const allMaterials = await (await get('/api/props/materials')).json();
+  assert.deepEqual(Object.keys(allMaterials.tables).sort(), ['Custom', 'TRICKY_GARI']);
   const individualResponse = await get(`/api/texture?level=${encodeURIComponent(individualTile.id)}&name=tile.png`);
   assert.equal(individualResponse.status, 200, individualResponse.ok ? '' : await individualResponse.text());
   const individualPropResponse = await get(`/api/props?level=${encodeURIComponent(individualProp.id)}`);

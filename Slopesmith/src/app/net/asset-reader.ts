@@ -271,6 +271,7 @@ export function createAssetReader(
       if (!assetRequestCovered(expected, url.pathname, url.searchParams))
         return Response.json({ error: 'This asset identity does not cover the requested resource.' }, { status: 404 });
       const attempts: { location: string; reason: string }[] = [];
+      let materialError: Response | undefined;
       for (const location of await locations(expected)) {
         try {
           let asset: ReferenceAsset | undefined;
@@ -292,7 +293,10 @@ export function createAssetReader(
           candidate.searchParams.set(parameter, source === 'server' ? id : splitMapSource(location).name);
           if (source === 'local' && asset && url.pathname === '/api/props') candidate.searchParams.set('asset', id);
           const response = await transport(candidate, init);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (!response.ok) {
+            if (url.pathname === '/api/props/materials' && response.status >= 500) materialError ??= response;
+            throw new Error('HTTP ' + response.status);
+          }
           if (url.pathname === '/api/props/materials') {
             const body = (await response.json()) as { tables: Record<string, unknown> };
             const entries = Object.entries(body.tables ?? {});
@@ -325,6 +329,7 @@ export function createAssetReader(
           attempts.push({ location, reason: error instanceof Error ? error.message : String(error) });
         }
       }
+      if (materialError) return materialError;
       failures.set(id, { id, expected, attempts });
       changed();
       return Response.json(

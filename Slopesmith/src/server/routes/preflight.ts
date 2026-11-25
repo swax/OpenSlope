@@ -1,3 +1,4 @@
+import { sourceMaterials } from '../../core/export/materials';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { computePreflight, type Preflight, type PreflightProps } from '../../core/export/preflight';
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
@@ -148,10 +149,10 @@ async function priceModels(
     wanted.set(level, found);
   }
   if (wanted.size) {
-    const materials = await readMaterialTables();
+    const materials = await readMaterialTables([...wanted.keys()]);
     for (const [level, ids] of wanted) {
       const geometries = await readModelGeometries(level, ids);
-      const table = materials.get(level) ?? [];
+      const table = sourceMaterials(materials, level);
       for (const [id, geom] of geometries) {
         const pages = new Set<string>();
         let tris = 0;

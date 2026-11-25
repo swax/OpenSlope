@@ -106,6 +106,11 @@ export async function projectAssetSource(
     }
     if (url.pathname === '/api/custom-props') return Response.json(bundleProps(bundle));
     if (url.pathname === '/api/props/materials') {
+      if (level) {
+        if (useLocal || (selected.source !== 'server' && level.toLowerCase() === 'custom'))
+          return Response.json({ tables: Object.fromEntries(await readMaterialTables(local.source, [level])) });
+        return fetch(url);
+      }
       const response = await fetch(url).catch(() => null);
       const server = response?.ok ? ((await response.json()) as { tables: Record<string, unknown> }) : { tables: {} };
       return Response.json({

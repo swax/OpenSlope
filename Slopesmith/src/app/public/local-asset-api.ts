@@ -87,7 +87,7 @@ export function installLocalAssetApi(
         });
       if (url.pathname === '/api/groups') return Response.json(await readLevelGroups(local.source, level));
       if (url.pathname === '/api/props/materials')
-        return Response.json({ tables: Object.fromEntries(await readMaterialTables(local.source)) });
+        return Response.json({ tables: Object.fromEntries(await readMaterialTables(local.source, level ? [level] : undefined)) });
       const resolved = await local.resolveRequest(url.href);
       return resolved !== url.href && !missingAssetUrl(resolved)
         ? fetch(resolved)

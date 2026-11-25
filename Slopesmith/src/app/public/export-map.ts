@@ -3,7 +3,6 @@ import type { PublicCourse } from '../../core/session/public-courses';
 import type { ProjectBundle } from '../../core/project/transfer';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { referenceExportFolder } from '../../core/export/reference';
-import { assetVersionsIn } from '../../core/reference/asset-version';
 import { safeDataName } from '../../core/export/names';
 import { mapGame } from '../../core/reference/map-game';
 import { createMountainArchive } from '../mountain/archive';
@@ -120,7 +119,6 @@ async function exportCourse(course: PublicCourse, snowknife: boolean) {
     const target = downloadTarget(name);
     const provider = browserExportProvider({
       folderName: name,
-      assetLevels: assetVersionsIn(bundle.document),
       existingFile: async () => false,
       request: source.request,
     });

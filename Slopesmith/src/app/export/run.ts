@@ -1,7 +1,6 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { browserExportProvider } from './provider';
-import { assetVersionsIn } from '../../core/reference/asset-version';
 import { downloadTarget, type ExportTarget } from './landing';
 
 /**
@@ -27,7 +26,6 @@ export function resolveExportTarget(doc: EditDoc): ExportTarget {
 
 export async function exportMapFolder(doc: EditDoc, target: ExportTarget): Promise<BrowserExportResult> {
   const provider = browserExportProvider({
-    assetLevels: assetVersionsIn(doc),
     folderName: target.folderName,
     existingFile: path => target.existingFile(path),
   });

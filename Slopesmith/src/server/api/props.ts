@@ -162,8 +162,9 @@ export const propRoutes: Record<string, ApiHandler> = {
     try {
       const url = new URL(req.url ?? '', 'http://localhost');
       if (url.pathname === '/materials') {
-        await responseCache.json(req, res, 'prop-materials', async () => ({
-          tables: Object.fromEntries(await readMaterialTables()),
+        const level = url.searchParams.get('level');
+        await responseCache.json(req, res, level ? 'prop-materials:' + level : 'prop-materials', async () => ({
+          tables: Object.fromEntries(await readMaterialTables(level ? [level] : undefined)),
         }));
         return;
       }

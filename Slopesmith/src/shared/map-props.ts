@@ -1,7 +1,6 @@
 import * as THREE from 'three';
-import { serverAssetVersionLocations } from '../core/reference/asset-version';
-import { legacyTrickyMapName } from '../core/reference/map-source';
-import { safeDataName as assetTableKey } from '../core/export/names';
+import { serverAssetVersionName } from '../core/reference/asset-version';
+import { legacyTrickyMapName, splitMapSource } from '../core/reference/map-source';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../core/effects/document';
 import { readMapEffectsDocument as readEffectsDocument } from './map-effects';
 import { isReferenceCourseHelper, prepareReferenceCourseHelpers } from '../core/props/course-helpers';
@@ -526,14 +525,28 @@ async function readLevelMaterials(io: MapDataSource, level: string): Promise<Ssx
 }
 
 /**
- * Every source level's Materials[], keyed by sanitised level name — what an export's material combiner
- * resolves a `usemtl` slot through.
+ * Requested material tables (or the physical library catalogue), keyed by sanitised level name. An export
+ * resolves a `usemtl` slot through these tables.
  *
  * The tables are read up front, together, because a combiner's `resolveSlot` is called from inside the
  * synchronous geometry loops of every bake step: threading a promise through those loops would serialize the
- * bake on one file read per material. The whole library's tables are a fraction of a megabyte.
+ * bake on one file read per material.
  */
-export async function readMaterialTables(io: MapDataSource): Promise<ReadonlyMap<string, readonly SsxMaterial[]>> {
+export async function readMaterialTables(
+  io: MapDataSource,
+  requested?: readonly string[],
+): Promise<ReadonlyMap<string, readonly SsxMaterial[]>> {
+  if (requested) {
+    const banks = requested.map(level => safeDataName(serverAssetVersionName(level) ?? splitMapSource(level).name));
+    const tables = new Map(
+      await mapLimit(
+        [...new Set(banks)],
+        READ_CONCURRENCY,
+        async bank => [bank, await readLevelMaterials(io, bank)] as const,
+      ),
+    );
+    return new Map(requested.map((level, index) => [safeDataName(level), tables.get(banks[index])!]));
+  }
   const levels = [...new Set([...(await levelsWithProps(io)), CUSTOM_TEX_LEVEL].map(safeDataName))];
   const tables = await mapLimit(levels, READ_CONCURRENCY, level => readLevelMaterials(io, level));
   const result = new Map(levels.map((level, index) => [level, tables[index]]));
@@ -544,10 +557,6 @@ export async function readMaterialTables(io: MapDataSource): Promise<ReadonlyMap
     const fallback = legacyTrickyMapName(name);
     if (fallback && folded.has(fallback.toLowerCase()) && !result.has(safeDataName(name)))
       result.set(safeDataName(name), []);
-  }
-  for (const [id, name] of serverAssetVersionLocations()) {
-    const table = result.get(name);
-    if (table) result.set(assetTableKey(id), table);
   }
   return result;
 }

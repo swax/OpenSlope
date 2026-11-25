@@ -241,6 +241,18 @@ assert.deepEqual(
   ['verified server table'],
   'scoped exports bind materials from the verified physical source',
 );
+const failedMaterials = createAssetReader(async input => {
+  const url = new URL(String(input), 'http://localhost');
+  if (url.pathname === '/api/levels') return Response.json({ levels: maps.map(map => map.name), maps });
+  if (url.pathname === '/api/map-asset-manifest')
+    return url.searchParams.get('level')?.startsWith('local:')
+      ? new Response('', { status: 404 })
+      : Response.json(current);
+  return Response.json({ error: 'Invalid string length' }, { status: 500 });
+});
+const materialError = await failedMaterials.fetch('/api/props/materials?level=' + encodeURIComponent(prop.id));
+assert.equal(materialError.status, 500);
+assert.deepEqual(await materialError.json(), { error: 'Invalid string length' });
 await writeFile(join(bank, 'Models.json'), 'broken model table');
 assert.equal(
   manifestAsset(await readAssetManifest(io, level), 'texture', 'tile.png')?.id,

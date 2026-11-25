@@ -13,7 +13,8 @@ import type { GroupDef, GroupsPayload } from '../../core/reference/groups';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
 import type { SkyRing } from '../../core/sky/ring';
 import { assetBytes as defaultAssetBytes } from '../net/asset-bytes';
-import { safeDataName as assetTableKey } from '../../core/export/names';
+import { splitMapSource } from '../../core/reference/map-source';
+import { mapLimit } from '../../shared/map-data';
 import {
   customSkyUrl,
   effectSoundUrl,
@@ -47,7 +48,6 @@ import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
  * back out for a byte mid-triangle.
  */
 export interface BrowserExportOptions {
-  assetLevels?: readonly string[];
   /** The named map folder inside the .snowknife.zip download. */
   folderName: string;
   /** Whether the destination already holds a file — what tells race-music staging that there is a track to
@@ -64,7 +64,7 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
         if (!response.ok) throw new Error((await response.text()) || `Could not read ${url}`);
         return response.json() as Promise<T>;
       }
-    : defaultFetchJson;
+    : <T>(url: string) => defaultFetchJson<T>(url, undefined, true);
   const assetBytes = opts.request
     ? async (url: string): Promise<Uint8Array> => {
         const response = await opts.request!(url);
@@ -162,24 +162,36 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
       return lookup;
     },
 
-    async materialTables() {
-      const { tables } = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>('/api/props/materials');
-      for (const level of opts.assetLevels ?? []) {
+    async materialTables(levels) {
+      const requested = [...new Set(levels)].filter(level => {
         const kind = parseAssetVersion(level)?.kind;
-        if (kind && kind !== 'prop') continue;
-        const value = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>(
-          `/api/props/materials?level=${encodeURIComponent(level)}`,
-        );
-        if (value.tables[assetTableKey(level)]) tables[assetTableKey(level)] = value.tables[assetTableKey(level)];
-      }
-      return new Map(Object.entries(tables));
+        return !kind || kind === 'prop';
+      });
+      const tables = await mapLimit(requested, 6, async level => {
+        const key = safeDataName(level);
+        try {
+          const { tables } = await fetchJson<{ tables: Record<string, SourceMaterial[]> }>(
+            '/api/props/materials?level=' + encodeURIComponent(level),
+          );
+          const table = tables[key] ?? tables[safeDataName(splitMapSource(level).name)];
+          if (!Array.isArray(table)) throw new Error('The source did not return a material table.');
+          return [key, table] as const;
+        } catch (cause) {
+          const version = parseAssetVersion(level);
+          const source = version ? version.map + ' (' + version.hash.slice(0, 8) + ')' : level;
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          throw new Error('Could not load export materials for ' + source + '. ' + detail, { cause });
+        }
+      });
+      return new Map(tables);
     },
 
     importedProps: () => fetchJson<PropsPayload>('/api/custom-props'),
     nativeArt: () => fetchJson<NativeArt>('/api/props/native-art'),
     referenceTexture: (level, name) => asset('/api/texture', { level, name }, () => textureUrl(level, name)),
     particleTexture: async (name, level) => {
-      if (name !== 'fog0.png') return asset('/api/particle-texture', { name, level }, () => particleTextureUrl(name, level));
+      if (name !== 'fog0.png')
+        return asset('/api/particle-texture', { name, level }, () => particleTextureUrl(name, level));
       const ref = await resolveFogTexture(level, opts.request);
       const texture = parseTexRef(ref);
       return asset('/api/texture', { level: texture.level, name: texture.name }, () => textureRefUrl(ref));

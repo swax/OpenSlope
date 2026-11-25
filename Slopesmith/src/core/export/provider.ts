@@ -25,8 +25,8 @@ export interface ExportProvider {
    *  answers with a synchronous lookup, because the bakes emit inside tight geometry loops. */
   modelGeometry(models: readonly ModelRef[]): Promise<GeometryLookup>;
 
-  /** Every source level's `Materials[]`, keyed by sanitised level name — what a bake resolves a slot through. */
-  materialTables(): Promise<ReadonlyMap<string, readonly SourceMaterial[]>>;
+  /** Material tables for the source levels the bake uses, keyed by sanitised level name. */
+  materialTables(levels: readonly string[]): Promise<ReadonlyMap<string, readonly SourceMaterial[]>>;
 
   /** The imported-GLB catalogue served as the '@import' pseudo-level (docs/032). */
   importedProps(): Promise<PropsPayload>;

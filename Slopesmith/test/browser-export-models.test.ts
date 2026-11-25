@@ -1,6 +1,7 @@
 // tier: fast
 import assert from 'node:assert/strict';
 import { browserExportProvider } from '../src/app/export/provider';
+import { safeDataName } from '../src/core/export/names';
 import type { PropsPayload } from '../src/core/reference/props';
 
 const packed = (values: Float32Array | Uint32Array) => Buffer.from(values.buffer).toString('base64');
@@ -54,4 +55,31 @@ for (const response of [Response.json({ levels: [] }), Response.json({ error: 'm
     /MISSING_SOURCE.*source map/i,
   );
 }
-console.log('Browser export models: embedded sources, external geometry and missing-source diagnostics PASS');
+const pinned = 'asset2:ssx-tricky:TRICKY_GARI:prop:2:' + 'a'.repeat(64);
+const queries: string[] = [];
+const material = [{ TexturePath: 'bark.png', UnknownInt18: 0x40000, TextureFlipbook: ['branch.png'] }];
+const materials = browserExportProvider({
+  folderName: 'FOLDER_MAP',
+  existingFile: async () => false,
+  request: async path => {
+    const url = new URL(path, 'http://localhost');
+    const level = url.searchParams.get('level');
+    assert.equal(url.pathname, '/api/props/materials');
+    assert.ok(level, 'Export must never request the whole library');
+    queries.push(level);
+    if (level === pinned) return Response.json({ tables: { [safeDataName(pinned)]: material } });
+    if (level === 'local:GARI') return Response.json({ tables: { GARI: material } });
+    return Response.json({ error: 'Source table could not be read' }, { status: 500 });
+  },
+});
+assert.equal((await materials.materialTables([])).size, 0);
+assert.deepEqual(
+  await materials.materialTables([pinned, 'local:GARI', pinned]),
+  new Map([
+    [safeDataName(pinned), material],
+    [safeDataName('local:GARI'), material],
+  ]),
+);
+assert.deepEqual(queries, [pinned, 'local:GARI']);
+await assert.rejects(materials.materialTables(['BROKEN']), /BROKEN.*Source table could not be read/);
+console.log('Browser export models: scoped geometry, material tables and missing-source diagnostics PASS');

@@ -68,7 +68,8 @@ import {
 } from './manifest';
 import { authoredOrigin, MAP_ORIGIN_FILE } from './origin';
 import { textFile, type ExportFile, type ExportFolder } from './files';
-import type { ExportProvider, ModelRef, NativeArt } from './provider';
+import type { ExportProvider, ModelRef } from './provider';
+import { railHasTube, railTubeTexture } from '../rails/rails';
 
 /**
  * What a custom WAV is being staged FOR. The same file in both roles is two different encodings of one set
@@ -215,7 +216,27 @@ export async function buildExportFolder(
   const authoredProps = opts?.lighting === false ? undefined : authoredModelLevelProps(doc);
   const authoredModels = new Map((authoredProps?.models ?? []).map(model => [model.id, model]));
   const importedModels = new Map((imported?.models ?? []).map(model => [model.id, model]));
-  const tables = await provider.materialTables();
+  const rails = (doc.rails ?? []).filter(railHasTube);
+  const nativeArt = rails.length || doc.gems?.length ? await provider.nativeArt() : undefined;
+  const materialLevels = new Set<string>();
+  const needTable = (texture: string | null) => {
+    const { level } = parseTexRef(texture ?? '');
+    if (level) materialLevels.add(level);
+  };
+  for (const { level, model } of modelKeys.values()) {
+    if (level === IMPORTED_PROP_LEVEL) {
+      const catalogue = await importedCatalogue();
+      for (const sub of catalogue.models.find(entry => entry.id === model)?.subs ?? [])
+        needTable(catalogue.materials.get(sub.mat)?.tex ?? null);
+    } else if (level && level !== AUTHORED_MODEL_LEVEL) {
+      materialLevels.add(level);
+    }
+  }
+  if (nativeArt) {
+    for (const rail of rails) needTable(railTubeTexture(rail, nativeArt.railSkins));
+    if (doc.gems?.length && nativeArt.gemLevel) materialLevels.add(nativeArt.gemLevel);
+  }
+  const tables = await provider.materialTables([...materialLevels]);
   const shadowImages = new Map<string, Promise<Rgba | undefined>>();
   const readShadowImage = (ref: string): Promise<Rgba | undefined> => {
     let image = shadowImages.get(ref);
@@ -874,16 +895,12 @@ export async function buildExportFolder(
         (dwelling ? ` (${dwelling} on the dwell/flash screen law)` : ''),
     );
   }
-  // Rails and gems both borrow shipped art, so the donor is resolved once and only when one of them is
-  // authored — a mountain with neither never asks which level ships a rail tube.
-  let art: NativeArt | undefined;
-  const nativeArt = async () => (art ??= await provider.nativeArt());
   // the authored rails' visual tubes: the same sweep the viewport previews, each in its own texture or its
   // material's default skin, appended as static props (the ridable grind is Splines.json — the tube is the
   // decoration along it)
-  if (doc.rails?.length) {
+  if (rails.length && nativeArt) {
     const { obj: startObj, v, vt } = objCounts();
-    const tubes = bakeRailTubes(doc.rails, v, vt, combiner, (await nativeArt()).railSkins);
+    const tubes = bakeRailTubes(doc.rails ?? [], v, vt, combiner, nativeArt.railSkins);
     if (tubes.obj) {
       files.text['Props.obj'] = startObj + tubes.obj;
       propGroups.push(...tubes.groups);
@@ -896,8 +913,8 @@ export async function buildExportFolder(
   }
   // the gem tier crystals as their own GemModels.obj — separate from Props.obj so they DON'T merge into the
   // static props node; snowknife bakes them into per-tier gems.glb nodes the importer instantiates per gem
-  if (doc.gems?.length) {
-    const source = await nativeArt();
+  if (doc.gems?.length && nativeArt) {
+    const source = nativeArt;
     const gemGeometry = await provider.modelGeometry(
       source.gemTiers.map(t => ({ level: source.gemLevel, model: t.model })),
     );

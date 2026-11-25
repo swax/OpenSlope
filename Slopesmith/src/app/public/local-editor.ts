@@ -303,6 +303,10 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
       }
       if (localOnly && path === '/api/props/native-art') return json(await nativeArtSource(local.source));
       if (path === '/api/props/materials') {
+        if (level) {
+          if (!knownLevel(level) && canReadServer && level.toLowerCase() !== 'custom') return fetch(url, init);
+          return json({ tables: Object.fromEntries(await readMaterialTables(local.source, [level])) });
+        }
         const localTables = new Map(
           [...(await readMaterialTables(local.source))].map(([name, table]) => [
             [...cached, ...Object.keys(aliases)].find(candidate => candidate.toLowerCase() === name.toLowerCase()) ??
