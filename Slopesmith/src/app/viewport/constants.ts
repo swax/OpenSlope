@@ -169,12 +169,8 @@ export const EFFECT_PROP_OVERLAY_RENDER_ORDER = 90;
  *  front (bright / visible) instead of z-fighting; only genuinely far-behind wires stay occluded / dimmed. */
 export const SURFACE_POLY_OFFSET = { polygonOffset: true, polygonOffsetFactor: 3, polygonOffsetUnits: 6 };
 
-/** The most a sign light brightens the billboard it aims at / a prop the reference rig lights: a saturating
- *  multiply of the tile, `1 + MAX·(1 − e^(−strength·glow))` per channel (bounded to ≤ 1 + MAX×). Shared by the
- *  authored sign-light tint (lights) and the reference prop-rig tint (reference). */
+/** Saturating tile tint for the reference prop-rig study, `1 + MAX·(1 − e^(−strength·glow))`. */
 export const PROP_RIG_MAX_BOOST = 2.0;
-/** The tint strength for an authored sign light on its billboard. */
-export const SIGN_TINT_STRENGTH = 1;
 
 /** Projection-toggle glyphs, drawn to show the CURRENT projection (swapped on toggle): perspective = three
  *  lines converging to a vanishing point, orthographic = three parallel lines (rays that never converge). */

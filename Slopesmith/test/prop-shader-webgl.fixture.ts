@@ -5,12 +5,18 @@
 import * as THREE from 'three';
 import { PropTextureCache, propLightIndexColor } from '../src/app/props/textures';
 import { applyTextureAlphaMode } from '../src/app/props/texture-alpha';
-import { propPreviewIntensity } from '../src/core/lighting/prop-lights';
+import { propLocalLightMix, propPreviewIntensity } from '../src/core/lighting/prop-lights';
+import { authoredFreeLights } from '../src/core/lighting/sign-lights';
+import { addEffectTemplateToProp, createEmptyEffectsDocument } from '../src/core/effects/authoring';
+import type { PlacedProp } from '../src/core/doc/types';
 import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
 import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
 import { createReferenceDecor } from '../src/app/viewport/scene/reference-decor';
 import { decodeProps, type LevelProps } from '../src/core/reference/props';
 import { createGemsLayer } from '../src/app/viewport/scene/gems';
+import { createLightsLayer } from '../src/app/viewport/scene/lights';
+import { createPropsLayer } from '../src/app/viewport/scene/props';
+import type { Stage } from '../src/app/viewport/stage';
 import {
   applyPropShade,
   setPropShadeSun,
@@ -451,6 +457,101 @@ async function run(): Promise<void> {
   };
   const near = (pixel: number[], want: number[], tolerance = 8) =>
     want.every((value, channel) => Math.abs(pixel[channel] - value) <= tolerance);
+
+  // The placed-prop layer must pass the same coloured fill to an ordinary material and a Crowd Box.
+  // A vertical card facing away from the sun still catches the local light in a scene with zero sky fill.
+  {
+    const worldRoot = new THREE.Group();
+    const localScene = new THREE.Scene();
+    const stage = { scene: localScene, worldRoot } as unknown as Stage;
+    const lights = createLightsLayer(stage);
+    const assets = createPropAssets();
+    const props = createPropsLayer(stage, assets, lights);
+    localScene.add(worldRoot);
+    const sun = new THREE.DirectionalLight(0xffffff, propPreviewIntensity(1));
+    sun.position.z = 10;
+    localScene.add(sun);
+    assets.propTex.setPs2Normals(true);
+    const redTile = document.createElement('canvas');
+    redTile.width = redTile.height = 1;
+    redTile.getContext('2d')!.fillStyle = '#ff0000';
+    redTile.getContext('2d')!.fillRect(0, 0, 1, 1);
+    (assets.propTex as unknown as { loader: { load(url: string): THREE.Texture } }).loader = {
+      load: url => new THREE.CanvasTexture(url.includes('source-red') ? redTile : whiteTile),
+    };
+    const geometry = new THREE.PlaneGeometry(1, 1).applyMatrix4(RAW_TO_EDITOR.clone().invert());
+    const sub = {
+      positions: geometry.getAttribute('position').array as Float32Array,
+      normals: geometry.getAttribute('normal').array as Float32Array,
+      uvs: geometry.getAttribute('uv').array as Float32Array,
+      indices: new Uint32Array(geometry.index!.array),
+    };
+    assets.registerPropModels({
+      level: 'LIGHT-FIXTURE',
+      models: [
+        { id: 0, name: 'stand', subs: [{ ...sub, mat: 0 }] },
+        { id: 1, name: 'crowd', subs: [{ ...sub, mat: 1 }] },
+      ],
+      instances: [],
+      materials: new Map([
+        [0, { tex: 'white.png', frames: [] }],
+        [1, { tex: 'source-red.png', frames: [] }],
+      ]),
+      crowdFrames: ['crowd-a.png', 'crowd-b.png'],
+      collisionMeshes: new Map(),
+      physicsBodies: new Map(),
+    });
+    const effects = createEmptyEffectsDocument('LIGHT-FIXTURE');
+    addEffectTemplateToProp(effects, 'prop:crowd', 'crowd-box');
+    lights.setAuthoredLights(
+      authoredFreeLights([
+        { id: 'light:fixture', kind: 'point', pos: [0, 0, 5], color: '#ff8000', intensity: 6, reach: 24 },
+      ]),
+    );
+    const draw = (name: 'stand' | 'crowd', yaw: number, fullBright = false) => {
+      const prop: PlacedProp = {
+        id: `prop:${name}`,
+        name,
+        model: name === 'stand' ? 0 : 1,
+        level: 'LIGHT-FIXTURE',
+        pos: [0, 0, 0],
+        yaw,
+        scale: 1,
+        fullBright,
+      };
+      props.setPlacedProps([prop], null, [], effects);
+      renderer.render(localScene, camera);
+      return centrePixel(renderer);
+    };
+    const dark = draw('crowd', 180);
+    lights.showAuthoredLights(true);
+    const mix = propLocalLightMix([0, 0, 0], lights.authoredRigData!);
+    const litCrowd = draw('crowd', 180);
+    const litStand = draw('stand', 180);
+    const sunnyStand = draw('stand', 0);
+    const emittingCrowd = draw('crowd', 180, true);
+    if (
+      !near(dark, [0, 0, 0], 2) ||
+      !near(
+        litCrowd,
+        mix.map(channel => channel * 255),
+        2,
+      ) ||
+      !near(litCrowd, litStand, 2) ||
+      !near(
+        sunnyStand,
+        mix.map(channel => (0.5 + 0.5 * channel) * 255),
+        2,
+      ) ||
+      !near(emittingCrowd, [255, 255, 255], 2)
+    )
+      throw new Error(
+        `Authored local fill diverged between props: ${JSON.stringify({ dark, litCrowd, litStand, sunnyStand, emittingCrowd })}`,
+      );
+    props.setPlacedProps([], null);
+    geometry.dispose();
+  }
+
   const bakedHalfPixel = drawBaked(baked, 0);
   const bakedTruePixel = drawBaked(baked, 1);
   const bakedOverPixel = drawBaked(baked, 2);

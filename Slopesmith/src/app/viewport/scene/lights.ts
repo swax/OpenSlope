@@ -1,9 +1,8 @@
 import * as THREE from 'three';
-import type { AuthoredLight, PlacedProp, V3 } from '../../../core/doc/types';
+import type { AuthoredLight, PlacedProp } from '../../../core/doc/types';
 import { wholeAssembliesIn } from '../../../core/props/assembly';
 import { authoredRig, freeLightToPlaced, type PlacedLight } from '../../../core/lighting/sign-lights';
-import { propRigGlow, type LightRig } from '../../../core/reference/lights';
-import { PROP_RIG_MAX_BOOST, SIGN_TINT_STRENGTH } from '../constants';
+import type { LightRig } from '../../../core/reference/lights';
 import { addLightGizmo, lightAimTarget } from '../gizmo/geometry';
 import type { Stage } from '../stage';
 import { disposeSourceMarkerPoints, sourceMarkerPoints } from './source-markers';
@@ -12,8 +11,8 @@ import { disposeSourceMarkerPoints, sourceMarkerPoints } from './source-markers'
  * Authored local lights (docs/013): the derived billboard SIGN lights + the hand-placed FREE lights, as one
  * rig. This layer owns the light data + compact bulb markers / selected wire rig (under `stage.worldRoot`)
  * + free-light editing. The rig's EFFECTS are consumed elsewhere — the terrain glow (the shell's terrain
- * lighting reads `authoredRigData` / `authoredLightsVisible` and bakes its own cached buffer) and the billboard
- * tint (`signTint`, read by the props layer). A rig/visibility change fires the `relight` hook so the shell
+ * lighting reads `authoredRigData` / `authoredLightsVisible` and bakes its own cached buffer) and local prop
+ * lighting. A rig/visibility change fires the `relight` hook so the shell
  * re-folds the terrain glow. Free-light selection follows the same shell-orchestrated pattern as rails / gems.
  */
 export function createLightsLayer(stage: Stage) {
@@ -24,7 +23,7 @@ export function createLightsLayer(stage: Stage) {
   let selectedRigSource: number | null = null;
   let authoredLights: PlacedLight[] = [];
   let authoredRigData: LightRig | null = null;
-  let authoredLightsVisible = false; // effective Local lights: terrain glow + billboard tint
+  let authoredLightsVisible = false; // effective Local lights: terrain and props
   let authoredRigVisible = false; // Sources pill (legacy name): bulbs + selected rig
   let selectedProps = new Set<number>();
   let selectedAssemblies = new Set<string>();
@@ -44,9 +43,8 @@ export function createLightsLayer(stage: Stage) {
   // ---- authored sign lights (a spot per placed billboard, docs/013) ----
 
   /** Set the authored local lights — the derived billboard sign lights PLUS the resolved free lights — as one
-   *  rig for the terrain glow + billboard tint. Rebuilds the fixed sign-light gizmos, invalidates the cached
-   *  terrain glow (via relight) and re-folds it. The billboard tint is applied by the host's following
-   *  setPlacedProps, which reads this rig (signTint). */
+   *  rig for terrain and props. Rebuilds the fixed sign-light gizmos and invalidates cached terrain glow.
+   *  The host's following setPlacedProps samples the new rig for each placement. */
   function setAuthoredLights(newLights: PlacedLight[]) {
     authoredLights = newLights;
     authoredRigData = newLights.length ? authoredRig(newLights) : null;
@@ -55,7 +53,7 @@ export function createLightsLayer(stage: Stage) {
   }
 
   /** The effective Local lights gate: show / hide the LIGHT the authored sources (sign + free) cast — their
-   *  terrain glow AND their billboard tint. The billboard tint is re-evaluated by the host's prop rebuild on
+   *  terrain and prop lighting. The prop light is re-evaluated by the host's prop rebuild on
    *  toggle; the terrain glow re-folds via relight. The wire gizmos ride Sources instead. */
   function showAuthoredLights(on: boolean) {
     authoredLightsVisible = on;
@@ -143,19 +141,6 @@ export function createLightsLayer(stage: Stage) {
       authoredDetailGroup,
     );
     authoredLightsGroup.visible = authoredRigVisible && authoredSourceIndices.length > 0;
-  }
-
-  /** Tint colour for a billboard from the sign light aimed at it: a saturating multiply
-   *  `1 + MAX·(1 − e^(−strength·glow))` per channel, sampled where the light aims. Read by the props layer. */
-  function signTint(aimAt: V3): THREE.Color {
-    const M = PROP_RIG_MAX_BOOST,
-      s = SIGN_TINT_STRENGTH;
-    const [gr, gg, gb] = propRigGlow(aimAt, authoredRigData!);
-    return new THREE.Color(
-      1 + M * (1 - Math.exp(-s * gr)),
-      1 + M * (1 - Math.exp(-s * gg)),
-      1 + M * (1 - Math.exp(-s * gb)),
-    );
   }
 
   // ---- free lights (hand-placed, editable) ----
@@ -349,7 +334,6 @@ export function createLightsLayer(stage: Stage) {
     showAuthoredLights,
     showAuthoredLightRig,
     hasAuthoredLights,
-    signTint,
     setArmed,
     setFreeLights,
     setPropSelection,

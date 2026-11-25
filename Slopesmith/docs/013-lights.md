@@ -148,11 +148,13 @@ Once derived, the sign lights ride the **same** machinery as the reference rig (
   (white, I = 1), so the terrain bake lifts them with a gentler intensity weight (`SIGN_TERRAIN_WEIGHT_K`)
   than the reference's HDR set. The glow reads best against a dim / night sun — a bright day sun saturates the
   slope to full-bright and leaves no headroom, exactly as a real sign washes out in daylight.
-- **The props** — each lit billboard's tiles are multiplied by a warm tint (`viewport.setPlacedProps`),
-  sampled *where the light aims* (on the beam, so a tall sign whose centre sits above the down-raked beam still
-  lights), bounded to ≤ 3×. Every other placement samples the rig at its own bbox centre
-  (`viewport.placementGlowTint`) — so a free light colours the props near it, and a group's fixture light
-  lights its own lamp (015); a prop that catches no light keeps its shared, untinted materials.
+- **The props** sample the rig at the centre of their model or assembly leader. A billboard instead samples
+  where its light aims so the beam reaches the intended part of the sign. The preview blends each channel
+  of the sun/sky illumination toward full light by `1 − e^(−glow)`, the same blend the terrain uses. Ordinary
+  props, animated materials and crowd cards all receive the same local contribution. A shaded face can catch
+  a point light even when its sun contribution is zero. Export folds this blend into the ambient and key of
+  the existing instance lighting record. Self-lit materials continue to emit at their texture brightness.
+  Riders on the authored course sample the same fill at their current position.
 - **The sources** — one bulb per sign/group light draws under **Sources** in data coords; clicking it expands
   only that light's rig (`viewport.setAuthoredLights`).
 - **`Lights.json`** — `level.buildLightsJson` writes a Type-1 spot per sign light (editor → raw for position
@@ -175,10 +177,10 @@ speaker remains identifiable alongside its expanded rig/range.
 local-light contribution. **Local lights** is retained under **Scene ▸ Lighting** for focused study; it controls the LIGHT the
 course's own local sources cast — the sign light
 a billboard drops, the free lights you place, and a group placement's light members (015) — as a unit: the
-glow they pool on the terrain and the tint they cast on the props they light. Turning Lighting off hides both
+glow they pool on the terrain and the light they cast on props. Turning Lighting off hides both
 sun/sky lighting and local light. Turning Local lights off keeps the sun/sky/shadow result for comparison;
 turning it on also turns Lighting on so its pools have a lit terrain to composite over.
-`viewport.showAuthoredLights` gates the light cast (terrain fold + prop tint, `authoredLightsVisible`);
+`viewport.showAuthoredLights` gates the light cast on terrain and props (`authoredLightsVisible`);
 the icon markers and selected inspection detail ride **Sources** instead
 (`viewport.showAuthoredLightRig`, `authoredRigVisible`): discovery vs light output.
 

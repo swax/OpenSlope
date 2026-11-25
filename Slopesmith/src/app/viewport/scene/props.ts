@@ -41,14 +41,14 @@ import {
   type PropModelClip,
 } from '../../../core/reference/props';
 import { facingArrowMaterial, facingArrowSegments } from './facing-arrows';
-import type { GroupDef, GroupPropDef } from '../../../core/reference/groups';
+import type { GroupDef } from '../../../core/reference/groups';
 import { expandGroupProps } from '../../../core/reference/groups';
 import { placedPropOccluders, type ModelGeometry, type GeomSub } from '../../../core/export/props';
 import { createPropShadowMasks } from '../../props/shadow-masks';
 import type { ShadowMask } from '../../../core/lighting/shadow-mask';
 import type { LightingOccluder } from '../../../core/lighting/occluders';
-import { propRigGlow } from '../../../core/reference/lights';
-import { EFFECT_PROP_OVERLAY_RENDER_ORDER, PROP_RIG_MAX_BOOST } from '../constants';
+import { propLocalLightMix, propLocalLightPoint } from '../../../core/lighting/prop-lights';
+import { EFFECT_PROP_OVERLAY_RENDER_ORDER } from '../constants';
 import { placementQuat } from '../../../core/props/pose';
 import type { PasteGhostPlacement } from '../../../core/props/clipboard';
 import { authoredRig, freeLightToPlaced } from '../../../core/lighting/sign-lights';
@@ -104,7 +104,7 @@ interface RuntimeProp {
  * Authored placed props (Props mode): one Group per placement (a per-member child Group of textured submeshes)
  * under `stage.worldRoot` in data coords, plus the armed model's translucent ghost, the single/multi selection
  * handles and the identify flash. Submesh geometry / group defs / outline edges come from the shared PropAssets
- * cache; the authored light rig (LightsLayer) tints billboards + lamps. The shell owns the input dispatch
+ * cache; the authored light rig (LightsLayer) lights the placed props. The shell owns the input dispatch
  * (pickOrPlaceProp / the MMB prop-copy / the wheel-turn), reading this layer's public ghost + selection state.
  */
 export function createPropsLayer(stage: Stage, assets: PropAssets, lights: LightsLayer, onLightingChanged = () => {}) {
@@ -324,7 +324,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   let propGhostMats: THREE.Material[] = []; // translucent material clones, disposed on rebuild
   let propGhostGeos: THREE.BufferGeometry[] = []; // owned light-preview buffers, disposed on rebuild
   const propMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected prop
-  let signTintMats: THREE.Material[] = []; // per-rebuild billboard-tint material clones, disposed on rebuild
+  let localLightMats: THREE.Material[] = []; // per-placement lighting variants, disposed on rebuild
   // Where a prop reads the light on the ground beneath it; null = sun preview off, props on the studio rig.
   let groundLightAt: ((p: V3) => number | null) | null = null;
   // The last full rebuild's arguments, so a re-light can reproduce it without the caller re-supplying
@@ -780,25 +780,6 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     mesh.matrix.copy(parentWorld.invert().multiply(effect).multiply(baseWorld));
   }
 
-  /** Rig-glow tint for a placement without a billboard sign light: sample the authored rig at the leader
-   *  member's bbox centre — so a group's own fixture light lights its lamp, and a free light colours the
-   *  props near it. Undefined (no material clones) when the glow is negligible. */
-  function placementGlowTint(pp: PlacedProp, leader: GroupPropDef): THREE.Color | undefined {
-    const box = assets.propLocalBox(pp.level, leader.model);
-    if (!box) return undefined;
-    const c = new THREE.Vector3(
-      (box.min[0] + box.max[0]) / 2,
-      (box.min[1] + box.max[1]) / 2,
-      (box.min[2] + box.max[2]) / 2,
-    )
-      .applyMatrix4(assets.memberLocalMatrix(leader))
-      .applyMatrix4(placementPose(pp));
-    const [gr, gg, gb] = propRigGlow([c.x, c.y, c.z], lights.authoredRigData!);
-    const M = PROP_RIG_MAX_BOOST;
-    const t = new THREE.Color(1 + M * (1 - Math.exp(-gr)), 1 + M * (1 - Math.exp(-gg)), 1 + M * (1 - Math.exp(-gb)));
-    return t.r > 1.02 || t.g > 1.02 || t.b > 1.02 ? t : undefined;
-  }
-
   /** Drop only the lightweight decoration attached to the existing placement meshes. The amber edge
    *  geometry comes from PropAssets and stays cached; only selected-facing arrow buffers are owned here. */
   function clearSelectionVisuals() {
@@ -1086,7 +1067,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         if (mesh.userData.propFullBright) return; // emits; there is no key on it to re-scale
         const base = mesh.userData.propGroundBase as THREE.MeshLambertMaterial | null | undefined;
         if (base) mesh.material = gl !== null ? assets.propTex.groundLit(base, gl) : base;
-        // a tinted billboard keeps its private variant either way; 1 is the unlit/no-sun value
+        // A locally lit prop keeps its private variant. 1 is the studio rig's unattenuated key.
         else assets.propTex.setKeyScale(mesh.material as THREE.Material, gl ?? 1);
       });
     }
@@ -1121,16 +1102,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     );
     controlledPropMaterials.clear();
     effectPropMaterials.clear();
-    for (const m of signTintMats) m.dispose();
-    signTintMats = [];
-    // a billboard lit by its sign light gets its tiles multiplied by a warm tint (sampled where the light
-    // aims); every other placement samples the rig at its leader's bbox centre, so a free light colours the
-    // props near it and a group's fixture light lights its own lamp — an unlit prop keeps shared materials
-    const tintOf = new Map<number, THREE.Color>();
-    const rigOn = !!lights.authoredRigData && lights.authoredLightsVisible;
-    if (rigOn) {
-      for (const L of lights.authoredLights)
-        if (L.ofProp !== undefined && L.aimAt) tintOf.set(L.ofProp, lights.signTint(L.aimAt));
+    for (const m of localLightMats) m.dispose();
+    localLightMats = [];
+    const signTargets = new Map<number, V3>();
+    const rig = lights.authoredLightsVisible ? lights.authoredRigData : null;
+    if (rig) {
+      for (const L of lights.authoredLights) if (L.ofProp !== undefined && L.aimAt) signTargets.set(L.ofProp, L.aimAt);
     }
     for (let i = 0; i < props.length; i++) {
       const pp = props[i];
@@ -1155,7 +1132,13 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         collisionProfileContactState(placedPropCollisionProfile(pp)),
         pp.surface,
       );
-      const tint = tintOf.get(i) ?? (rigOn ? placementGlowTint(pp, members[0]) : undefined);
+      // Sample signs where their light aims. Other models and assemblies sample their leader's bounds.
+      const leader = members[0];
+      const box = rig && leader ? assets.propLocalBox(leader.level ?? pp.level, leader.model) : null;
+      const lightPoint = signTargets.get(i) ?? (box ? propLocalLightPoint(pp, box, leader) : pp.pos);
+      const localLight = rig ? propLocalLightMix(lightPoint, rig) : null;
+      const hasLocalLight = !!localLight?.some(channel => channel > 0);
+      const localVariants = hasLocalLight ? new Map<THREE.MeshLambertMaterial, THREE.MeshLambertMaterial>() : null;
       // The light on the ground this prop stands on — the same field the export reads its per-instance key
       // from (docs/032 · lighting), so a prop in a cliff's shade previews as it ships. Null when the sun
       // preview is off, which leaves every prop on the studio rig.
@@ -1249,15 +1232,19 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
             if (animated) animated.add(base);
             else effectPropMaterials.set(pp.id, new Set([base]));
           }
-          // Self-lit wins over both: the surface emits, so neither the sun's key nor a neighbouring sign
-          // light's tint has anything to add to it — which is what the shipped instances say too, since a
-          // full-bright one carries no key at all.
+          // Self-lit surfaces emit their texture. All other surfaces use the same authored light blend,
+          // including animated materials and the cutout cards of a crowd box.
           if (fullBright) mat = assets.propTex.fullBright(base);
-          else if (tint) {
-            const c = assets.propTex.variant(base);
-            c.color.copy(tint);
-            if (groundLight !== null) assets.propTex.setKeyScale(c, groundLight);
-            signTintMats.push((mat = c));
+          else if (localVariants && localLight) {
+            let variant = localVariants.get(base);
+            if (!variant) {
+              variant = assets.propTex.variant(base);
+              assets.propTex.setLocalLight(variant, localLight);
+              if (groundLight !== null) assets.propTex.setKeyScale(variant, groundLight);
+              localVariants.set(base, variant);
+              localLightMats.push(variant);
+            }
+            mat = variant;
           } else mat = groundLight !== null ? assets.propTex.groundLit(base, groundLight) : base;
           const mesh = new THREE.Mesh(sub.geometry, mat);
           mesh.userData.authoredCollisionOwner = child.uuid;
@@ -1270,9 +1257,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
             tracksByClip.set(clip, animated);
           }
           // The SHARED material this submesh would wear unlit, so a re-light can re-pick its ground-light
-          // bucket without rebuilding the scene. Null for a tinted billboard: that one owns its variant
+          // bucket without rebuilding the scene. A locally lit prop owns its variant
           // privately, and re-lighting it means setting its own key scale rather than swapping materials.
-          mesh.userData.propGroundBase = tint || fullBright ? null : base;
+          mesh.userData.propGroundBase = hasLocalLight || fullBright ? null : base;
           mesh.userData.propFullBright = fullBright; // a re-light must leave a self-lit surface alone
           mesh.userData.propIndex = i; // a raycast hit resolves the placement straight off the mesh
           mesh.userData.propTex = texture ?? null; // this submesh's frame-zero texture file — the paint

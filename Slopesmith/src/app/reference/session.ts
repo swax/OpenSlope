@@ -1120,7 +1120,7 @@ export function createReference(deps: ReferenceDeps) {
   function applyPropLightsVisible() {
     viewport.showAuthoredLights(localLightsVisible());
     viewport.setPlayLightingVisibility(sunLight.on);
-    scheduleRebuild(); // re-run setPlacedProps so the billboard tint tracks the toggle
+    scheduleRebuild(); // re-run setPlacedProps so local prop lighting tracks the toggle
   }
 
   /** Apply the advanced Local lights preference. Enabling it also enables the master Lighting preview so the

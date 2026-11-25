@@ -2,6 +2,7 @@ import { loadAssetTexture } from '../net/asset-images';
 import * as THREE from 'three';
 import { renderLoadingManager } from '../viewport/render-assets';
 import { RAW_TO_EDITOR } from '../viewport/constants';
+import type { V3 } from '../../core/doc/types';
 import {
   createUvScrollPlayback,
   createTextureFlipPlayback,
@@ -265,6 +266,7 @@ export function ps2ColorModulationShader(fragmentShader: string): string {
 		} else {
 			ps2Light = ( reflectedLight.directDiffuse + reflectedLight.indirectDiffuse )
 				/ max( diffuseColor.rgb, vec3( 0.000001 ) );
+			ps2Light = mix( ps2Light, vec3( 1.0 ), uAuthoredLocalLight );
 		}
 		vec3 ps2Srgb = sRGBTransferOETF( vec4( diffuseColor.rgb, 1.0 ) ).rgb;
 		// The GS saturates the PRODUCT. A Tricky record already tops out at texture-true, so clamping the light
@@ -281,6 +283,7 @@ export function ps2ColorModulationShader(fragmentShader: string): string {
     '\ndiffuseColor.a *= mix( 1.0, vPs2VertexLight.a, uVertexLight );';
   const declarations = `uniform float uNativeRecords;
 uniform float uVertexLight;
+uniform vec3 uAuthoredLocalLight;
 uniform sampler2D uNativeLightTable;
 varying vec3 vPs2ObjectNormal;
 varying vec4 vPs2VertexLight;
@@ -502,6 +505,7 @@ export class PropTextureCache {
   // Declared BEFORE `neutral`: that field initialiser runs `lit()`, which resolves the light-scale uniforms.
   private readonly keyScales = new WeakMap<THREE.Material, { value: number }>();
   private readonly fillScales = new WeakMap<THREE.Material, { value: number }>();
+  private readonly localLights = new WeakMap<THREE.Material, { value: THREE.Vector3 }>();
   private readonly nativeRecords = new WeakMap<THREE.Material, { value: number }>();
   private readonly nativePoseNormals = new WeakMap<THREE.Material, { value: number }>();
   private readonly nativeLightTable = { value: emptyNativeLightTexture() };
@@ -576,6 +580,7 @@ export class PropTextureCache {
       shader.uniforms.uPs2Normals = this.ps2Normals; // shared: the flip is a global mode
       shader.uniforms.uKeyScale = keyScale; // per material: the ground under THIS prop
       shader.uniforms.uFillScale = fillScale; // per material: native ambient / authored ambient
+      shader.uniforms.uAuthoredLocalLight = this.localLightUniform(m);
       shader.uniforms.uNativeRecords = nativeRecords;
       shader.uniforms.uNativePoseNormals = nativePoseNormals;
       shader.uniforms.uNativeLightTable = this.nativeLightTable;
@@ -600,6 +605,12 @@ export class PropTextureCache {
     let u = this.fillScales.get(m);
     if (!u) this.fillScales.set(m, (u = { value: 1 }));
     return u;
+  }
+
+  private localLightUniform(m: THREE.Material): { value: THREE.Vector3 } {
+    let uniform = this.localLights.get(m);
+    if (!uniform) this.localLights.set(m, (uniform = { value: new THREE.Vector3() }));
+    return uniform;
   }
 
   private nativeRecordUniform(m: THREE.Material): { value: number } {
@@ -789,6 +800,8 @@ export class PropTextureCache {
     this.nativeRecordUniform(clone).value = this.nativeRecordUniform(m).value;
     this.nativePoseNormalUniform(clone).value = this.nativePoseNormalUniform(m).value;
     this.vertexLightUniform(clone).value = this.vertexLightUniform(m).value;
+    const localLight = this.localLights.get(m);
+    if (localLight) this.localLightUniform(clone).value.copy(localLight.value);
     const animated = this.animatedByMaterial.get(m);
     // A variant draws the same animation, so it joins the bound set: scrolling reaches it through the shared
     // Texture, and a frame change reaches it because the fork rebinds everything in here. The set holds a
@@ -804,8 +817,12 @@ export class PropTextureCache {
     return clone;
   }
 
-  /** Scale the key on a material you already own privately (a sign's tinted variant), where `groundLit`'s
-   *  shared bucket would leak one prop's ground light onto every other prop wearing that tint. */
+  /** Set local lighting on a material variant owned by one placement. */
+  setLocalLight(m: THREE.Material, mix: V3): void {
+    this.localLightUniform(m).value.fromArray(mix);
+  }
+
+  /** Scale the sun key on a material variant that already owns a local-light sample. */
   setKeyScale(m: THREE.Material, groundLight: number): void {
     this.keyScaleUniform(m).value = Math.min(1, Math.max(0, groundLight));
   }

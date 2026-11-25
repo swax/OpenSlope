@@ -4,8 +4,12 @@ import {
   evaluateRiderLight,
   referenceRiderProbes,
   RiderLightField,
+  sampleAuthoredRiderLight,
+  type RiderLight,
   type RiderLightProbe,
 } from '../src/core/lighting/rider-light';
+import { propLocalLightMix } from '../src/core/lighting/prop-lights';
+import { authoredFreeLights, authoredRig } from '../src/core/lighting/sign-lights';
 import type { PropInstance } from '../src/core/reference/props';
 import type { V3 } from '../src/core/doc/types';
 
@@ -23,6 +27,20 @@ assert.equal(field.sample([NaN, 0, 0]), null);
 assert.deepEqual(
   evaluateRiderLight({ ambient: [0.1, 0.2, 0.3], keys: [{ color: [0.5, 0, 0], direction: [0, 0, -1] }] }, [0, 0, -2]),
   [0.6, 0.2, 0.3],
+);
+
+const authored: RiderLight = { ambient: [0, 0, 0], keys: [{ color: [0.5, 0.5, 0.5], direction: [0, 0, 1] }] };
+const rig = authoredRig(
+  authoredFreeLights([{ id: 'light:fill', kind: 'point', pos: [0, 0, 5], color: '#ff8000', intensity: 6, reach: 24 }]),
+);
+const position: V3 = [0, 0, 0];
+const mix = propLocalLightMix(position, rig);
+const local = sampleAuthoredRiderLight(authored, position, 0.5, rig);
+assert.deepEqual(evaluateRiderLight(local, [0, 0, -1]), mix, 'Local fill reaches a rider in full sun shade');
+evaluateRiderLight(local, [0, 0, 1]).forEach((value, channel) => close(value, 0.25 + 0.75 * mix[channel]));
+assert.deepEqual(
+  sampleAuthoredRiderLight(authored, [30, 0, 0], 0.5, rig),
+  sampleAuthoredRiderLight(authored, position, 0.5, null),
 );
 
 const donor = (partial: Partial<PropInstance>) =>

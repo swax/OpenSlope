@@ -3,8 +3,17 @@ import assert from 'node:assert/strict';
 import { readLevelLightRig } from '../src/shared/map-levels';
 import type { MapDataSource } from '../src/shared/map-data';
 import { authoredReferenceLight, decodeLightRig } from '../src/core/reference/lights';
-import { authoredSignLights, freeLightToPlaced, isSignProp } from '../src/core/lighting/sign-lights';
-import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
+import {
+  authoredFreeLights,
+  authoredRig,
+  authoredSignLights,
+  freeLightToPlaced,
+  isSignProp,
+} from '../src/core/lighting/sign-lights';
+import { propLocalLightMix, propRecordScreenFactor } from '../src/core/lighting/prop-lights';
+import { defaultMountain, blankMountain, migrateMountain } from '../src/core/doc/mountain';
+import { DEFAULT_SUN, type PlacedProp } from '../src/core/doc/types';
+import { buildMountainLevel } from '../src/core/export/level';
 import { serializeMountain } from '../src/core/doc/serialize';
 
 const position = [100, 200, 300];
@@ -92,4 +101,35 @@ rows[0].Position = position;
 files['WORLD.WDF'] = world.subarray(0, 100);
 assert.equal((await rig()).lights[0].coneSource, 'preview', 'Damaged optional sources leave the JSON rig usable');
 assert.equal(authoredReferenceLight({ ...result.lights[0], negative: true }), null);
-console.log('Light cones: PBD/WDF recovery, exported precedence, safe fallback and editable copy PASS');
+
+const local = blankMountain();
+local.sun = { ...DEFAULT_SUN, sun: 1, ambient: 0, shadow: 0, ao: 0, sunTint: '#ffffff' };
+local.lights = [{ id: 'light:fill', pos: [0, 0, 5], kind: 'point', color: '#ff8000', intensity: 6, reach: 24 }];
+const prop: PlacedProp = {
+  id: 'prop:lit',
+  level: 'FIXTURE',
+  model: 1,
+  pos: [100, 0, 0],
+  scale: 1,
+  yaw: 0,
+  name: 'fixture',
+};
+local.props = [prop, { ...prop, id: 'prop:emitting', fullBright: true }, { ...prop, id: 'prop:outside' }];
+const rigLights = authoredFreeLights(local.lights);
+const mix = propLocalLightMix([0, 0, 0], authoredRig(rigLights));
+const { propLights } = buildMountainLevel(local, rigLights, {
+  propLightPoint: p => (p.id === 'prop:outside' ? p.pos : [0, 0, 0]),
+});
+for (const incidence of [0, 0.5, 1]) {
+  const direct = incidence / 2;
+  for (const [channel, amount] of mix.entries()) {
+    const { amb, key } = propLights['prop:lit'];
+    const expected = direct + (1 - direct) * amount;
+    assert(Math.abs(propRecordScreenFactor(amb[channel], key[channel], incidence) - expected) < 1e-5);
+  }
+}
+assert.deepEqual(propLights['prop:outside'].amb, [0, 0, 0]);
+assert.deepEqual(propLights['prop:outside'].key, [128, 128, 128]);
+assert.deepEqual(propLights['prop:emitting'].amb, [256, 256, 256]);
+assert.deepEqual(propLights['prop:emitting'].key, [0, 0, 0]);
+console.log('Light cones and authored prop lighting export PASS');

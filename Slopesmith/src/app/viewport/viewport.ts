@@ -76,6 +76,7 @@ import type { LightRig } from '../../core/reference/lights';
 import type { PlacedLight } from '../../core/lighting/sign-lights';
 import { propPreviewIntensity } from '../../core/lighting/prop-lights';
 import {
+  sampleAuthoredRiderLight,
   sampleReferenceRiderLight,
   referenceRiderProbes,
   RiderLightField,
@@ -620,9 +621,8 @@ export class Viewport {
   // authored placed props (Props mode) live in PropsLayer (this.props); the prop input dispatch
   // (pickOrPlaceProp / the MMB prop-copy / the wheel-turn) + the read-only reference-prop selection live in PointerRouter.
   // AUTHORED + free local lights (docs/013) live in LightsLayer (this.lights). The cached per-vertex TERRAIN
-  // glow the rig folds into the preview lives in TerrainLayer (invalidated on a rig change via lights.relight,
-  // or a terrain edit); the shell keeps the billboard-tint material clones the prop rebuild makes from
-  // lights.signTint.
+  // glow lives in TerrainLayer and is invalidated on rig changes or terrain edits. PropsLayer uses the same
+  // rig to sample local light for each placement.
   // authored grind rails (docs/014) live in RailsLayer (this.rails); the router keeps the selection
   // orchestration + input dispatch.
   // gem pickups (docs/014) live in GemsLayer (this.gems); the router keeps the gem-tool pointer handling.
@@ -1182,8 +1182,6 @@ export class Viewport {
       this.refRoot.updateWorldMatrix(true, false);
       const ownPoint = this.worldRoot.worldToLocal(riderPoint.copy(position));
       const ownDistance = this.ownBounds?.distanceToPoint(ownPoint) ?? Infinity;
-      const ownLight = this.riderAuthoredLight;
-      const ground = ownLight ? (this.terrainLayer.groundLightAt([ownPoint.x, ownPoint.y, ownPoint.z]) ?? 1) : 1;
       const refPoint = this.refRoot.worldToLocal(riderPoint.copy(position));
       const refDistance = this.refBounds?.distanceToPoint(refPoint) ?? Infinity;
       const reference =
@@ -1193,6 +1191,8 @@ export class Viewport {
       const shade = reference
         ? this.referenceGroundLight?.([refPoint.x, refPoint.y, refPoint.z], !this.riderReferenceLight.hasProbes)
         : null;
+      const ownPosition = ownPoint.toArray();
+      const rig = this.lights.authoredLightsVisible ? this.lights.authoredRigData : null;
       const light = reference
         ? sampleReferenceRiderLight(
             this.riderReferenceLight,
@@ -1200,13 +1200,19 @@ export class Viewport {
             shade ?? null,
             this.refData?.lightingSource === 'vertex',
           )
-        : ownLight;
+        : this.riderAuthoredLight &&
+          sampleAuthoredRiderLight(
+            this.riderAuthoredLight,
+            ownPosition,
+            this.terrainLayer.groundLightAt(ownPosition) ?? 1,
+            rig,
+          );
       if (!light) return null;
       const matrix = reference ? this.refRoot.matrixWorld : this.worldRoot.matrixWorld;
       return {
         ambient: light.ambient,
         keys: light.keys.map(key => ({
-          color: reference ? key.color : (key.color.map(v => v * ground) as V3),
+          color: key.color,
           direction: riderDirection.fromArray(key.direction).transformDirection(matrix).toArray() as V3,
         })),
       };
@@ -4365,20 +4371,19 @@ export class Viewport {
       skyTint: [number, number, number];
     } | null,
   ) {
-    const on = !!opts && opts.ambient + opts.sun > 1e-4;
-    this.riderAuthoredLight =
-      on && opts
-        ? {
-            ambient: opts.skyTint.map(v => (v * opts.ambient) / 2) as V3,
-            keys: [{ color: opts.sunTint.map(v => (v * opts.sun) / 2) as V3, direction: opts.dir }],
-          }
-        : null;
+    const on = opts !== null; // a map with only local lights still uses the authored rig
+    this.riderAuthoredLight = opts
+      ? {
+          ambient: opts.skyTint.map(v => (v * opts.ambient) / 2) as V3,
+          keys: [{ color: opts.sunTint.map(v => (v * opts.sun) / 2) as V3, direction: opts.dir }],
+        }
+      : null;
     this.studioHemi.visible = this.studioSun.visible = !on;
     this.propFill.visible = this.propKey.visible = on;
     // …and point the Surface view's darkness reading at the same sun (scene/prop-shade.ts). Same toggle for
     // the same reason as the two below: with the sun on you are asking what ships, and what ships dark is a
     // fact about the sun. The studio rig is a viewing light, so with it up there is nothing to state.
-    setPropShadeSun(on && opts ? opts.dir : null);
+    setPropShadeSun(opts?.dir ?? null);
     // …and shade by the normals as STORED, the way the hardware does. Driven from here rather than wired
     // separately so the two can never disagree: with the sun on you are asking what ships, and a mesh wound
     // inside-out has to read ambient-only here exactly as it will in game. With it off, the studio rig's
@@ -4389,7 +4394,7 @@ export class Viewport {
     // and what ships is per-prop. A rebuild is only requested when the source actually changes, since this
     // runs on every sun-slider drag.
     this.props.setGroundLightSource(on ? p => this.terrainLayer.groundLightAt(p) : null);
-    if (!on || !opts) return;
+    if (!opts) return;
     this.propFill.color.setRGB(...opts.skyTint);
     this.propFill.intensity = propPreviewIntensity(opts.ambient);
     this.propKey.color.setRGB(...opts.sunTint);

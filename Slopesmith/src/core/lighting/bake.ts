@@ -3,7 +3,7 @@ import { computeModelColored } from './lightmap';
 import { bakeSunShadow, bakeAO } from './occlusion';
 import { lightingGeometry, type LightingOccluder } from './occluders';
 import { groundLightSampler } from './ground-light';
-import { bakeRigLighting, type LightRig } from '../reference/lights';
+import { bakeRigLighting, rigGlowFraction, type LightRig } from '../reference/lights';
 import { SIGN_TERRAIN_WEIGHT_K } from './sign-lights';
 import type { SunLight, V3 } from '../doc/types';
 import type { Rgba } from '../paint/ground-textures';
@@ -58,9 +58,8 @@ export interface BakedLightmaps {
   probeShadow: Float32Array;
   /** Sky openness (0 buried .. 1 open) at each `probes` point, index-aligned; 1 when AO is off. */
   probeAO: Float32Array;
-  /** The BAKED LIGHTMAP intensity (A_S, 0 dark .. 1 full) of the ground under each `probes` point,
-   *  index-aligned. This — not `probeShadow` — is what retail's per-instance prop key tracks; see
-   *  `propInstanceLight`. 1 where no terrain sits under the probe. */
+  /** Baked sun/sky intensity (0 dark .. 1 full) under each `probes` point, before local lights.
+   *  Drives the prop's sun key. 1 where no terrain sits under the probe. */
   probeLight: Float32Array;
 }
 
@@ -162,7 +161,7 @@ export function bakedLightmapDisplay(colored: Float32Array, diffuse?: Float32Arr
  * baked lightmap matches what the editor shows.
  */
 export function compositeRigGlow(colored: Float32Array, glow: Float32Array): void {
-  for (let i = 0; i < colored.length; i++) colored[i] = colored[i] + (1 - colored[i]) * (1 - Math.exp(-glow[i]));
+  for (let i = 0; i < colored.length; i++) colored[i] = colored[i] + (1 - colored[i]) * rigGlowFraction(glow[i]);
 }
 
 /** Bake the authored sun (+ cast shadow / AO) for one quilt into lightmap pages + per-patch placement.
@@ -271,13 +270,7 @@ export function bakeLightmaps(
     shadow,
     ao,
   ); // per-vertex RGB = the sun/sky-tinted colour Unity should reproduce (=> encoded into C_S)
-  // fold the authored sign lights' glow into the terrain, so a billboard's snow pool bakes into the lightmap
-  if (rig && rig.lights.length)
-    compositeRigGlow(colored, bakeRigLighting(mesh.positions, mesh.normals, rig, SIGN_TERRAIN_WEIGHT_K));
-
-  // Sampled AFTER the rig glow so a prop standing in a billboard's pool reads the light that actually ships
-  // in the lightmap, not the pre-composite value. The sampler is shared with the editor preview so the two
-  // cannot drift (`groundLightSampler`).
+  // A prop's sun key follows the baked sun/sky field. It receives local light separately at its own position.
   const probeLight = new Float32Array(probeCount);
   probeLight.fill(1);
   if (probeCount && probes) {
@@ -286,6 +279,8 @@ export function bakeLightmaps(
       probeLight[i] = sampleGround(p);
     });
   }
+  if (rig?.lights.length)
+    compositeRigGlow(colored, bakeRigLighting(mesh.positions, mesh.normals, rig, SIGN_TERRAIN_WEIGHT_K));
 
   const n = patches.length;
   const pages = Math.max(1, Math.ceil(n / PER_MAP));

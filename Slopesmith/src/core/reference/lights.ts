@@ -212,11 +212,10 @@ export function bakeRigLighting(
 
 /**
  * Received glow (RGB, ≥ 0) at a single point from the rig's LOCAL lights — the whole-object companion to
- * bakeRigLighting, with NO `N·L` term (a prop has faces every which way, so "is it lit" is what matters, not
- * one surface normal). Used to tint a placed / reference prop so a sign light visibly brightens the billboard
- * it aims at. Same exclusions + falloff as the terrain bake (local lights only; capped inverse-square cone).
+ * bakeRigLighting. This sample is independent of the surface normal and shares the terrain bake's light
+ * exclusions, reach and cone falloff.
  */
-export function propRigGlow(pos: V3, rig: LightRig): [number, number, number] {
+export function propRigGlow(pos: V3, rig: LightRig, weightK = 0.5): V3 {
   let r = 0,
     g = 0,
     b = 0;
@@ -244,7 +243,7 @@ export function propRigGlow(pos: V3, rig: LightRig): [number, number, number] {
     const d0 = Math.min(Math.max(R * 0.25, 5), 30);
     // gentler intensity weight than the terrain bake (I/(I+0.5) vs I/(I+3)): the sign lights are authored dim
     // (intensity ≈ 1) yet clearly meant to light their billboard, so don't starve them next to the hot lights.
-    const e = ((L.intensity / (L.intensity + 0.5)) * coneF) / (1 + dsq / (d0 * d0));
+    const e = ((L.intensity / (L.intensity + weightK)) * coneF) / (1 + dsq / (d0 * d0));
     const [tr, tg, tb] = hexToRgb(L.colorHex);
     r += e * tr;
     g += e * tg;
@@ -252,6 +251,9 @@ export function propRigGlow(pos: V3, rig: LightRig): [number, number, number] {
   }
   return [r, g, b];
 }
+
+/** Fraction of remaining brightness filled by accumulated positive local light. */
+export const rigGlowFraction = (glow: number): number => -Math.expm1(-glow);
 
 /** Decode the server payload into editor-space lights the viewport can draw directly. */
 export function decodeLightRig(payload: LightRigPayload): LightRig {

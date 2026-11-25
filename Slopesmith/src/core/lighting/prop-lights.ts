@@ -1,6 +1,16 @@
 import { hexToRgb } from '../math/color';
-import type { SunLight, V3 } from '../doc/types';
-import { applyQuat, conjugateQuat, isTilted, placementQuat, type PropRotation } from '../props/pose';
+import type { PlacedProp, SunLight, V3 } from '../doc/types';
+import {
+  applyQuat,
+  conjugateQuat,
+  isTilted,
+  placementQuat,
+  rotateByPlacement,
+  rotateY,
+  type PropRotation,
+} from '../props/pose';
+import { propRigGlow, rigGlowFraction, type LightRig } from '../reference/lights';
+import { rawLinearToEditor, SIGN_TERRAIN_WEIGHT_K, type LocalBox } from './sign-lights';
 
 /**
  * PER-INSTANCE prop lighting authored from the Slopesmith sun (docs/032 · lighting).
@@ -68,6 +78,28 @@ export function propPreviewIntensity(rawFactor: number): number {
   return (PROP_LAMBERT_IRRADIANCE * Math.max(0, rawFactor)) / PROP_FULL_BRIGHT_FACTOR;
 }
 
+/** Probe the placed model's centre. Assemblies sample their leader in the same pose as the rendered mesh. */
+export function propLocalLightPoint(prop: PlacedProp, box: LocalBox, leader?: { relPos: V3; relYaw: number }): V3 {
+  const center = rawLinearToEditor([
+    (box.min[0] + box.max[0]) / 2,
+    (box.min[1] + box.max[1]) / 2,
+    (box.min[2] + box.max[2]) / 2,
+  ]);
+  const offset = leader ? rotateY(center, leader.relYaw) : center;
+  const [x, y, z] = leader?.relPos ?? [0, 0, 0];
+  const rotated = rotateByPlacement(
+    [(offset[0] + x) * prop.scale, (offset[1] + y) * prop.scale, (offset[2] + z) * prop.scale],
+    prop,
+  );
+  return [prop.pos[0] + rotated[0], prop.pos[1] + rotated[1], prop.pos[2] + rotated[2]];
+}
+
+/** Use the terrain's local-light blend with a single, orientation-independent sample per prop. */
+export function propLocalLightMix(pos: V3, rig: LightRig): V3 {
+  const [r, g, b] = propRigGlow(pos, rig, SIGN_TERRAIN_WEIGHT_K);
+  return [rigGlowFraction(r), rigGlowFraction(g), rigGlowFraction(b)];
+}
+
 /** One PS2 output-channel multiplier from the packed INSTANCE values. The GS modulates the stored
  * half-bright texture in byte/sRGB space; 256 is texture-true and the 8-bit vertex colour saturates there.
  * Exported as a diagnostic oracle for the lighting gnomon and regression tests. */
@@ -78,9 +110,9 @@ export function propRecordScreenFactor(ambientRecord: number, keyRecord: number,
 
 /** One prop's authored instance lighting, in the raw SSX form the PBD instance stores. */
 export interface PropInstanceLight {
-  /** `AmbentLightColour` RGB — the sky fill, attenuated by how buried the prop is. */
+  /** `AmbentLightColour` RGB — sky fill after occlusion, blended with local light. */
   amb: [number, number, number];
-  /** `LightColour1` RGB — the directional key, attenuated by cast shadow. */
+  /** `LightColour1` RGB — the directional key after ground shade and the local-light blend. */
   key: [number, number, number];
   /** `LightVector1` — unit TOWARD-light vector in the instance's MODEL-LOCAL raw frame. This is the
    *  inverse placement rotation of the world-space vector, because the engine dots it directly with the
@@ -123,8 +155,8 @@ export function localPropSunVector(sun: SunLight, rot: PropRotation = { yaw: 0 }
 /**
  * Author one prop's instance lighting from the sun and the light on the ground beneath it.
  *
- * `groundLight` is the BAKED LIGHTMAP intensity under the prop (`BakedLightmaps.probeLight`), not a
- * cast-shadow query. That distinction is measured, not assumed. Against retail's own shipped instances:
+ * `groundLight` is the ground's baked sun/sky intensity (`BakedLightmaps.probeLight`), before local lights.
+ * The ground sample is distinct from a cast-shadow query. Against retail's own shipped instances:
  *
  *   predictor of retail's per-instance key       GARI    MESA
  *   the baked lightmap under the prop            0.615   0.352     <- this
@@ -154,6 +186,7 @@ export function propInstanceLight(
   ao = 1,
   fullBright = false,
   rot: PropRotation = { yaw: 0 },
+  localLight?: V3,
 ): PropInstanceLight {
   const skyTint = hexToRgb(sun.skyTint),
     sunTint = hexToRgb(sun.sunTint);
@@ -173,7 +206,16 @@ export function propInstanceLight(
     Math.max(0, tint[1] * f * INSTANCE_LIGHT_SCALE),
     Math.max(0, tint[2] * f * INSTANCE_LIGHT_SCALE),
   ];
-  return { amb: chan(skyTint, skyF), key: chan(sunTint, sunF), dir };
+  const amb = chan(skyTint, skyF),
+    key = chan(sunTint, sunF);
+  // Mix the evaluated light toward texture-true. Distributing the mix over ambient and key keeps the
+  // native record format and gives the same result as the preview for every surface normal.
+  if (localLight)
+    for (let i = 0; i < 3; i++) {
+      amb[i] += (FULL_BRIGHT - amb[i]) * localLight[i];
+      key[i] *= 1 - localLight[i];
+    }
+  return { amb, key, dir };
 }
 
 /** Author instance lighting for a run of props, given the terms the lightmap bake resolved at their

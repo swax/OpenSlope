@@ -332,6 +332,7 @@ export function createTerrainLayer(
         tlShadow?.subarray(from, to),
         tlAO?.subarray(from, to),
       );
+      groundLit.set(colors, f3);
       if (glow) {
         const span = opts.deferLighting
           ? glow.subarray(f3, t3)
@@ -339,7 +340,6 @@ export function createTerrainLayer(
         glow.set(span, f3);
         compositeRigGlow(colors, span);
       }
-      groundLit.set(colors, f3);
       // the same display chain applyTerrainLight runs, in the same order: the baked round-trip stays in the
       // light's display domain, then the light crosses into the working space, then the (already linear)
       // ride-feel tint composites on top
@@ -451,19 +451,16 @@ export function createTerrainLayer(
       if (result.glow) authoredRigGlow = result.glow;
       occlusionStale = rigGlowStale = false;
     }
-    const colors = computeModelColored(p.normals, o.dir, o, tlShadow ?? undefined, tlAO ?? undefined); // sun + sky tint (= the bake's Lc)
+    groundLit = computeModelColored(p.normals, o.dir, o, tlShadow ?? undefined, tlAO ?? undefined);
+    sampleGroundLight = null; // rebuilt lazily from the sun/sky field to attenuate the prop sun key
+    let colors = groundLit;
     // fold the authored local lights (sign + free) into the lit terrain, gated by effective Local lights
     // (WYSIWYG with the exported lightmap: the same bakeRigLighting + screen composite). Cached per rig /
     // terrain edit so dragging sun sliders is free.
     if (rig && view.rigVisible() && authoredRigGlow) {
+      colors = groundLit.slice();
       compositeRigGlow(colors, authoredRigGlow);
     }
-    // Snapshot the lit colour BEFORE the display transforms below: this is the bake's `colored`, the exact
-    // array `bakeLightmaps` samples a prop's key from, so the preview and the export read one field
-    // (docs/032 · lighting). Taking it after the baked-view round-trip or the surface-tint multiply would
-    // hand props a display artefact instead.
-    groundLit = colors;
-    sampleGroundLight = null; // rebuilt lazily; the grid costs more than most frames need
     // baked (in-game) view: run the LIGHT through the lightmap encode + GS decode (the bake's 8-bit
     // quantization + rail clamp), and let the tile ride on top per-pixel (applyMaterials keeps the textured
     // material), so it's texture × baked-light at full texture resolution — the in-game look, with the rock
@@ -618,9 +615,8 @@ export function createTerrainLayer(
       return terrainLit();
     },
     /**
-     * The baked light on the ground at a world point — what a prop standing there reads its key from
-     * (docs/032 · lighting). Null when the terrain isn't sun-lit, in which case props have no ground light
-     * to inherit and stay on the studio rig.
+     * The sun/sky light on the ground at a world point, before the local lights. Props and riders use it
+     * to attenuate their sun key. Null when the authored terrain lighting is off.
      *
      * The spatial index is built on first use after each re-light rather than eagerly, because dragging a
      * sun slider re-lights every frame while only a prop rebuild actually asks.

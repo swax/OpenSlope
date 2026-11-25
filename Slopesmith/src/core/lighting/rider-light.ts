@@ -1,6 +1,8 @@
 import type { V3 } from '../doc/types';
 import type { PropInstance } from '../reference/props';
 import { applyQuat } from '../props/pose';
+import type { LightRig } from '../reference/lights';
+import { propLocalLightMix } from './prop-lights';
 
 /** [Trailmap: 160-instance, 160-instance-frame, 400-lighting]. World-space,
  * display-domain lighting for a dynamic body. Spatial interpolation is our
@@ -45,6 +47,23 @@ export function sampleReferenceRiderLight(
   const light = field.sample(position);
   if (!ground || (vertexFallback && light)) return light;
   return attenuateRiderLight(light ?? fallbackRiderLight(), ground);
+}
+
+/** Sample the authored local lights at the rider. The ground sample attenuates the sun key alone. */
+export function sampleAuthoredRiderLight(
+  light: RiderLight,
+  position: V3,
+  ground: number,
+  rig: LightRig | null,
+): RiderLight {
+  const mix = rig ? propLocalLightMix(position, rig) : null;
+  return {
+    ambient: mix ? (light.ambient.map((value, i) => value + (1 - value) * mix[i]) as V3) : light.ambient,
+    keys: light.keys.map(key => ({
+      direction: key.direction,
+      color: key.color.map((value, i) => value * ground * (1 - (mix?.[i] ?? 0))) as V3,
+    })),
+  };
 }
 
 export function evaluateRiderLight(light: RiderLight, normal: V3): V3 {

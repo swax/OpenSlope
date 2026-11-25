@@ -6,7 +6,7 @@ import type { EditDoc } from '../doc/doc-edit';
 import { surfaceStyle, DEFAULT_SUN } from '../doc/types';
 import { bakeLightmaps, type DiffuseSampler } from '../lighting/bake';
 import type { GodRayCourse } from '../lighting/god-rays';
-import { propInstanceLight, roundPropLight, type PropInstanceLight } from '../lighting/prop-lights';
+import { propInstanceLight, propLocalLightMix, roundPropLight, type PropInstanceLight } from '../lighting/prop-lights';
 import { authoredRig, type PlacedLight } from '../lighting/sign-lights';
 import { glintSizeClass } from '../lighting/glints';
 import { nativeSplineFields, railBezierSegments, railStyle, RAIL_STYLE_ICE } from '../rails/rails';
@@ -125,6 +125,8 @@ export interface LevelFileOpts {
    * discipline `groundTex` and `copyTextures` follow. Absent ⇒ 0, which probes `pos` as before.
    */
   propBaseOffset?: (p: PlacedProp) => number;
+  /** Centre of the posed prop geometry (or an assembly's leader), where the viewport samples local lights. */
+  propLightPoint?: (p: PlacedProp) => V3;
 }
 
 /** Patches.json records for one quilt; UV corners are stored in the index-matched transpose
@@ -702,16 +704,22 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
       litProps.map(standsAt),
       opts?.propOccluders,
     );
-    const light = (p: PlacedProp, i: number, fullBright: boolean) =>
-      roundPropLight(propInstanceLight(sun, baked.probeLight[i], baked.probeAO[i], fullBright, p));
+    const signTargets = new Map<string, V3>();
+    for (const light of signLights) {
+      const id = light.ofProp === undefined ? undefined : doc.props?.[light.ofProp]?.id;
+      if (id && light.aimAt) signTargets.set(id, light.aimAt);
+    }
     // A group's members share its probe but each keeps its own self-lit flag (docs/069). Member keys go in
     // FIRST: the join is first-wins per baked name, so a member's entry beats the placement-wide one.
     litProps.forEach((p, i) => {
+      const localLight = rig
+        ? propLocalLightMix(signTargets.get(p.id!) ?? opts?.propLightPoint?.(p) ?? p.pos, rig)
+        : undefined;
+      const light = (fullBright: boolean) =>
+        roundPropLight(propInstanceLight(sun, baked.probeLight[i], baked.probeAO[i], fullBright, p, localLight));
       for (const [model, member] of Object.entries(p.memberBehaviour ?? {}))
-        propLights[groupMemberKey(p.id!, Number(model))] = light(p, i, member.fullBright === true);
-    });
-    litProps.forEach((p, i) => {
-      propLights[p.id!] = light(p, i, p.fullBright === true);
+        propLights[groupMemberKey(p.id!, Number(model))] = light(member.fullBright === true);
+      propLights[p.id!] = light(p.fullBright === true);
     });
     for (let i = 0; i < patches.length; i++) {
       patches[i].LightMapPoint = baked.patchLm[i].rect;

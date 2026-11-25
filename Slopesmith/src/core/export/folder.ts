@@ -27,6 +27,7 @@ import {
 } from '../effects/external-sound';
 import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../lighting/sign-lights';
+import { propLocalLightPoint } from '../lighting/prop-lights';
 import { authoredGroupLights, expandGroupProps } from '../reference/groups';
 import { decodeProps, type PropMaterial } from '../reference/props';
 import type { Rgba } from '../paint/ground-textures';
@@ -240,6 +241,18 @@ export async function buildExportFolder(
       : level === IMPORTED_PROP_LEVEL
         ? (importedModels.get(model) ?? null)
         : geometryOf(level, model);
+  const localLightPoint = (p: PlacedProp): V3 => {
+    const def = p.group ? (p.groupDefinition ?? defIdx.get(`${p.level}:${p.group}`)) : undefined;
+    const leader = def?.props[0];
+    const level = leader?.level ?? p.level,
+      model = leader?.model ?? p.model;
+    const key = `${level}:${model}`;
+    if (level === AUTHORED_MODEL_LEVEL || level === IMPORTED_PROP_LEVEL) {
+      if (!boxCache.get(key)) boxCache.set(key, modelGeometryBox(shadowGeometry(level, model)));
+    }
+    const box = boxOf(level, model);
+    return box ? propLocalLightPoint(p, box, leader) : p.pos;
+  };
   const shadowProps = (doc.props ?? [])
     .filter(p => !isEffectTriggerProp(p))
     .flatMap(p => {
@@ -273,6 +286,7 @@ export async function buildExportFolder(
     lighting: opts?.lighting,
     aiPaths: opts?.aiPaths,
     propBaseOffset: placedBaseOffset,
+    propLightPoint: localLightPoint,
     propOccluders: blockers,
   });
   const propGroups: BakedPropGroup[] = [];
@@ -283,7 +297,7 @@ export async function buildExportFolder(
     );
   else if (lights.length)
     logLines.push(
-      `authored lighting: ${signLights.length} billboard sign light(s) + ${freeLights.length} free light(s) + ${groupLights.length} group light(s) → Lights.json + baked terrain glow`,
+      `authored lighting: ${signLights.length} billboard sign light(s) + ${freeLights.length} free light(s) + ${groupLights.length} group light(s) → Lights.json + terrain and prop lighting`,
     );
   if (opts?.aiPaths)
     logLines.push('AI path variation ON: six gate-anchored race routes carry seeded lateral variation');
@@ -809,13 +823,8 @@ export async function buildExportFolder(
       logLines.push(
         `collision profiles: ${nativeCollisionCount} placement(s) preserve shape/gates/response mass/bounce/body donor + instance transform`,
       );
-    if (lightingCount) {
-      const shaded = Object.values(propLighting).filter(l => Math.max(...l.key) < 1).length;
-      logLines.push(
-        `prop lighting: ${lightingCount} placement(s) lit from the authored sun` +
-          (shaded ? ` (${shaded} fully shadowed — sky fill only)` : ''),
-      );
-    }
+    if (lightingCount)
+      logLines.push(`prop lighting: ${lightingCount} placement(s) carry authored ambient and sun-key records`);
   }
   // Both animation tables are complete snapshots of what the document's effects install, and each is written
   // only when it has an entry — so they are retired first. A stale table left from a previous export would
