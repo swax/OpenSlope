@@ -61,6 +61,17 @@
   color: #b4c7d7;
   line-height: 1.6;
 }
+.sp-iso-source label,
+.sp-iso-source input {
+  display: block;
+}
+.sp-iso-source input {
+  max-width: 100%;
+  margin: 4px 0;
+}
+.sp-iso-source p {
+  overflow-wrap: anywhere;
+}
 .sp-modal-actions {
   display: flex;
   justify-content: flex-end;

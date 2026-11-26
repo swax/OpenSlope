@@ -20,14 +20,21 @@ npm run dev
 Open `http://localhost:5179`. Keep this development server on your own machine; it can read and
 write local projects and maps. For shared access, follow the [hosting guides](docs/README.md#hosting-and-collaboration).
 
+To enable **Build PS2 ISO** in a local build, install Python and the .NET SDK from
+[`global.json`](../global.json), initialize the SSX-Library submodule, and run
+`npm run build:snowknife` in `Slopesmith`. This stages Snowknife and the browser .NET runtime in
+`public/snowknife`, which Vite serves in development and copies when building the client.
+
 ## Make your first course
 
 1. In the library, choose **New map**, name your mountain, and choose **Generated course** to start with terrain.
 2. Use **Edit** to reshape it, **Sculpt** for terrain brushes, **Paint** for surfaces, and **Props** for scenery and rails.
 3. Switch to **Test** and choose **Play** to ride. See the [riding guide](docs/016-ride.md) for controls and VR.
 4. Use **Save to folder…** or **File → Export… → Another Slopesmith instance** to keep an editable backup.
-5. To build a custom disc or mod, choose **File → Export… → Snowknife — Custom ISO** or
-   **Snowknife — Mod Manager**, then follow [Snowknife's repack guide](../Snowknife/REPACK.md).
+5. Choose **File → Export… → Build PS2 ISO** and select your SSX Tricky (USA) PS2 ISO.
+   The dialog can reuse a disc saved in **ISOs**. The browser builds a new disc image with your
+   course in the Garibaldi slot. For the CLI and mod manager ZIP options, see
+   [Snowknife's repack guide](../Snowknife/REPACK.md).
 
 Browser saves stay with this browser profile and site address. Server maps save on the server.
 The [library and offline guide](docs/073-map-library-and-offline.md) explains storage, backups,

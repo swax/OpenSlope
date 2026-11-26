@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { crc32 } from '../src/app/export/crc32';
 import { safeDataName } from '../src/core/export/names';
+import { normalizeMapDisplayName } from '../src/core/reference/disc-courses';
+import { writeTrickyModMetadata } from '../src/server/reference-presentation';
 import { mapsRoot } from '../src/server/workspace-config';
 import { snowknifeExe } from './snowknife-cli';
 
@@ -408,6 +410,7 @@ export async function importModMap(
     for (const required of REQUIRED_MAP_OUTPUTS) {
       await requireFile(join(staging, required), `Imported ${required}`);
     }
+    await writeTrickyModMetadata(staging, normalizeMapDisplayName(inspected.title) ?? name);
 
     log('[5/5] Publishing the validated map folder');
     await rename(staging, destination);

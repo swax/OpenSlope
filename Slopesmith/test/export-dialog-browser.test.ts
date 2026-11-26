@@ -1,7 +1,7 @@
 // browser: smoke
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'vite';
@@ -82,6 +82,7 @@ try {
   assert.equal(await dialog.getByLabel('Export for', { exact: true }).inputValue(), 'slopesmith');
   assert.deepEqual(await dialog.locator('select[aria-label="Export for"] option').allTextContents(), [
     'Another Slopesmith instance',
+    'Build PS2 ISO',
     'Snowknife — Custom ISO',
     'Snowknife — Mod Manager',
   ]);
@@ -94,6 +95,37 @@ try {
   assert(editable.suggestedFilename().endsWith('.slopesmith.zip'));
   const mountain = await readMountainArchive(new Blob([readFileSync((await editable.path())!)]));
   assert.equal(mountain.document.name, 'MOUNTAIN01');
+
+  await open();
+  await dialog.getByLabel('Export for', { exact: true }).selectOption('ps2-iso');
+  const buildIso = dialog.getByRole('button', { name: 'Build ISO', exact: true });
+  assert(await buildIso.isDisabled());
+  assert(await dialog.getByRole('region', { name: 'Snowknife commands', includeHidden: true }).isHidden());
+  await dialog.getByLabel('SSX Tricky ISO', { exact: true }).setInputFiles({
+    name: 'picked.iso',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from([1, 2]),
+  });
+  await dialog.getByText('Source ISO: picked.iso', { exact: true }).waitFor();
+  assert(await buildIso.isEnabled());
+  if (existsSync('public/snowknife/manifest.json')) {
+    await buildIso.click();
+    await dialog
+      .getByRole('status')
+      .filter({ hasText: 'Choose an SSX Tricky (USA) PlayStation 2 ISO.' })
+      .waitFor({ timeout: 60_000 });
+  }
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.evaluate(async () => {
+    const isoDiscs = '/src/app/public/iso-discs.ts';
+    const { saveIsoDisc } = (await import(/* @vite-ignore */ isoDiscs)) as typeof import('../src/app/public/iso-discs');
+    await saveIsoDisc({ game: 'tricky', file: new File(['disc'], 'saved.iso'), courses: ['TRICKY_GARI'] });
+  });
+  await open();
+  await dialog.getByLabel('Export for', { exact: true }).selectOption('ps2-iso');
+  await dialog.getByText('Using saved.iso from /isos', { exact: true }).waitFor();
+  assert(await buildIso.isEnabled());
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
   await open();
   await dialog.getByLabel('Export for', { exact: true }).selectOption('snowknife-iso');
@@ -185,7 +217,7 @@ try {
   assert.equal(preflightRequests, 0, 'Export no longer requests a preflight summary');
   assert.deepEqual(errors, []);
   console.log(
-    `EXPORT DIALOG PASS: Slopesmith and both Snowknife destinations, tool links, desktop and mobile. Artifacts: ${root}`,
+    `EXPORT DIALOG PASS: PS2 ISO source selection and all ZIP destinations, desktop and mobile. Artifacts: ${root}`,
   );
 } catch (error) {
   await page.screenshot({ path: join(root, 'failure.png') });

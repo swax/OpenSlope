@@ -79,17 +79,21 @@ export async function readLevelOrigin(io: MapDataSource, name: string): Promise<
 async function readLevelSource(
   io: MapDataSource,
   name: string,
-): Promise<{ origin: MapOriginRecord; displayName?: string }> {
+): Promise<{ origin: MapOriginRecord; displayName?: string; variant?: 'mod' }> {
   const safe = safeDataName(name);
   const dir = join(io.root, safe);
   const [raw, imported] = await Promise.all([
     io.readJsonOr<unknown>(join(dir, MAP_ORIGIN_FILE), null),
-    io.readJsonOr<{ Game?: unknown; DisplayName?: unknown } | null>(join(dir, 'Import.json'), null),
+    io.readJsonOr<{ Game?: unknown; DisplayName?: unknown; Variant?: unknown } | null>(join(dir, 'Import.json'), null),
   ]);
   const stated = normalizeMapOrigin(raw);
   const game = stated?.Game ?? normalizeMapGame(imported?.Game);
   const displayName = normalizeMapDisplayName(imported?.DisplayName);
-  const source = (origin: MapOriginRecord) => ({ origin, ...(displayName ? { displayName } : {}) });
+  const source = (origin: MapOriginRecord) => ({
+    origin,
+    ...(displayName ? { displayName } : {}),
+    ...(imported?.Variant === 'mod' ? { variant: 'mod' as const } : {}),
+  });
   if (stated) return source({ ...stated, ...(game ? { Game: game } : {}) });
 
   const manifest = await io.readJsonOr<unknown>(join(dir, SLOPESMITH_EXPORT_MANIFEST), null);
@@ -111,8 +115,8 @@ async function readLevelSource(
 export async function listLevelOrigins(io: MapDataSource, selected?: readonly string[]): Promise<MapOriginSummary[]> {
   const names = selected ?? (await listLevels(io));
   return mapLimit(names, READ_CONCURRENCY, async name => {
-    const { origin, displayName } = await readLevelSource(io, name);
-    return { ...originSummary(name, origin), ...(displayName ? { displayName } : {}) };
+    const { origin, ...presentation } = await readLevelSource(io, name);
+    return { ...originSummary(name, origin), ...presentation };
   });
 }
 

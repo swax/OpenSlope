@@ -1,17 +1,35 @@
 import type { PublicCourse } from '../../core/session/public-courses';
 import { canonicalDiscCourse, discContainsCourse, discCourseName } from '../../core/reference/disc-courses';
-import { mapGame, type MapSourceChoice } from '../../core/reference/map-game';
+import {
+  mapCatalogueGame,
+  mapGameLabel,
+  TRICKY_CUSTOM_GAME,
+  type MapSourceChoice,
+} from '../../core/reference/map-game';
 import type { ServerReference } from '../../shared/reference-transfer';
-import { isoGameForCourse, type IsoGame } from './iso-discs';
+import { ISO_GAMES, isoGameForCourse, type IsoGame } from './iso-discs';
 
 export type LibraryVisibility = 'all' | 'public' | 'private';
-export type LibraryReferenceGroup = IsoGame | 'other';
-export type LibraryCounts = Record<LibraryVisibility | 'other', number>;
+export type LibraryReferenceGroup = IsoGame | 'other' | 'tricky-custom';
+export type LibraryCounts = Record<LibraryVisibility | 'other' | 'tricky-custom', number>;
 
-const referenceGames: Partial<Record<string, IsoGame>> = {
-  'ssx-tricky': 'tricky', 'ssx-tricky-gba': 'tricky-gba', ssx: 'ssx', 'ssx-3': 'ssx3', 'ssx-3-beta': 'ssx3-beta',
-  'ssx-on-tour': 'ontour', '1080-avalanche': 'avalanche', 'jonny-moseley-mad-trix': 'madtrix',
+const referenceGames: Partial<Record<string, LibraryReferenceGroup>> = {
+  [TRICKY_CUSTOM_GAME]: 'tricky-custom',
+  'ssx-tricky': 'tricky',
+  'ssx-tricky-gba': 'tricky-gba',
+  ssx: 'ssx',
+  'ssx-3': 'ssx3',
+  'ssx-3-beta': 'ssx3-beta',
+  'ssx-on-tour': 'ontour',
+  '1080-avalanche': 'avalanche',
+  'jonny-moseley-mad-trix': 'madtrix',
 };
+
+export function libraryGroupName(group: LibraryReferenceGroup): string {
+  if (group === 'tricky-custom') return mapGameLabel(TRICKY_CUSTOM_GAME);
+  if (group === 'other') return 'Other reference';
+  return ISO_GAMES.find(game => game.id === group)!.name;
+}
 
 export interface LibraryGameCourse {
   key: string;
@@ -42,10 +60,14 @@ export function libraryGameCourses(
   required: readonly string[] = [],
 ): LibraryGameCourse[] {
   const courses = new Map<string, LibraryGameCourse>();
-  const isoSlots = [...cached, ...disc, ...required,
-    ...published.filter(map => map.kind === 'reference' && map.retailData).flatMap(map => map.isoCourses)];
+  const isoSlots = [
+    ...cached,
+    ...disc,
+    ...required,
+    ...published.filter(map => map.kind === 'reference' && map.retailData).flatMap(map => map.isoCourses),
+  ];
   const get = (course: string, cacheKey = false, source: MapSourceChoice = { name: course }) => {
-    const sourceGame = mapGame(source);
+    const sourceGame = mapCatalogueGame(source);
     const legacySlot = sourceGame === 'unknown' && isoSlots.find(slot => discContainsCourse([slot], course));
     const game: LibraryReferenceGroup = referenceGames[sourceGame] ?? (legacySlot ? isoGameForCourse(legacySlot) : 'other');
     const physical = game === 'tricky' ? canonicalDiscCourse(course.toUpperCase()) : course;
@@ -55,7 +77,7 @@ export function libraryGameCourses(
       entry = {
         key: id,
         course: cacheKey ? course : physical,
-        name: game === 'other' ? source.name : discCourseName(course),
+        name: game === 'other' || game === 'tricky-custom' ? source.name : discCourseName(course),
         loaded: false,
         disc: false,
         server: false,
@@ -67,8 +89,16 @@ export function libraryGameCourses(
   };
   for (const course of cached) get(course, true).loaded = true;
   for (const course of disc) get(course).disc = true;
+  const referenceEntry = (reference: ServerReference) => {
+    const group = mapCatalogueGame(reference);
+    return get(
+      group === 'slopesmith' || group === TRICKY_CUSTOM_GAME ? reference.name : reference.course,
+      false,
+      reference,
+    );
+  };
   for (const reference of references) {
-    const entry = get(mapGame(reference) === 'slopesmith' ? reference.name : reference.course, false, reference);
+    const entry = referenceEntry(reference);
     entry.server = true;
     entry.reference = reference;
     entry.name = reference.displayName ?? entry.name;
@@ -77,8 +107,11 @@ export function libraryGameCourses(
     if (publication.kind !== 'reference') continue;
     const reference = references.find(reference => reference.name === publication.id);
     const entry = reference
-      ? get(mapGame(reference) === 'slopesmith' ? reference.name : reference.course, false, reference)
-      : get(publication.id, false, { name: publication.id, ...(publication.retailData ? {} : { origin: 'slopesmith' }) });
+      ? referenceEntry(reference)
+      : get(publication.id, false, {
+          name: publication.id,
+          ...(publication.retailData ? {} : { origin: 'slopesmith' }),
+        });
     entry.server = true;
     entry.publication = publication;
     entry.name = publication.name;

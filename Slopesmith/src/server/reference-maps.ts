@@ -15,7 +15,8 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { loadImage } from '@napi-rs/canvas';
-import { canonicalDiscCourse } from '../core/reference/disc-courses';
+import { canonicalDiscCourse, normalizeMapDisplayName } from '../core/reference/disc-courses';
+import { writeTrickyModMetadata } from './reference-presentation';
 import { mapLimit } from '../shared/map-data';
 import { referenceManifest, type ReferenceFile, type ReferenceManifest } from '../shared/reference-transfer';
 import { referenceMusicEncoding, REFERENCE_MUSIC_INDEX } from '../shared/reference-music-encoding';
@@ -68,6 +69,7 @@ export async function serverReferences() {
     retailData: map.retailData,
     ...(map.game ? { game: map.game } : {}),
     ...(map.displayName ? { displayName: map.displayName } : {}),
+    ...(map.variant ? { variant: map.variant } : {}),
   }));
 }
 
@@ -138,7 +140,8 @@ export async function beginReferenceUpload(actor: string, input: unknown, signal
       if (Date.now() - entry.mtimeMs > TTL) await removeStaging(root, path);
     }
     const existing = (await serverReferences()).find(
-      map => canonicalDiscCourse(map.course.toUpperCase()) === canonicalDiscCourse(manifest.course),
+      map =>
+        map.variant !== 'mod' && canonicalDiscCourse(map.course.toUpperCase()) === canonicalDiscCourse(manifest.course),
     );
     if (existing || (await entryExists(join(root, manifest.course))))
       throw new ReferenceTransferError('This course is already a server reference.', 409);
@@ -340,7 +343,7 @@ export function finishReferenceUpload(id: string, actor: string) {
       return await serialize(`reference-map:${upload.root}`, async () => {
         const course = upload.manifest.course;
         const existing = (await serverReferences()).some(
-          map => canonicalDiscCourse(map.course.toUpperCase()) === canonicalDiscCourse(course),
+          map => map.variant !== 'mod' && canonicalDiscCourse(map.course.toUpperCase()) === canonicalDiscCourse(course),
         );
         if (existing || (await entryExists(join(upload.root, course))))
           throw new ReferenceTransferError('This course is already a server reference.', 409);
@@ -360,6 +363,28 @@ export function finishReferenceUpload(id: string, actor: string) {
 
 export function cancelReferenceUpload(id: string, actor: string) {
   return serialize(`reference-upload:${id}`, async () => discard(owned(id, actor)));
+}
+
+export async function nameServerTrickyMod(name: string, title: unknown) {
+  const displayName = normalizeMapDisplayName(title);
+  if (!displayName) throw new ReferenceTransferError('Provide a valid map title.');
+  const root = await realpath(mapsRoot());
+  return serialize(`reference-map:${root}`, async () => {
+    const map = (await serverReferences()).find(map => map.name === name);
+    if (!map) throw new ReferenceTransferError('Reference map not found.', 404);
+    if (
+      map.game !== 'ssx-tricky' ||
+      (map.variant !== 'mod' &&
+        canonicalDiscCourse(map.name.toUpperCase()) === canonicalDiscCourse(map.course.toUpperCase()))
+    )
+      throw new ReferenceTransferError('Choose a separately installed SSX Tricky mod folder.');
+    const path = join(root, map.name);
+    const entry = await lstat(path);
+    if (!entry.isDirectory() || entry.isSymbolicLink())
+      throw new ReferenceTransferError('Reference folder must be an ordinary directory.');
+    if (await writeTrickyModMetadata(path, displayName)) refresh(name);
+    return { ...map, displayName, variant: 'mod' as const };
+  });
 }
 
 export async function removeServerReference(name: string) {

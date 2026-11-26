@@ -249,8 +249,10 @@ internal sealed class IsoService
 
     public DiscUtils.DiscFileInfo? FindIsoFile(CDReader cd, string internalPath)
     {
-        string dir = Path.GetDirectoryName(internalPath)?.Replace('/', '\\') ?? "";
-        string name = Path.GetFileName(internalPath);
+        string path = NormalizeIsoDir(internalPath);
+        int separator = path.LastIndexOf('\\');
+        string dir = separator < 0 ? "" : path[..separator];
+        string name = path[(separator + 1)..];
         var di = string.IsNullOrEmpty(dir) ? cd.Root : cd.GetDirectoryInfo(dir);
         return di.GetFiles().FirstOrDefault(f =>
             string.Equals(CleanName(f.Name), name, StringComparison.OrdinalIgnoreCase));

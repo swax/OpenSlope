@@ -24,11 +24,13 @@ npm run typecheck
 npm run lint
 npm run release:test
 npm run multiplayer:test
+npm run build:snowknife -- --release
 npm run build
 npm run multiplayer:build
 npm run release:package -- --revision "$(git rev-parse HEAD)"
 ```
 
+The browser Snowknife build uses Python, the .NET SDK from `global.json`, and the pinned SSX-Library submodule.
 The package command uses existing build output. CI performs the build and checks first. It copies only the
 compiled frontend/API, resolved production dependency closure, runtime, Rust binary and notices, and an
 explicit list of deployment files. Workspaces, map libraries, credentials and source-checkout build caches

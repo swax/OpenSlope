@@ -1,5 +1,5 @@
 import type { ProjectBundle } from '../../core/project/transfer';
-import { mapGame, mapGameLabel, type MapSourceChoice } from '../../core/reference/map-game';
+import { mapCatalogueGame, mapGameLabel, type MapSourceChoice } from '../../core/reference/map-game';
 import type { MapSource } from '../../core/reference/map-source';
 import type { PlacedProp, V3 } from '../../core/doc/types';
 import { AUTHORED_MODEL_LEVEL, authoredModelLevelProps } from '../../core/doc/models';
@@ -34,7 +34,7 @@ export interface EditableReferenceChoice extends MapSourceChoice {
 export const referenceMapGames = {
   id(map: MapSourceChoice): string {
     if (/^(local|server):@project:/.test(map.name)) return 'slopesmith';
-    const game = mapGame(map);
+    const game = mapCatalogueGame(map);
     return game === 'unknown' || game === 'slopesmith' ? 'custom-ref' : game;
   },
   label(game: string): string {

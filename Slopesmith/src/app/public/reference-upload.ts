@@ -25,6 +25,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const listServerReferences = () => request<{ maps: ServerReference[] }>('');
 export const removeReference = (name: string, signal: AbortSignal) =>
   request(`/maps/${encodeURIComponent(name)}`, { method: 'DELETE', signal });
+export const setTrickyModTitle = (name: string, displayName: string, signal: AbortSignal) =>
+  request<{ map: ServerReference }>(`/maps/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+    signal,
+  });
 export const referenceForCourse = (maps: readonly ServerReference[], course: string): ServerReference | undefined =>
   maps.find(map => canonicalDiscCourse(map.course.toUpperCase()) === canonicalDiscCourse(course.toUpperCase()));
 

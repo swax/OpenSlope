@@ -4,6 +4,7 @@ import {
   beginReferenceUpload,
   cancelReferenceUpload,
   finishReferenceUpload,
+  nameServerTrickyMod,
   referenceUploadStatus,
   removeServerReference,
   serverReferences,
@@ -88,6 +89,11 @@ export const referenceMapRoutes: Record<string, ApiHandler> = {
         }
       }
       const map = /^\/maps\/([^/]+)$/.exec(path);
+      if (map && req.method === 'PATCH') {
+        const body = (await readJsonBody(req, 2048)) as { displayName?: unknown } | null;
+        jsonResponse(res, 200, { map: await nameServerTrickyMod(decodeURIComponent(map[1]), body?.displayName) });
+        return;
+      }
       if (map && req.method === 'DELETE') {
         await removeServerReference(decodeURIComponent(map[1]));
         jsonResponse(res, 200, {});

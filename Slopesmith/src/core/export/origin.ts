@@ -131,6 +131,7 @@ export function normalizeMapOrigin(value: unknown): MapOriginRecord | null {
 export interface MapOriginSummary {
   name: string;
   displayName?: string;
+  variant?: 'mod';
   game?: string;
   origin: MapOriginKind;
   /** The course slot an extract was read from (`GARI`), when the record names one. */

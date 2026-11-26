@@ -3,11 +3,14 @@ import { splitMapSource, type MapSource } from './map-source';
 import { parseAssetVersion } from './asset-version';
 export { normalizeMapDisplayName } from './disc-courses';
 
+export const TRICKY_CUSTOM_GAME = 'ssx-tricky-custom';
+
 /** Stable source identities shared by map catalogues and their Game → Map pickers. */
 const GAME_LABELS: Readonly<Record<string, string>> = {
   slopesmith: 'Custom',
   ssx: 'SSX',
   'ssx-tricky': 'SSX Tricky',
+  [TRICKY_CUSTOM_GAME]: 'SSX Tricky (Custom)',
   'ssx-tricky-gba': 'SSX Tricky (GBA)',
   'ssx-3': 'SSX 3',
   'ssx-3-beta': 'SSX 3 Beta',
@@ -60,6 +63,12 @@ export function mapGame(source: { name: string; game?: string; course?: string; 
 
 export const mapGameLabel = (game: string): string => (Object.hasOwn(GAME_LABELS, game) ? GAME_LABELS[game] : game);
 
+/** Catalogue grouping is independent of the game and slot used by asset identities. */
+export function mapCatalogueGame(source: MapSourceChoice): string {
+  const game = mapGame(source);
+  return game === 'ssx-tricky' && source.variant === 'mod' ? TRICKY_CUSTOM_GAME : game;
+}
+
 /** Prefer source metadata, retaining legacy labels and stable folder IDs. */
 export function mapDisplayName(source: MapSourceChoice): string {
   const version = parseAssetVersion(source.name);
@@ -109,7 +118,7 @@ export function mapNameInGame(source: MapSourceChoice, title = mapDisplayName(so
 
 /** A mixed-game list needs one explicit owner, independently of its imported or legacy title spelling. */
 export function mapLabelWithGame(source: MapSourceChoice, title?: string): string {
-  const game = mapGame(source);
+  const game = mapCatalogueGame(source);
   const name = mapNameInGame(source, title);
   return game === 'unknown' ? name : `${mapGameLabel(game)} · ${name}`;
 }
@@ -118,6 +127,7 @@ export interface MapSourceChoice {
   name: string;
   source?: MapSource;
   displayName?: string;
+  variant?: 'mod';
   game?: string;
   origin?: string;
   course?: string;

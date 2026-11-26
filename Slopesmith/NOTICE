@@ -244,9 +244,9 @@ packing. That program sits beside this one in the OpenSlope repository under its
     consumers such as this editor can implement against the interchange contracts freely.
     ../Snowknife
 
-    You build Snowknife yourself and point Slopesmith at the checkout under File ▸ Settings. Export
-    runs its command-line interface as a separate process. Slopesmith bundles no part of it, and
-    neither program is a derivative work of the other.
+    The editor can export an archive for the CLI or pass that archive to Snowknife in a browser worker.
+    Packaged browser releases carry Snowknife's separately versioned WebAssembly runtime and assemblies,
+    license notices, and matching source in the snowknife/ static assets directory.
 
 The documentation here cites original-game behavior using location-independent tags of the form
 [Trailmap: NNN-topic]. Those identify an optional local specification workspace, excluded from Git:

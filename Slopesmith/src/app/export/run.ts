@@ -3,15 +3,6 @@ import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { browserExportProvider } from './provider';
 import { downloadTarget, type ExportTarget } from './landing';
 
-/**
- * An export, end to end, in the browser: compose the map folder against the HTTP byte provider, then land it.
- *
- * Everything Slopesmith writes is here. What comes after — `snowknife gltf` for Unity, `repack` for a disc —
- * is a command line, because a browser cannot spawn one and `snowknife` is the thing that holds the target's
- * slot table anyway. Every export writes `Repack.md` beside itself carrying both invocations, so the step
- * after this one is a paste rather than a remembered argument.
- */
-
 export interface BrowserExportResult {
   folderName: string;
   /** Where it landed, as the toast and the log name it. */
@@ -19,7 +10,7 @@ export interface BrowserExportResult {
   log: string;
 }
 
-/** Every Snowknife export downloads a ZIP, on every browser. */
+/** The CLI export downloads the composed map as a ZIP. */
 export function resolveExportTarget(doc: EditDoc): ExportTarget {
   return downloadTarget(exportFolderName(doc));
 }

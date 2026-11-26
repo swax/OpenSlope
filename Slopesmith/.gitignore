@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-server/
+public/snowknife/
 .env
 
 # Local-first user data. These folders belong to the mapper, not the app source.

@@ -25,6 +25,7 @@ export interface ServerReference {
   name: string;
   course: string;
   displayName?: string;
+  variant?: 'mod';
   game?: string;
   origin?: string;
   retailData?: boolean;

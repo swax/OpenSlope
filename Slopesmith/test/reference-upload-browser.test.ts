@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
@@ -387,6 +387,51 @@ try {
     await clickMapAction(card.getByRole('button', { name: 'Unload Garibaldi', exact: true, includeHidden: true }));
     await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).waitFor();
   }
+  const modId = 'GARIBALDI_VARIANT';
+  const modDir = join(maps, modId);
+  await mkdir(modDir);
+  const originMetadata = {
+    Schema: 'openslope-origin/v1',
+    Origin: 'retail',
+    Course: 'GARI',
+    RetailData: true,
+    Reasons: ['retail-extract'],
+  };
+  await writeFile(join(modDir, 'Origin.json'), JSON.stringify(originMetadata));
+  await writeFile(join(modDir, 'Patches.json'), JSON.stringify({ Patches: [] }));
+  const editUrl = `${origin}/api/reference-maps/maps/${modId}`;
+  const edit = { data: { displayName: 'Garibaldi Variant' } };
+  assert(!(await page.request.patch(editUrl, edit)).ok(), 'guests cannot edit reference metadata');
+  await context.addCookies([{ name: 'slopesmith_session', value: adminSession, url: origin }]);
+  const versionUrl = `${origin}/api/map-asset-version?level=${modId}`;
+  const version = await (await page.request.get(versionUrl)).json();
+  await page.goto(`${origin}/maps?view=games&game=tricky`);
+  await page.getByRole('button', { name: 'Game actions for SSX Tricky', exact: true }).click();
+  await page.getByRole('button', { name: 'Set custom map title…', exact: true }).click();
+  await page.locator('.sp-ask input').fill(modId);
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.locator('.sp-ask input').fill(edit.data.displayName);
+  const renameResponse = page.waitForResponse(response => response.url() === editUrl && response.request().method() === 'PATCH');
+  await page.getByRole('button', { name: 'Save title', exact: true }).click();
+  const renamed = await renameResponse;
+  assert(renamed.ok(), await renamed.text());
+  const { map: namedMod } = await renamed.json();
+  assert.equal(namedMod.name, modId);
+  assert.equal(namedMod.game, 'ssx-tricky');
+  assert.equal(namedMod.course, 'GARI');
+  assert.equal(namedMod.variant, 'mod');
+  assert.equal(namedMod.retailData, true);
+  assert.deepEqual(await (await page.request.get(versionUrl)).json(), version);
+  assert.deepEqual(JSON.parse(await readFile(join(modDir, 'Origin.json'), 'utf8')), originMetadata);
+  await page.goto(`${origin}/maps`);
+  const stock = page.locator('.library-catalogue [data-course="TRICKY_GARI"]');
+  const mod = page.locator(`.library-catalogue [data-course="${modId}"]`);
+  await mod.getByRole('link', { name: 'Inspect Garibaldi Variant', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'SSX Tricky (Custom)', exact: true }).click();
+  assert(await mod.isVisible());
+  assert.equal(await stock.filter({ visible: true }).count(), 0);
+  const inspectUrl = new URL((await mod.locator('.public-iso-inspect').getAttribute('href'))!, origin);
+  assert.equal(inspectUrl.searchParams.get('reference'), modId);
   assert.deepEqual(errors, []);
   console.log(
     'Native extraction → map-menu admin uploads with hash reuse, automatic compressed music, queue cancellation, server state and confirmed removal PASS',

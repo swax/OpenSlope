@@ -68,7 +68,7 @@ def finish_asset(path: Path) -> None:
     )
 
 
-def dependency_notices(publish: Path, destination: Path) -> list[dict]:
+def nuget_dependency_notices(destination: Path) -> list[dict]:
     assets = json.loads((ROOT / "Snowknife/Snowknife/obj/project.assets.json").read_text(encoding="utf-8"))
     roots = [Path(path) for path in assets["packageFolders"]]
     notices = destination / "licenses" / "NuGet"
@@ -129,6 +129,12 @@ def dependency_notices(publish: Path, destination: Path) -> list[dict]:
                 "sha512": library.get("sha512"),
             }
         )
+    write_json(destination / "dependencies.json", result)
+    return result
+
+
+def dependency_notices(publish: Path, destination: Path) -> list[dict]:
+    result = nuget_dependency_notices(destination)
     config = json.loads((publish / "snowknife.runtimeconfig.json").read_text(encoding="utf-8"))
     framework = next(
         row for row in config["runtimeOptions"]["includedFrameworks"] if row["name"] == "Microsoft.NETCore.App"
@@ -145,7 +151,6 @@ def dependency_notices(publish: Path, destination: Path) -> list[dict]:
     runtime_notices.mkdir()
     for name in ("LICENSE.TXT", "THIRD-PARTY-NOTICES.TXT"):
         shutil.copy2(runtime / name, runtime_notices / name)
-    write_json(destination / "dependencies.json", result)
     return result
 
 

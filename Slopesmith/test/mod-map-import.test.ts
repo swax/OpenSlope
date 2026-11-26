@@ -124,6 +124,10 @@ try {
           writeFile(join(staging, file), '{}\n'),
         ),
       );
+      await writeFile(
+        join(staging, 'Import.json'),
+        JSON.stringify({ Game: 'ssx-tricky', DisplayName: 'Aloha Ice Jam' }),
+      );
     } else throw new Error(`unexpected fake Snowknife command: ${args[0]}`);
   };
 
@@ -137,6 +141,11 @@ try {
   );
   assert.equal(result.slot, 'ALOHA');
   assert.equal(result.destination, join(maps, 'MOD_ALOHA'));
+  assert.deepEqual(JSON.parse(await readFile(join(result.destination, 'Import.json'), 'utf8')), {
+    Game: 'ssx-tricky',
+    DisplayName: "Moloka'i Pa'Hee",
+    Variant: 'mod',
+  });
   assert.equal((await readFile(join(result.destination, 'Patches.json'), 'utf8')).trim(), '{}');
   assert.equal(await readFile(iso, 'utf8'), 'clean-disc', 'the supplied ISO remains untouched');
   assert.equal(calls.filter(args => args[0] === 'refpack').length, 11);

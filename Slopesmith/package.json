@@ -29,6 +29,7 @@
     "build:client": "vite build",
     "build:server": "node scripts/build-server.mjs",
     "build:iso-importer": "node scripts/build-browser-importer.mjs",
+    "build:snowknife": "python ../tools/build-browser-snowknife.py",
     "notices:inventory": "node scripts/update-browser-notice-inventory.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --max-warnings 0 --cache --cache-strategy content --cache-location temp/eslintcache .",

@@ -188,6 +188,8 @@ export async function writeOfflineWorker(directory) {
   async function walk(folder, prefix = '') {
     for (const entry of await readdir(folder, { withFileTypes: true })) {
       const name = `${prefix}${entry.name}`;
+      // Snowknife is downloaded on demand when an author first builds an ISO.
+      if (name === 'snowknife' && entry.isDirectory()) continue;
       if (entry.isDirectory()) await walk(join(folder, entry.name), `${name}/`);
       else if (name !== 'sw.js' && !name.endsWith('.map')) files.push(name);
     }

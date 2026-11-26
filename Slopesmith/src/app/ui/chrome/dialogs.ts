@@ -14,6 +14,7 @@ import {
 import { buildQuadMesh } from '../../../core/mesh/topology';
 import { exportFolderName } from '../../../core/export/folder';
 import { exportMapFolder, resolveExportTarget } from '../../export/run';
+import { createPs2IsoExport } from '../../export/ps2-iso-dialog';
 import { createSnowknifeCommands, snowknifeTarget } from '../../export/commands';
 import { createMountainArchive } from '../../mountain/archive';
 import { safeDataName } from '../../../core/export/names';
@@ -1155,10 +1156,11 @@ export function createDialogs(deps: DialogDeps) {
     );
   }
 
-  /** Choose an editable Slopesmith mountain or a compiled-map input archive for Snowknife. */
+  /** Choose an editable mountain, a Snowknife input archive, or a rebuilt PS2 disc. */
   function exportDialog() {
     const d = getDoc();
-    const { host, close } = modal();
+    const iso = createPs2IsoExport(getDoc, log);
+    const { host, close } = modal({ onClose: iso.abort });
     host.classList.add('sp-export-modal');
     host.setAttribute('role', 'dialog');
     host.setAttribute('aria-label', 'Export');
@@ -1171,6 +1173,7 @@ export function createDialogs(deps: DialogDeps) {
     const purpose = document.createElement('select');
     purpose.setAttribute('aria-label', 'Export for');
     purpose.add(new Option('Another Slopesmith instance', 'slopesmith'));
+    purpose.add(new Option('Build PS2 ISO', 'ps2-iso'));
     purpose.add(new Option('Snowknife — Custom ISO', 'snowknife-iso'));
     purpose.add(new Option('Snowknife — Mod Manager', 'snowknife-mod-manager'));
     label.appendChild(purpose);
@@ -1185,26 +1188,51 @@ export function createDialogs(deps: DialogDeps) {
     cancel.onclick = close;
     const go = document.createElement('button');
     go.className = 'sp-btn accent';
-    go.onclick = () => {
+    go.onclick = async () => {
+      if (purpose.value === 'ps2-iso') {
+        purpose.disabled = true;
+        go.disabled = true;
+        try {
+          if (await iso.build()) close();
+        } finally {
+          if (host.isConnected) {
+            purpose.disabled = false;
+            updatePurpose();
+          }
+        }
+        return;
+      }
       const snowknife = snowknifeTarget(purpose.value) !== null;
       close();
       if (snowknife) void runExport(d);
       else void exportMountain();
     };
     actions.append(cancel, go);
-    host.append(title, label, description, commands.element, actions);
+    host.append(title, label, description, iso.element, commands.element, actions);
     purpose.onchange = updatePurpose;
+    iso.onSourceChange(updatePurpose);
+    host.addEventListener('keydown', event => {
+      if (event.key === 'Escape') close();
+    });
     updatePurpose();
     purpose.focus();
 
     function updatePurpose() {
+      const ps2 = purpose.value === 'ps2-iso';
       const target = snowknifeTarget(purpose.value);
       const snowknife = target !== null;
       commands.setTarget(target);
-      go.textContent = snowknife ? 'Download .snowknife.zip' : 'Download .slopesmith.zip';
-      description.textContent = snowknife
-        ? `Downloads ${exportFolderName(d)}.snowknife.zip. Use Snowknife locally to build ${target === 'iso' ? 'a custom PS2 Tricky ISO' : 'a ZIP for SSX Mod Manager'}.`
-        : 'Download an editable .slopesmith.zip mountain with its custom assets. On another Slopesmith instance, choose Load map → Import from file to continue editing.';
+      iso.element.hidden = !ps2;
+      if (ps2) void iso.loadSaved();
+      go.disabled = ps2 && !iso.ready();
+      go.textContent = ps2 ? 'Build ISO' : snowknife ? 'Download .snowknife.zip' : 'Download .slopesmith.zip';
+      if (ps2)
+        description.textContent =
+          'Build a new ISO with this map in the Garibaldi slot. Use your SSX Tricky (USA) PS2 disc image. The build runs on this device.';
+      else
+        description.textContent = snowknife
+          ? `Downloads ${exportFolderName(d)}.snowknife.zip. Use Snowknife locally to build ${target === 'iso' ? 'a custom PS2 Tricky ISO' : 'a ZIP for SSX Mod Manager'}.`
+          : 'Download an editable .slopesmith.zip mountain with its custom assets. On another Slopesmith instance, choose Load map → Import from file to continue editing.';
     }
   }
 
